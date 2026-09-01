@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: type-drift-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: type_drift
+      POSTGRES_USER: type_drift
+      POSTGRES_PASSWORD: type_drift_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - type_drift_pgdata:/var/lib/postgresql/data
+
+volumes:
+  type_drift_pgdata:
