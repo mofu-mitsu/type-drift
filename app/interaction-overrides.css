@@ -1,0 +1,11 @@
+.site-shell { display:flex; flex-direction:column; }
+.topbar { order:-1; }
+.login-modal { position:relative; width:min(420px, calc(100vw - 36px)); padding:36px 30px 30px; border-radius:8px 26px 26px 26px; background:#fffaf0; box-shadow:0 22px 70px rgba(32,75,78,.2); }
+.login-modal h2 { margin:0 0 12px; }
+.login-modal p:not(.eyebrow) { color:#789293; font-size:12px; line-height:1.9; }
+.login-provider { display:block; width:100%; margin-top:10px; padding:13px 16px; border:1px solid rgba(80,145,132,.16); border-radius:14px; color:#547b7c; background:#f4f8ef; text-align:left; font-size:12px; }
+.login-provider:hover { border-color:#74bbb4; background:#e1f2eb; }
+.profile-settings { order:0; }
+.profile-settings + .topbar { order:-1; }
+.profile-settings .primary-button { margin-top:2px; }
+@media (max-width:760px) { .login-modal { padding:32px 22px 25px; } }

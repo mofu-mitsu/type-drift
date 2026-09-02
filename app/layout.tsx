@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./interaction-overrides.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://type-drift.vercel.app"),
