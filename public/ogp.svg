@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7f3ea"/><stop offset="1" stop-color="#d9efec"/></linearGradient></defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <path d="M0 520c180-54 330 30 520-12s380-25 680 28v94H0z" fill="#80c7c7" opacity=".62"/>
+  <circle cx="980" cy="145" r="76" fill="#ffe8ad" opacity=".84"/>
+  <text x="84" y="105" fill="#438f94" font-family="Arial,sans-serif" font-size="30" letter-spacing="7">TYPE DRIFT</text>
+  <text x="84" y="292" fill="#22383e" font-family="Arial,'Yu Gothic',sans-serif" font-size="68" font-weight="700">類型の秘密メモ</text>
+  <text x="84" y="365" fill="#658b8b" font-family="Arial,'Yu Gothic',sans-serif" font-size="32">診断のあとに立ち寄れる海。</text>
+  <text x="84" y="420" fill="#769393" font-family="Arial,'Yu Gothic',sans-serif" font-size="23">名前を置いていかなくても、思考だけは流していけます。</text>
+  <text x="84" y="570" fill="#6ba3a0" font-family="Arial,sans-serif" font-size="22">MBTI · SOCIONICS · ENNEAGRAM</text>
+  <text x="965" y="548" fill="#fffaf0" font-family="Arial,sans-serif" font-size="60">~ o ~</text>
+</svg>
