@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: type-drift-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_NAME
+        value: Type Drift API
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: FRONTEND_URL
+        value: https://type-drift.vercel.app
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_DOMAIN
+        sync: false
+      - key: SANCTUM_STATEFUL_DOMAINS
+        value: type-drift.vercel.app
+      - key: X_CLIENT_ID
+        sync: false
+      - key: X_CLIENT_SECRET
+        sync: false
+      - key: X_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: qwen/qwen3.6-27b
