@@ -22,7 +22,7 @@
 
 既存の画面はローカル状態でも動きますが、Laravel側に本番保存用のmigrationとAPIを追加しました。ユーザー・ボトル・返信・リアクション・投票・プロフィール・広場メッセージ用のテーブルはNeonへ作成済みです。フロントからAPIへ切り替える接続は次の段階です。
 
-画像はRenderのローカルディスクへ保存しません。公開版ではCloudinary / Cloudflare R2 / S3等へアップロードし、Laravel側には画像URLだけを保存する構成にします。
+画像はRenderのローカルディスクへ保存しません。Cloudinaryへの直接アップロード処理を追加済みです。Vercelに`NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`と`NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`を設定すると、画像URLをボトルへ添付できます。公開版ではLaravel APIにも画像URLを渡して保存します。
 
 ## 構成
 
@@ -30,11 +30,14 @@
 - `Laravel 13 API`：Render。認証、コンテンツ、OAuth、永続化API
 - `Neon PostgreSQL`：ユーザーとコンテンツの永続化
 - `Qwen / Groq`：AIキャラクター用。自認相談室には接続しない方針
+- `Cloudinary`：ボトル / アンケート画像のアップロード先。API Secretはフロントへ置かない
 
 Vercelに次の環境変数を設定して再デプロイすると、フロントからLaravelへ接続できます。
 
 ```env
 NEXT_PUBLIC_API_URL=https://type-drift-api.onrender.com
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=（CloudinaryのCloud name）
+NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=（Unsigned upload preset）
 ```
 
 ## Render環境変数
@@ -76,5 +79,5 @@ npm run dev
 2. Next.jsをLaravelのボトル / 返信 / リアクション / 投票APIへ接続
 3. Cloudinary等の外部ストレージへ画像アップロードAPIを追加
 4. OAuthの本番コールバックを確認
-5. Laravel Reverb等で広場をリアルタイム化（メッセージ保存APIは実装済み。Presenceとbroadcastingが次段階）
+5. Laravel Reverb等で広場をリアルタイム化（メッセージ保存APIと10秒ポーリングは実装済み。Presenceとbroadcastingが次段階）
 6. 芋虫浜の他プレイヤー、NPC、ランキングを永続化
