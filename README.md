@@ -20,14 +20,14 @@
 
 ## 現在の重要な制限
 
-投稿・返信・投票・リアクションは、Next.jsのブラウザ内状態です。ページ更新で消えます。Laravel API接続後に、ユーザー・ボトル・返信・リアクション・投票をPostgreSQLへ永続化します。
+既存の画面はローカル状態でも動きますが、Laravel側に本番保存用のmigrationとAPIを追加しました。Renderの次回デプロイ時に、ユーザー・ボトル・返信・リアクション・投票・プロフィール用のテーブルがNeonへ作成されます。フロントからAPIへ切り替える接続は次の段階です。
 
 画像はRenderのローカルディスクへ保存しません。公開版ではCloudinary / Cloudflare R2 / S3等へアップロードし、Laravel側には画像URLだけを保存する構成にします。
 
 ## 構成
 
 - `Next.js`：Vercel。海のUI、アニメーション、投稿フォーム
-- `Laravel 13 API`：Render。認証、コンテンツ、OAuth、将来の画像アップロードAPI
+- `Laravel 13 API`：Render。認証、コンテンツ、OAuth、永続化API
 - `Neon PostgreSQL`：ユーザーとコンテンツの永続化
 - `Qwen / Groq`：AIキャラクター用。自認相談室には接続しない方針
 
@@ -73,8 +73,8 @@ npm run dev
 ## 今後の実装
 
 1. Renderの`APP_KEY`を修正し、`/api/health`を200にする
-2. LaravelのSanctum認証とボトル / 返信 / リアクション / 投票APIを接続
+2. Next.jsをLaravelのボトル / 返信 / リアクション / 投票APIへ接続
 3. Cloudinary等の外部ストレージへ画像アップロードAPIを追加
 4. OAuthの本番コールバックを確認
-5. Reverb等で広場をリアルタイム化
+5. Reverb等で広場をリアルタイム化（現在はUI試作。テーブルとPresence設計を追加予定）
 6. 芋虫浜の他プレイヤー、NPC、ランキングを永続化

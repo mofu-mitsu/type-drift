@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OAuthController;
+use App\Http\Controllers\BottleController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -20,3 +21,9 @@ Route::get('/api/auth/{provider}/redirect', [OAuthController::class, 'redirect']
 Route::get('/api/auth/{provider}/callback', [OAuthController::class, 'callback'])->whereIn('provider', ['google', 'x']);
 Route::get('/api/me', [OAuthController::class, 'me']);
 Route::post('/api/logout', [OAuthController::class, 'logout']);
+Route::get('/api/bottles', [BottleController::class, 'index']);
+Route::post('/api/bottles', [BottleController::class, 'store']);
+Route::post('/api/bottles/{bottle}/reactions', [BottleController::class, 'react']);
+Route::post('/api/bottles/{bottle}/replies', [BottleController::class, 'reply']);
+Route::post('/api/bottles/{bottle}/votes', [BottleController::class, 'vote']);
+Route::match(['put', 'patch'], '/api/profile', [BottleController::class, 'profile']);
