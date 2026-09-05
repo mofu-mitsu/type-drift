@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Bottle;
 use App\Models\PollVote;
 use App\Models\Profile;
+use App\Models\PlazaMessage;
 use App\Models\Reaction;
 use App\Models\Reply;
 use Illuminate\Http\Request;
@@ -73,5 +74,22 @@ class BottleController extends Controller
         $data = $request->validate(['nickname' => ['nullable', 'string', 'max:80'], 'mbti' => ['nullable', 'string', 'max:8'], 'socionics' => ['nullable', 'string', 'max:12'], 'enneagram' => ['nullable', 'string', 'max:20'], 'other_type' => ['nullable', 'string', 'max:120']]);
         $profile = Profile::updateOrCreate(['user_id' => $request->user()->id], $data);
         return response()->json(['profile' => $profile]);
+    }
+
+    public function plazaMessages(Request $request)
+    {
+        return response()->json(['messages' => PlazaMessage::query()->latest()->limit(50)->get()->reverse()->values()]);
+    }
+
+    public function plazaMessage(Request $request)
+    {
+        $data = $request->validate(['body' => ['required', 'string', 'max:280'], 'nickname' => ['nullable', 'string', 'max:80']]);
+        $message = PlazaMessage::create([
+            'user_id' => $request->user()?->id,
+            'nickname' => $data['nickname'] ?? null,
+            'body' => $data['body'],
+            'guest_key' => $request->user() ? null : $request->header('X-Guest-Key'),
+        ]);
+        return response()->json(['message' => $message], 201);
     }
 }

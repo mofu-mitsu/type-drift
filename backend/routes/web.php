@@ -27,3 +27,5 @@ Route::post('/api/bottles/{bottle}/reactions', [BottleController::class, 'react'
 Route::post('/api/bottles/{bottle}/replies', [BottleController::class, 'reply']);
 Route::post('/api/bottles/{bottle}/votes', [BottleController::class, 'vote']);
 Route::match(['put', 'patch'], '/api/profile', [BottleController::class, 'profile']);
+Route::get('/api/plaza/messages', [BottleController::class, 'plazaMessages']);
+Route::post('/api/plaza/messages', [BottleController::class, 'plazaMessage']);
