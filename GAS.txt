@@ -1,0 +1,56 @@
+Type Drift / Render keep-alive 設定
+
+目的
+Render無料Web Serviceは一定時間アクセスがないと休止するため、10分ごとにLaravel APIのヘルスチェックへアクセスします。
+これは「完全な常時稼働」の保証ではなく、コールドスタートを減らすための補助です。
+
+1. Render側
+
+RenderでLaravel APIをデプロイ後、サービスURLを確認します。
+例:
+https://type-drift-api.onrender.com
+
+確認するURL:
+https://type-drift-api.onrender.com/api/health
+
+2. Google Apps Script
+
+script.google.com で新しいプロジェクトを作り、次のコードを貼り付けます。
+
+const RENDER_HEALTH_URL = 'https://YOUR-SERVICE.onrender.com/api/health';
+
+function wakeUpRender() {
+  try {
+    const response = UrlFetchApp.fetch(RENDER_HEALTH_URL, {
+      method: 'get',
+      muteHttpExceptions: true,
+      followRedirects: true,
+    });
+    console.log('Render health: ' + response.getResponseCode());
+  } catch (error) {
+    console.error('Render health failed: ' + error.message);
+  }
+}
+
+3. トリガー
+
+左側の「トリガー」→「トリガーを追加」から、次の設定にします。
+
+- 実行する関数: wakeUpRender
+- イベントのソース: 時間主導型
+- 時間ベースのトリガー: 分ベースのタイマー
+- 間隔: 10分おき
+
+初回実行時にUrlFetchAppの権限確認が出たら、内容を確認して許可します。
+
+4. UptimeRobot
+
+監視URLは同じ /api/health にします。
+Laravel側はGETでJSONを返すため、通常のHTTP(s)監視で利用できます。
+キーワード監視を使う場合は `status` または `database` を指定します。
+
+注意
+
+- GASはRenderのスリープを必ず防ぐものではありません。
+- 無料プランの制限や仕様変更があるため、重要な本番運用では有料インスタンスを検討します。
+- Neonの接続障害も検知したい場合は、healthレスポンスのdatabase値を監視します。
