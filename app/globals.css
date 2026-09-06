@@ -56,3 +56,15 @@
 .constellation-result p:not(.eyebrow) { color:#c3ddd5; font-size:11px; line-height:1.9; }
 .constellation-result .play-button { margin-top:8px; color:#d4e8de; border-color:rgba(190,235,217,.3); background:rgba(255,255,255,.08); }
 @media (max-width:560px) { .constellation-options { grid-template-columns:1fr; } }
+/* Anonymous feedback is persisted by the Laravel API in Neon. */
+.feedback-box { max-width:1070px; margin:0 auto 34px; padding:22px 25px; border:1px solid rgba(80,145,132,.14); border-radius:8px 22px 22px 22px; background:rgba(255,251,239,.7); }
+.feedback-box h3 { margin:0 0 5px; color:#466f71; font-family:'Noto Serif JP',serif; font-size:19px; font-weight:500; }
+.feedback-box p:not(.eyebrow) { margin:0 0 12px; color:#7b9694; font-size:11px; line-height:1.8; }
+.feedback-box select { width:100%; margin-bottom:8px; padding:10px; border:1px solid rgba(80,145,132,.16); border-radius:10px; color:#557e7e; background:#fff; font-size:11px; }
+.feedback-box textarea { height:100px; margin-bottom:10px; background:#fff; }
+.feedback-status { display:block; margin-top:10px; color:#5a9c7e; font-size:10px; }
+ .reply-thread { margin-top:16px; padding-top:12px; border-top:1px solid rgba(80,145,132,.12); }
+ .reply-thread__title { margin:0 0 8px; color:#8ca6a3; font-family:'DM Mono',monospace; font-size:9px; }
+ .reply-item { margin:7px 0; padding:9px 11px; border-radius:10px; color:#678684; background:rgba(247,252,246,.8); font-size:11px; line-height:1.7; }
+ .reply-item p { margin:0 0 4px; }
+ .reply-item button { border:0; background:transparent; color:#75a09b; font-size:9px; }
