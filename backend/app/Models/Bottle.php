@@ -15,6 +15,6 @@ class Bottle extends Model
 
     public function replies()
     {
-        return $this->hasMany(Reply::class);
+        return $this->hasMany(Reply::class)->whereNull('parent_reply_id');
     }
 }
