@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\BottleController;
+use App\Http\Controllers\WormController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -32,3 +33,5 @@ Route::match(['put', 'patch'], '/api/profile', [BottleController::class, 'profil
 Route::get('/api/plaza/messages', [BottleController::class, 'plazaMessages']);
 Route::post('/api/plaza/messages', [BottleController::class, 'plazaMessage']);
 Route::post('/api/feedback', [BottleController::class, 'feedback']);
+
+Route::post('/api/worm/position', [WormController::class, 'position'])->middleware('throttle:120,1');
