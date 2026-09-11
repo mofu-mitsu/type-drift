@@ -40,13 +40,13 @@ services:
       - key: BROADCAST_CONNECTION
         value: reverb
       - key: REVERB_APP_ID
-        sync: false
+        value: type-drift-worm
       - key: REVERB_APP_KEY
-        sync: false
+        value: type-drift-worm
       - key: REVERB_APP_SECRET
         sync: false
       - key: REVERB_HOST
-        sync: false
+        value: type-drift-reverb.onrender.com
       - key: REVERB_PORT
         value: "443"
       - key: REVERB_SCHEME
@@ -97,13 +97,13 @@ services:
       - key: BROADCAST_CONNECTION
         value: reverb
       - key: REVERB_APP_ID
-        sync: false
+        value: type-drift-worm
       - key: REVERB_APP_KEY
-        sync: false
+        value: type-drift-worm
       - key: REVERB_APP_SECRET
         sync: false
       - key: REVERB_HOST
-        sync: false
+        value: type-drift-reverb.onrender.com
       - key: REVERB_PORT
         value: "443"
       - key: REVERB_SCHEME
