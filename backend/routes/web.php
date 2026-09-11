@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\BottleController;
 use App\Http\Controllers\WormController;
+use App\Http\Controllers\WormScoreController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -35,3 +36,5 @@ Route::post('/api/plaza/messages', [BottleController::class, 'plazaMessage']);
 Route::post('/api/feedback', [BottleController::class, 'feedback']);
 
 Route::post('/api/worm/position', [WormController::class, 'position'])->middleware('throttle:1200,1');
+Route::get('/api/worm/ranking', [WormScoreController::class, 'index']);
+Route::post('/api/worm/ranking', [WormScoreController::class, 'store'])->middleware('throttle:30,1');
