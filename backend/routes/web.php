@@ -34,4 +34,4 @@ Route::get('/api/plaza/messages', [BottleController::class, 'plazaMessages']);
 Route::post('/api/plaza/messages', [BottleController::class, 'plazaMessage']);
 Route::post('/api/feedback', [BottleController::class, 'feedback']);
 
-Route::post('/api/worm/position', [WormController::class, 'position'])->middleware('throttle:120,1');
+Route::post('/api/worm/position', [WormController::class, 'position'])->middleware('throttle:1200,1');
