@@ -1,11 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\BottleController;
-use App\Http\Controllers\WormController;
-use App\Http\Controllers\WormScoreController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -35,11 +32,3 @@ Route::match(['put', 'patch'], '/api/profile', [BottleController::class, 'profil
 Route::get('/api/plaza/messages', [BottleController::class, 'plazaMessages']);
 Route::post('/api/plaza/messages', [BottleController::class, 'plazaMessage']);
 Route::post('/api/feedback', [BottleController::class, 'feedback']);
-
-Route::post('/api/worm/position', [WormController::class, 'position'])
-    ->middleware('throttle:1200,1')
-    ->withoutMiddleware([ValidateCsrfToken::class]);
-Route::get('/api/worm/ranking', [WormScoreController::class, 'index']);
-Route::post('/api/worm/ranking', [WormScoreController::class, 'store'])
-    ->middleware('throttle:30,1')
-    ->withoutMiddleware([ValidateCsrfToken::class]);
