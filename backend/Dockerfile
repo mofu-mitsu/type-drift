@@ -19,4 +19,4 @@ RUN composer update laravel/reverb --with-dependencies --no-dev --optimize-autol
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 EXPOSE 80
 
-CMD ["bash", "-lc", "php artisan migrate --force && apache2-foreground"]
+CMD ["bash", "-lc", "php artisan migrate --force && php artisan route:clear && apache2-foreground"]
