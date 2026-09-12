@@ -18,6 +18,43 @@
 - 認知機能の星座、自認相談室
 - ログインモーダルからX / Google OAuthの開始導線
 
+## バックエンド / リアルタイム
+
+- `Next.js`：Vercel。海のUI、アニメーション、ゲーム画面
+- `Laravel 13 API`：Render。認証、コンテンツ、OAuth、永続化API、芋虫位置のブロードキャスト
+- `Laravel Reverb`：Render WebSocket。芋虫浜のリアルタイム位置同期
+- `Neon PostgreSQL`：ユーザーとコンテンツの永続化。リアルタイム座標そのものはDBへ毎フレーム保存しない
+- `Qwen / Groq`：AIキャラクター用。自認相談室には接続しない方針
+- `Cloudinary`：ボトル / アンケート画像のアップロード先
+
+芋虫浜では、プレイヤーの座標をLaravel APIへ短い間隔で送信し、LaravelがReverbへ即時ブロードキャストします。ブラウザ側はWebSocketで他プレイヤーの位置を受信します。NPC（LSI芋虫、ダーリンちゃん等）は各クライアント側で常時動くため、他のユーザーがいない時間でもゲームとして遊べます。
+
+### 環境変数
+
+Vercel側でリアルタイム接続を有効にするには、次を設定します。
+
+```env
+NEXT_PUBLIC_API_URL=https://type-drift-api.onrender.com
+NEXT_PUBLIC_REVERB_APP_KEY=（Reverb App Key）
+NEXT_PUBLIC_REVERB_HOST=（Reverbを公開しているRenderホスト）
+NEXT_PUBLIC_REVERB_PORT=443
+NEXT_PUBLIC_REVERB_SCHEME=https
+```
+
+RenderのAPI側にはReverbのアプリ認証情報を設定します。
+
+```env
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=（任意のID）
+REVERB_APP_KEY=（任意のキー）
+REVERB_APP_SECRET=（任意のシークレット）
+REVERB_HOST=（Reverbの公開ホスト）
+REVERB_PORT=443
+REVERB_SCHEME=https
+```
+
+ReverbはRender上で別Web Serviceとして `php artisan reverb:start --host=0.0.0.0 --port=$PORT` を起動します。RenderはWebSocket接続を通常のWeb Serviceで受け付けられ、公開インターネットからは `wss://` を使用します。
+
 ## 現在の重要な制限
 
 既存の画面はローカル状態でも動きますが、Laravel側に本番保存用のmigrationとAPIを追加しました。ユーザー・ボトル・返信・リアクション・投票・プロフィール・広場メッセージ用のテーブルはNeonへ作成済みです。フロントからAPIへ切り替える接続は次の段階です。
@@ -28,6 +65,7 @@
 
 - `Next.js`：Vercel。海のUI、アニメーション、投稿フォーム
 - `Laravel 13 API`：Render。認証、コンテンツ、OAuth、永続化API
+- `Laravel Reverb`：Render。WebSocketリアルタイム通信
 - `Neon PostgreSQL`：ユーザーとコンテンツの永続化
 - `Qwen / Groq`：AIキャラクター用。自認相談室には接続しない方針
 - `Cloudinary`：ボトル / アンケート画像のアップロード先。API Secretはフロントへ置かない

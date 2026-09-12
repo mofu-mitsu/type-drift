@@ -37,6 +37,22 @@ services:
         value: "true"
       - key: SANCTUM_STATEFUL_DOMAINS
         value: type-drift.vercel.app
+      - key: BROADCAST_CONNECTION
+        value: reverb
+      - key: REVERB_APP_ID
+        value: type-drift-worm
+      - key: REVERB_APP_KEY
+        value: type-drift-worm
+      - key: REVERB_APP_SECRET
+        sync: false
+      - key: REVERB_HOST
+        value: type-drift-reverb.onrender.com
+      - key: REVERB_PORT
+        value: "443"
+      - key: REVERB_SCHEME
+        value: https
+      - key: REVERB_ALLOWED_ORIGINS
+        value: https://type-drift.vercel.app
       - key: X_CLIENT_ID
         sync: false
       - key: X_CLIENT_SECRET
@@ -53,3 +69,48 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: qwen/qwen3.6-27b
+
+  - type: web
+    name: type-drift-reverb
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: php artisan reverb:start --host=0.0.0.0 --port=$PORT
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_NAME
+        value: Type Drift Reverb
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        sync: false
+      - key: BROADCAST_CONNECTION
+        value: reverb
+      - key: REVERB_APP_ID
+        value: type-drift-worm
+      - key: REVERB_APP_KEY
+        value: type-drift-worm
+      - key: REVERB_APP_SECRET
+        sync: false
+      - key: REVERB_HOST
+        value: type-drift-reverb.onrender.com
+      - key: REVERB_PORT
+        value: "443"
+      - key: REVERB_SCHEME
+        value: https
+      - key: REVERB_SERVER_HOST
+        value: 0.0.0.0
+      - key: REVERB_SERVER_PORT
+        value: "10000"
+      - key: REVERB_ALLOWED_ORIGINS
+        value: https://type-drift.vercel.app
