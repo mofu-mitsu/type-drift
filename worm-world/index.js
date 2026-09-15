@@ -1,24 +1,16 @@
 const http = require('http');
-const Pusher = require('pusher');
+const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = Number(process.env.PORT || 10000);
 const STAGE_SIZE = 3000;
 const TICK_MS = 100;
+const BROADCAST_MS = 100;
 const SPACING = 6;
 const FOOD_RADIUS = 30;
 const HIT_RADIUS = 20;
 const NPC_SPEED = 3.5;
 const MAX_HISTORY = 600;
 const API_URL = process.env.API_URL || 'https://type-drift-api.onrender.com';
-
-const pusher = new Pusher({
-  appId: process.env.REVERB_APP_ID || 'type-drift-worm',
-  key: process.env.REVERB_APP_KEY || 'type-drift-worm',
-  secret: process.env.REVERB_APP_SECRET || '',
-  host: process.env.REVERB_HOST || 'type-drift-reverb.onrender.com',
-  port: Number(process.env.REVERB_PORT || 443),
-  useTLS: true,
-});
 
 const npcTemplates = [
   ['npc1', 'LSI芋虫', '🐛', '🔵'],
@@ -41,6 +33,8 @@ const makeWorm = ([id, name, emoji, body], x = rand(STAGE_SIZE), y = rand(STAGE_
 
 const npcs = new Map(npcTemplates.map(template => [template[0], makeWorm(template)]));
 const players = new Map();
+const playerSockets = new Map();
+const sockets = new Set();
 let foods = Array.from({ length: 180 }, () => ({ x: rand(STAGE_SIZE), y: rand(STAGE_SIZE) }));
 let lastLeaderboardAt = 0;
 let ticking = false;
@@ -72,8 +66,8 @@ function steerNpc(npc) {
   const others = [...npcs.values(), ...players.values()];
   for (const other of others) {
     if (!other.isAlive || other.id === npc.id) continue;
-    const maxIndex = other.length * SPACING;
-    for (let k = 0; k < other.history.length && k < maxIndex; k += SPACING) {
+    const maxIndex = Math.min(other.history.length, other.length * SPACING);
+    for (let k = 0; k < maxIndex; k += SPACING) {
       const p = other.history[k];
       if (Math.hypot(lookX - p.x, lookY - p.y) < 80) {
         avoidX += npc.x - p.x;
@@ -95,7 +89,8 @@ function steerNpc(npc) {
   npc.dir.x = npc.dir.x * (1 - turn) + (tx / dist) * turn;
   npc.dir.y = npc.dir.y * (1 - turn) + (ty / dist) * turn;
   const len = Math.hypot(npc.dir.x, npc.dir.y) || 1;
-  npc.dir.x /= len; npc.dir.y /= len;
+  npc.dir.x /= len;
+  npc.dir.y /= len;
 }
 
 function moveNpc(npc) {
@@ -110,45 +105,51 @@ function moveNpc(npc) {
     if (Math.hypot(food.x - npc.x, food.y - npc.y) < FOOD_RADIUS) eaten++;
     else remaining.push(food);
   }
-  if (eaten) { npc.score += eaten; npc.length = 3 + Math.floor(npc.score / 5); }
+  if (eaten) {
+    npc.score += eaten;
+    npc.length = 3 + Math.floor(npc.score / 5);
+  }
   foods = remaining;
 }
 
 function collides(a, b) {
-  const maxIndex = b.length * SPACING;
-  for (let k = 0; k < b.history.length && k < maxIndex; k += SPACING) {
+  const maxIndex = Math.min(b.history.length, b.length * SPACING);
+  for (let k = 0; k < maxIndex; k += SPACING) {
     const p = b.history[k];
     if (Math.hypot(a.x - p.x, a.y - p.y) < HIT_RADIUS) return true;
   }
   return false;
 }
 
-function eventForNpc(npc) {
+function publicWorm(worm) {
   return {
-    channel: 'worm-beach',
-    name: 'worm.position',
-    data: {
-      clientId: npc.id,
-      name: npc.name,
-      emoji: npc.emoji,
-      body: npc.body,
-      x: npc.x,
-      y: npc.y,
-      dirX: npc.dir.x,
-      dirY: npc.dir.y,
-      score: npc.score,
-      length: npc.length,
-      isAlive: npc.isAlive,
-      isNpc: true,
-    },
+    clientId: worm.id,
+    name: worm.name,
+    emoji: worm.emoji,
+    body: worm.body,
+    x: worm.x,
+    y: worm.y,
+    dirX: worm.dir.x,
+    dirY: worm.dir.y,
+    score: worm.score,
+    length: worm.length,
+    isAlive: worm.isAlive,
+    isNpc: npcTemplates.some(([id]) => id === worm.id),
   };
 }
 
-async function broadcastNpcs() {
-  try {
-    await pusher.triggerBatch([...npcs.values()].map(eventForNpc));
-  } catch (error) {
-    console.error('NPC broadcast failed', error.message);
+function worldPayload() {
+  return JSON.stringify({
+    type: 'world',
+    worms: [...npcs.values(), ...players.values()].map(publicWorm),
+    sentAt: Date.now(),
+  });
+}
+
+function broadcastWorld() {
+  const payload = worldPayload();
+  for (const ws of sockets) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
   }
 }
 
@@ -164,12 +165,29 @@ async function saveNpcScore(npc) {
   }
 }
 
+function storePlayer(data, socket = null) {
+  if (!data?.clientId) throw new Error('clientId required');
+  const clientId = String(data.clientId).slice(0, 80);
+  const player = {
+    id: clientId,
+    name: String(data.name || '匿名の芋虫').slice(0, 80),
+    x: Number(data.x) || 0,
+    y: Number(data.y) || 0,
+    dir: { x: Number(data.dirX) || 0, y: Number(data.dirY) || 0 },
+    history: Array.isArray(data.history) ? data.history.slice(0, MAX_HISTORY) : [{ x: Number(data.x) || 0, y: Number(data.y) || 0 }],
+    length: Math.max(3, Number(data.length) || 3),
+    score: Math.max(0, Number(data.score) || 0),
+    isAlive: data.isAlive !== false,
+  };
+  players.set(clientId, player);
+  if (socket) playerSockets.set(clientId, socket);
+}
+
 async function tick() {
   if (ticking) return;
   ticking = true;
   try {
     for (const npc of npcs.values()) if (npc.isAlive) moveNpc(npc);
-
     const all = [...npcs.values(), ...players.values()];
     for (const npc of npcs.values()) {
       if (!npc.isAlive) continue;
@@ -183,9 +201,6 @@ async function tick() {
         setTimeout(() => resetNpc(npc), 500);
       }
     }
-
-    await broadcastNpcs();
-
     const now = Date.now();
     if (now - lastLeaderboardAt > 3000) {
       lastLeaderboardAt = now;
@@ -204,26 +219,14 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ ok: true, npcs: npcs.size, players: players.size }));
+    return res.end(JSON.stringify({ ok: true, npcs: npcs.size, players: players.size, clients: sockets.size }));
   }
   if (req.url === '/api/player' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; if (body.length > 100_000) req.destroy(); });
     req.on('end', () => {
       try {
-        const data = JSON.parse(body);
-        if (!data.clientId) throw new Error('clientId required');
-        players.set(data.clientId, {
-          id: data.clientId,
-          name: String(data.name || '匿名の芋虫').slice(0, 80),
-          x: Number(data.x) || 0,
-          y: Number(data.y) || 0,
-          dir: { x: Number(data.dirX) || 0, y: Number(data.dirY) || 0 },
-          history: Array.isArray(data.history) ? data.history.slice(0, MAX_HISTORY) : [{ x: Number(data.x) || 0, y: Number(data.y) || 0 }],
-          length: Math.max(3, Number(data.length) || 3),
-          score: Math.max(0, Number(data.score) || 0),
-          isAlive: data.isAlive !== false,
-        });
+        storePlayer(JSON.parse(body));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch { res.writeHead(400); res.end('bad request'); }
@@ -233,5 +236,29 @@ const server = http.createServer((req, res) => {
   res.writeHead(404); res.end('not found');
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`worm world listening on ${PORT}`));
+const wss = new WebSocketServer({ server, path: '/ws' });
+wss.on('connection', (ws) => {
+  sockets.add(ws);
+  ws.send(worldPayload());
+  ws.on('message', raw => {
+    try {
+      const message = JSON.parse(raw.toString());
+      if (message.type === 'player') storePlayer(message, ws);
+    } catch (error) {
+      console.error('WS message failed', error.message);
+    }
+  });
+  ws.on('close', () => {
+    sockets.delete(ws);
+    for (const [clientId, owner] of playerSockets) {
+      if (owner === ws) {
+        playerSockets.delete(clientId);
+        players.delete(clientId);
+      }
+    }
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => console.log(`worm world listening on ${PORT}, websocket /ws`));
 setInterval(() => { void tick(); }, TICK_MS);
+setInterval(broadcastWorld, BROADCAST_MS);
