@@ -12,6 +12,7 @@ class WormScoreController extends Controller
         $clientKey = $request->query('clientKey');
 
         $scores = DB::table('worm_scores')
+            ->where('score', '>', 0)
             ->orderByDesc('score')
             ->orderBy('updated_at')
             ->limit(5)
@@ -20,6 +21,7 @@ class WormScoreController extends Controller
         if ($clientKey) {
             $self = DB::table('worm_scores')
                 ->where('client_key', $clientKey)
+                ->where('score', '>', 0)
                 ->first(['client_key', 'nickname', 'score', 'updated_at']);
 
             if ($self && !$scores->contains(fn ($row) => $row->client_key === $self->client_key)) {
