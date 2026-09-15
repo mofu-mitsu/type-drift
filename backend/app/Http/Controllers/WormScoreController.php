@@ -7,13 +7,28 @@ use Illuminate\Support\Facades\DB;
 
 class WormScoreController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $clientKey = $request->query('clientKey');
+
+        $scores = DB::table('worm_scores')
+            ->orderByDesc('score')
+            ->orderBy('updated_at')
+            ->limit(5)
+            ->get(['client_key', 'nickname', 'score', 'updated_at']);
+
+        if ($clientKey) {
+            $self = DB::table('worm_scores')
+                ->where('client_key', $clientKey)
+                ->first(['client_key', 'nickname', 'score', 'updated_at']);
+
+            if ($self && !$scores->contains(fn ($row) => $row->client_key === $self->client_key)) {
+                $scores->push($self);
+            }
+        }
+
         return response()->json([
-            'scores' => DB::table('worm_scores')
-                ->orderByDesc('score')
-                ->orderBy('updated_at')
-                ->get(['client_key', 'nickname', 'score', 'updated_at']),
+            'scores' => $scores->values(),
         ]);
     }
 
