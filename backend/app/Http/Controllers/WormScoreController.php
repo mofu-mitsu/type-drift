@@ -13,7 +13,7 @@ class WormScoreController extends Controller
             'scores' => DB::table('worm_scores')
                 ->orderByDesc('score')
                 ->orderBy('updated_at')
-                ->get(['nickname', 'score', 'updated_at']),
+                ->get(['client_key', 'nickname', 'score', 'updated_at']),
         ]);
     }
 
