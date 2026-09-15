@@ -5,21 +5,21 @@ const PORT = Number(process.env.PORT || 10000);
 const STAGE_SIZE = 3000;
 const TICK_MS = 100;
 const BROADCAST_MS = 100;
-const SPACING = 7;
+const SPACING = 5;
 const FOOD_RADIUS = 30;
 const HIT_RADIUS = 20;
-const NPC_SPEED = 26;
+const NPC_SPEED = 30;
 const MAX_HISTORY = 600;
 const PUBLIC_HISTORY = 180;
 const API_URL = process.env.API_URL || 'https://type-drift-api.onrender.com';
 
 const npcTemplates = [
-  ['npc1', 'LSI芋虫', '🐛', '🟢'],
-  ['npc2', 'ダーリンちゃん', '🥺', '🟢'],
-  ['npc3', '匿名のINTJ', '🐛', '🟢'],
-  ['npc4', '匿名のLII', '🐛', '🟢'],
-  ['npc5', '匿名のLSI', '🐛', '🟢'],
-  ['npc6', '匿名', '🐛', '🟢'],
+  ['npc1', 'LSI芋虫', '🐛', '🔵'],
+  ['npc2', 'ダーリンちゃん', '🥺', '🌸'],
+  ['npc3', '匿名のINTJ', '🐛', '🟣'],
+  ['npc4', '匿名のLII', '🐛', '🟠'],
+  ['npc5', '匿名のLSI', '🐛', '🟡'],
+  ['npc6', '匿名', '🐛', '🔷'],
 ];
 
 const rand = (max) => Math.random() * max;
@@ -38,23 +38,23 @@ function resetNpc(npc) { Object.assign(npc, makeWorm([npc.id, npc.name, npc.emoj
 function nearestFood(worm) { let target = null, best = Infinity; for (const food of foods) { const d = Math.hypot(food.x - worm.x, food.y - worm.y); if (d < best) { best = d; target = food; } } return best < 900 ? target : null; }
 
 function steerNpc(npc) {
-  let tx = npc.dir.x, ty = npc.dir.y, turn = 0.18, avoidX = 0, avoidY = 0, danger = false;
-  const lookX = npc.x + npc.dir.x * 180, lookY = npc.y + npc.dir.y * 180;
+  let tx = npc.dir.x, ty = npc.dir.y, turn = 0.25, avoidX = 0, avoidY = 0, danger = false;
+  const lookX = npc.x + npc.dir.x * 220, lookY = npc.y + npc.dir.y * 220;
   const others = [...npcs.values(), ...players.values()];
   for (const other of others) {
     if (!other.isAlive || other.id === npc.id) continue;
     const maxIndex = Math.min(other.history.length, other.length * SPACING);
     for (let k = 0; k < maxIndex; k += SPACING) {
       const p = other.history[k];
-      if (Math.hypot(lookX - p.x, lookY - p.y) < 100) { avoidX += npc.x - p.x; avoidY += npc.y - p.y; danger = true; }
+      if (Math.hypot(lookX - p.x, lookY - p.y) < 110) { avoidX += npc.x - p.x; avoidY += npc.y - p.y; danger = true; }
     }
   }
-  if (danger) { tx = avoidX; ty = avoidY; turn = 0.45; }
-  else { const food = nearestFood(npc); if (food) { tx = food.x - npc.x; ty = food.y - npc.y; turn = 0.2; } }
-  if (npc.x < 180) { tx += 700; turn = Math.max(turn, 0.4); }
-  if (npc.x > STAGE_SIZE - 180) { tx -= 700; turn = Math.max(turn, 0.4); }
-  if (npc.y < 180) { ty += 700; turn = Math.max(turn, 0.4); }
-  if (npc.y > STAGE_SIZE - 180) { ty -= 700; turn = Math.max(turn, 0.4); }
+  if (danger) { tx = avoidX; ty = avoidY; turn = 0.5; }
+  else { const food = nearestFood(npc); if (food) { tx = food.x - npc.x; ty = food.y - npc.y; turn = 0.25; } }
+  if (npc.x < 180) { tx += 700; turn = Math.max(turn, 0.45); }
+  if (npc.x > STAGE_SIZE - 180) { tx -= 700; turn = Math.max(turn, 0.45); }
+  if (npc.y < 180) { ty += 700; turn = Math.max(turn, 0.45); }
+  if (npc.y > STAGE_SIZE - 180) { ty -= 700; turn = Math.max(turn, 0.45); }
   const dist = Math.hypot(tx, ty) || 1;
   npc.dir.x = npc.dir.x * (1 - turn) + (tx / dist) * turn;
   npc.dir.y = npc.dir.y * (1 - turn) + (ty / dist) * turn;
@@ -77,7 +77,7 @@ function moveNpc(npc) {
 function collides(a, b) { const maxIndex = Math.min(b.history.length, b.length * SPACING); for (let k = 0; k < maxIndex; k += SPACING) { const p = b.history[k]; if (Math.hypot(a.x - p.x, a.y - p.y) < HIT_RADIUS) return true; } return false; }
 
 function publicWorm(worm) {
-  return { clientId: worm.id, name: worm.name, emoji: worm.emoji, body: '🟢', x: worm.x, y: worm.y, dirX: worm.dir.x, dirY: worm.dir.y, score: worm.score, length: worm.length, isAlive: worm.isAlive, isNpc: npcTemplates.some(([id]) => id === worm.id), history: worm.history.slice(0, PUBLIC_HISTORY) };
+  return { clientId: worm.id, name: worm.name, emoji: worm.emoji, body: worm.body || '🟢', x: worm.x, y: worm.y, dirX: worm.dir.x, dirY: worm.dir.y, score: worm.score, length: worm.length, isAlive: worm.isAlive, isNpc: npcTemplates.some(([id]) => id === worm.id), history: worm.history.slice(0, PUBLIC_HISTORY) };
 }
 
 function worldPayload() { return JSON.stringify({ type: 'world', playerCount: players.size, worms: [...npcs.values(), ...players.values()].map(publicWorm), sentAt: Date.now() }); }
@@ -89,7 +89,7 @@ function storePlayer(data, socket = null) {
   if (!data?.clientId) throw new Error('clientId required');
   const clientId = String(data.clientId).slice(0, 80);
   const x = Number(data.x) || 0, y = Number(data.y) || 0;
-  const player = { id: clientId, name: String(data.name || '匿名の芋虫').slice(0, 80), x, y, dir: { x: Number(data.dirX) || 0, y: Number(data.dirY) || 0 }, history: Array.isArray(data.history) ? data.history.slice(0, MAX_HISTORY) : [{ x, y }], length: Math.max(3, Number(data.length) || 3), score: Math.max(0, Number(data.score) || 0), isAlive: data.isAlive !== false };
+  const player = { id: clientId, name: String(data.name || '匿名の芋虫').slice(0, 80), emoji: String(data.emoji || '🐛'), body: String(data.body || '🟢'), x, y, dir: { x: Number(data.dirX) || 0, y: Number(data.dirY) || 0 }, history: Array.isArray(data.history) ? data.history.slice(0, MAX_HISTORY) : [{ x, y }], length: Math.max(3, Number(data.length) || 3), score: Math.max(0, Number(data.score) || 0), isAlive: data.isAlive !== false };
   players.set(clientId, player);
   if (socket) playerSockets.set(clientId, socket);
 }
