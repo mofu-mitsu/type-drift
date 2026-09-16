@@ -6,6 +6,7 @@ const STAGE_SIZE = 3000;
 const TICK_MS = 100;
 const BROADCAST_MS = 60;
 const SPACING = 2;
+const PLAYER_SPACING = 9;
 const FOOD_RADIUS = 30;
 const HIT_RADIUS = 20;
 const NPC_SPEED = 22;
@@ -112,7 +113,7 @@ function steerNpc(npc) {
       attackTarget = { other, d };
     }
 
-    const maxIndex = Math.min(other.history.length, other.length * SPACING, 120);
+    const maxIndex = Math.min(other.history.length, other.length * (npcTemplates.some(([id]) => id === other.id) ? SPACING : PLAYER_SPACING), 120);
     for (let k = 0; k < maxIndex; k += 4) {
       const point = other.history[k];
       const bx = npc.x - point.x;
@@ -194,9 +195,14 @@ function moveNpc(npc) {
   foods = remaining;
 }
 
+function isNpc(worm) {
+  return npcTemplates.some(([id]) => id === worm.id);
+}
+
 function collidesHeadWithBody(head, body) {
-  const maxIndex = Math.min(body.history.length, Math.max(1, body.length * SPACING));
-  for (let k = 0; k < maxIndex; k += 2) {
+  const step = isNpc(body) ? SPACING : PLAYER_SPACING;
+  const maxIndex = Math.min(body.history.length - 1, Math.max(0, (body.length - 1) * step));
+  for (let k = 0; k <= maxIndex; k += step) {
     const point = body.history[k];
     if (Math.hypot(head.x - point.x, head.y - point.y) < HIT_RADIUS) return true;
   }
@@ -222,7 +228,7 @@ function resolveCollisions() {
     for (const body of all) {
       if (!body.isAlive || body.id === head.id) continue;
       if (!collidesHeadWithBody(head, body)) continue;
-      if (npcTemplates.some(([id]) => id === head.id)) killNpc(head);
+      if (isNpc(head)) killNpc(head);
       else killPlayer(head);
       break;
     }
@@ -235,7 +241,7 @@ function publicWorm(worm) {
     body: worm.body || '🟢', x: worm.x, y: worm.y,
     dirX: worm.dir.x, dirY: worm.dir.y, score: worm.score,
     length: worm.length, isAlive: worm.isAlive,
-    isNpc: npcTemplates.some(([id]) => id === worm.id),
+    isNpc: isNpc(worm),
     history: worm.history.slice(0, PUBLIC_HISTORY),
   };
 }
