@@ -3,7 +3,6 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = Number(process.env.PORT || 10000);
 const BROADCAST_MS = 50;
-const MAX_HISTORY = 180;
 
 const players = new Map();
 const playerSockets = new Map();
@@ -23,7 +22,6 @@ function publicPlayer(player) {
     length: player.length,
     isAlive: player.isAlive,
     isNpc: false,
-    history: player.history.slice(0, MAX_HISTORY),
   };
 }
 
@@ -46,20 +44,14 @@ function broadcastWorld() {
 function storePlayer(data, socket = null) {
   if (!data?.clientId) throw new Error('clientId required');
   const clientId = String(data.clientId).slice(0, 80);
-  const x = Number(data.x) || 0;
-  const y = Number(data.y) || 0;
-  const history = Array.isArray(data.history)
-    ? data.history.slice(0, MAX_HISTORY).map(point => ({ x: Number(point.x) || 0, y: Number(point.y) || 0 }))
-    : [{ x, y }];
   const player = {
     id: clientId,
     name: String(data.name || '匿名の芋虫').slice(0, 80),
     emoji: String(data.emoji || '🐛'),
     body: String(data.body || '🟢'),
-    x,
-    y,
+    x: Number(data.x) || 0,
+    y: Number(data.y) || 0,
     dir: { x: Number(data.dirX) || 0, y: Number(data.dirY) || 0 },
-    history,
     length: Math.max(3, Number(data.length) || 3),
     score: Math.max(0, Number(data.score) || 0),
     isAlive: data.isAlive !== false,
@@ -84,7 +76,7 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', chunk => {
       body += chunk;
-      if (body.length > 100_000) req.destroy();
+      if (body.length > 20_000) req.destroy();
     });
     req.on('end', () => {
       try {
