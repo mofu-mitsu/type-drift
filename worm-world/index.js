@@ -5,10 +5,10 @@ const PORT = Number(process.env.PORT || 10000);
 const STAGE_SIZE = 3000;
 const TICK_MS = 100;
 const BROADCAST_MS = 100;
-const SPACING = 5;
+const SPACING = 2;
 const FOOD_RADIUS = 30;
 const HIT_RADIUS = 20;
-const NPC_SPEED = 30;
+const NPC_SPEED = 22;
 const MAX_HISTORY = 600;
 const PUBLIC_HISTORY = 180;
 const API_URL = process.env.API_URL || 'https://type-drift-api.onrender.com';
@@ -23,8 +23,11 @@ const npcTemplates = [
 ];
 
 const rand = (max) => Math.random() * max;
-const direction = () => { const angle = Math.random() * Math.PI * 2; return { x: Math.cos(angle), y: Math.sin(angle) }; };
-const makeWorm = ([id, name, emoji, body], x = rand(STAGE_SIZE), y = rand(STAGE_SIZE), score = 0) => ({ id, name, emoji, body, x, y, dir: direction(), history: Array.from({ length: 30 }, () => ({ x, y })), score, length: 3 + Math.floor(score / 5), isAlive: true });
+const direction = () => { const a = Math.random() * Math.PI * 2; return { x: Math.cos(a), y: Math.sin(a) }; };
+const makeWorm = ([id, name, emoji, body], x = rand(STAGE_SIZE), y = rand(STAGE_SIZE), score = 0) => ({
+  id, name, emoji, body, x, y, dir: direction(), history: Array.from({ length: 30 }, () => ({ x, y })), score,
+  length: 3 + Math.floor(score / 5), isAlive: true, wander: direction(), wanderUntil: 0,
+});
 
 const npcs = new Map(npcTemplates.map(template => [template[0], makeWorm(template)]));
 const players = new Map();
@@ -35,29 +38,87 @@ let lastLeaderboardAt = 0;
 let ticking = false;
 
 function resetNpc(npc) { Object.assign(npc, makeWorm([npc.id, npc.name, npc.emoji, npc.body], rand(STAGE_SIZE), rand(STAGE_SIZE), npc.score)); }
-function nearestFood(worm) { let target = null, best = Infinity; for (const food of foods) { const d = Math.hypot(food.x - worm.x, food.y - worm.y); if (d < best) { best = d; target = food; } } return best < 900 ? target : null; }
+
+function foodTarget(npc) {
+  let best = null, bestValue = Infinity;
+  for (const food of foods) {
+    const d = Math.hypot(food.x - npc.x, food.y - npc.y);
+    if (d > 1200) continue;
+    // Prefer groups of nearby food rather than one isolated leaf.
+    let nearby = 0;
+    for (const other of foods) if (Math.hypot(other.x - food.x, other.y - food.y) < 180) nearby++;
+    const value = d - nearby * 45;
+    if (value < bestValue) { bestValue = value; best = food; }
+  }
+  return best;
+}
 
 function steerNpc(npc) {
-  let tx = npc.dir.x, ty = npc.dir.y, turn = 0.25, avoidX = 0, avoidY = 0, danger = false;
-  const lookX = npc.x + npc.dir.x * 220, lookY = npc.y + npc.dir.y * 220;
-  const others = [...npcs.values(), ...players.values()];
-  for (const other of others) {
+  const now = Date.now();
+  let tx = npc.dir.x, ty = npc.dir.y;
+  let foodWeight = 0.9, attackWeight = 0, avoidWeight = 0;
+  let attackTarget = null;
+  let avoidX = 0, avoidY = 0;
+  const all = [...npcs.values(), ...players.values()];
+
+  for (const other of all) {
     if (!other.isAlive || other.id === npc.id) continue;
-    const maxIndex = Math.min(other.history.length, other.length * SPACING);
-    for (let k = 0; k < maxIndex; k += SPACING) {
+    const dx = other.x - npc.x, dy = other.y - npc.y, d = Math.hypot(dx, dy) || 1;
+    if (d > 750) continue;
+    const smaller = other.length < npc.length;
+    const larger = other.length > npc.length;
+    if (smaller && d < 700 && (!attackTarget || d < attackTarget.d)) attackTarget = { other, d };
+
+    // Keep away from larger worms and their bodies.
+    const maxIndex = Math.min(other.history.length, other.length * SPACING, 120);
+    for (let k = 0; k < maxIndex; k += 4) {
       const p = other.history[k];
-      if (Math.hypot(lookX - p.x, lookY - p.y) < 110) { avoidX += npc.x - p.x; avoidY += npc.y - p.y; danger = true; }
+      const bx = npc.x - p.x, by = npc.y - p.y, bd = Math.hypot(bx, by) || 1;
+      if (bd < (larger ? 260 : 120)) {
+        const strength = (larger ? 2.2 : 0.7) * (1 - bd / (larger ? 260 : 120));
+        avoidX += (bx / bd) * strength;
+        avoidY += (by / bd) * strength;
+        avoidWeight = Math.max(avoidWeight, strength);
+      }
     }
   }
-  if (danger) { tx = avoidX; ty = avoidY; turn = 0.5; }
-  else { const food = nearestFood(npc); if (food) { tx = food.x - npc.x; ty = food.y - npc.y; turn = 0.25; } }
-  if (npc.x < 180) { tx += 700; turn = Math.max(turn, 0.45); }
-  if (npc.x > STAGE_SIZE - 180) { tx -= 700; turn = Math.max(turn, 0.45); }
-  if (npc.y < 180) { ty += 700; turn = Math.max(turn, 0.45); }
-  if (npc.y > STAGE_SIZE - 180) { ty -= 700; turn = Math.max(turn, 0.45); }
+
+  // A smaller nearby worm is a legitimate hunting opportunity: move toward its head,
+  // but aim slightly ahead so the NPC tries to cut it off rather than follow forever.
+  if (attackTarget) {
+    const { other, d } = attackTarget;
+    const lead = Math.min(180, 55 + d * 0.18);
+    tx = (other.x + other.dir.x * lead) - npc.x;
+    ty = (other.y + other.dir.y * lead) - npc.y;
+    attackWeight = 1.15;
+  } else {
+    const food = foodTarget(npc);
+    if (food) { tx = food.x - npc.x; ty = food.y - npc.y; foodWeight = 1.15; }
+    else if (now > npc.wanderUntil) { npc.wander = direction(); npc.wanderUntil = now + 900 + Math.random() * 1800; }
+  }
+
+  if (avoidWeight > 0) {
+    tx += avoidX * 380 * avoidWeight;
+    ty += avoidY * 380 * avoidWeight;
+  }
+
+  // Soft wall avoidance prevents the tight circular wall-following seen before.
+  const margin = 260;
+  if (npc.x < margin) tx += (margin - npc.x) * 2.5;
+  if (npc.x > STAGE_SIZE - margin) tx -= (npc.x - (STAGE_SIZE - margin)) * 2.5;
+  if (npc.y < margin) ty += (margin - npc.y) * 2.5;
+  if (npc.y > STAGE_SIZE - margin) ty -= (npc.y - (STAGE_SIZE - margin)) * 2.5;
+
+  if (!attackTarget && !foodTarget(npc)) {
+    tx += npc.wander.x * 120;
+    ty += npc.wander.y * 120;
+  }
+
   const dist = Math.hypot(tx, ty) || 1;
-  npc.dir.x = npc.dir.x * (1 - turn) + (tx / dist) * turn;
-  npc.dir.y = npc.dir.y * (1 - turn) + (ty / dist) * turn;
+  const desiredX = tx / dist, desiredY = ty / dist;
+  const turn = attackWeight ? 0.18 : foodWeight > 1 ? 0.14 : 0.09;
+  npc.dir.x += (desiredX - npc.dir.x) * turn;
+  npc.dir.y += (desiredY - npc.dir.y) * turn;
   const len = Math.hypot(npc.dir.x, npc.dir.y) || 1;
   npc.dir.x /= len; npc.dir.y /= len;
 }
@@ -74,7 +135,11 @@ function moveNpc(npc) {
   foods = remaining;
 }
 
-function collides(a, b) { const maxIndex = Math.min(b.history.length, b.length * SPACING); for (let k = 0; k < maxIndex; k += SPACING) { const p = b.history[k]; if (Math.hypot(a.x - p.x, a.y - p.y) < HIT_RADIUS) return true; } return false; }
+function collides(a, b) {
+  const maxIndex = Math.min(b.history.length, b.length * SPACING);
+  for (let k = 0; k < maxIndex; k += 2) { const p = b.history[k]; if (Math.hypot(a.x - p.x, a.y - p.y) < HIT_RADIUS) return true; }
+  return false;
+}
 
 function publicWorm(worm) {
   return { clientId: worm.id, name: worm.name, emoji: worm.emoji, body: worm.body || '🟢', x: worm.x, y: worm.y, dirX: worm.dir.x, dirY: worm.dir.y, score: worm.score, length: worm.length, isAlive: worm.isAlive, isNpc: npcTemplates.some(([id]) => id === worm.id), history: worm.history.slice(0, PUBLIC_HISTORY) };
@@ -104,7 +169,7 @@ async function tick() {
       if (!npc.isAlive) continue;
       let dead = false;
       for (const other of all) { if (!other.isAlive || other.id === npc.id) continue; if (collides(npc, other)) { dead = true; break; } }
-      if (dead) { npc.isAlive = false; setTimeout(() => resetNpc(npc), 500); }
+      if (dead) { npc.isAlive = false; setTimeout(() => resetNpc(npc), 700); }
     }
     const now = Date.now();
     if (now - lastLeaderboardAt > 3000) { lastLeaderboardAt = now; for (const npc of npcs.values()) void saveNpcScore(npc); }
