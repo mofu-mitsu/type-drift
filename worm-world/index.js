@@ -4,7 +4,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const PORT = Number(process.env.PORT || 10000);
 const STAGE_SIZE = 3000;
 const TICK_MS = 100;
-const BROADCAST_MS = 120;
+const BROADCAST_MS = 60;
 const SPACING = 2;
 const FOOD_RADIUS = 30;
 const HIT_RADIUS = 20;
@@ -22,7 +22,7 @@ const npcTemplates = [
   ['npc6', '匿名', '🐛', '🔷'],
 ];
 
-const rand = (max) => Math.random() * max;
+const rand = max => Math.random() * max;
 const direction = () => {
   const a = Math.random() * Math.PI * 2;
   return { x: Math.cos(a), y: Math.sin(a) };
@@ -50,14 +50,25 @@ let lastLeaderboardAt = 0;
 let ticking = false;
 
 function resetNpc(npc) {
-  Object.assign(npc, makeWorm([npc.id, npc.name, npc.emoji, npc.body], rand(STAGE_SIZE), rand(STAGE_SIZE), npc.score));
+  const fresh = makeWorm([npc.id, npc.name, npc.emoji, npc.body]);
+  Object.assign(npc, fresh);
+}
+
+function dropCabbages(worm) {
+  const count = Math.max(3, Math.min(24, worm.length));
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = 20 + Math.random() * 90;
+    foods.push({
+      x: Math.max(0, Math.min(STAGE_SIZE, worm.x + Math.cos(a) * d)),
+      y: Math.max(0, Math.min(STAGE_SIZE, worm.y + Math.sin(a) * d)),
+    });
+  }
 }
 
 function foodTarget(npc) {
   let best = null;
   let bestValue = Infinity;
-  // Keep the original cluster-seeking behavior, but sample the food grid
-  // instead of doing a full 180x180 scan every NPC tick.
   for (let i = 0; i < foods.length; i += 2) {
     const food = foods[i];
     const d = Math.hypot(food.x - npc.x, food.y - npc.y);
@@ -183,13 +194,39 @@ function moveNpc(npc) {
   foods = remaining;
 }
 
-function collides(a, b) {
-  const maxIndex = Math.min(b.history.length, b.length * SPACING);
+function collidesHeadWithBody(head, body) {
+  const maxIndex = Math.min(body.history.length, Math.max(1, body.length * SPACING));
   for (let k = 0; k < maxIndex; k += 2) {
-    const point = b.history[k];
-    if (Math.hypot(a.x - point.x, a.y - point.y) < HIT_RADIUS) return true;
+    const point = body.history[k];
+    if (Math.hypot(head.x - point.x, head.y - point.y) < HIT_RADIUS) return true;
   }
   return false;
+}
+
+function killNpc(npc) {
+  if (!npc.isAlive) return;
+  npc.isAlive = false;
+  dropCabbages(npc);
+  setTimeout(() => resetNpc(npc), 700);
+}
+
+function killPlayer(player) {
+  if (!player.isAlive) return;
+  player.isAlive = false;
+}
+
+function resolveCollisions() {
+  const all = [...npcs.values(), ...players.values()].filter(w => w.isAlive);
+  for (const head of all) {
+    if (!head.isAlive) continue;
+    for (const body of all) {
+      if (!body.isAlive || body.id === head.id) continue;
+      if (!collidesHeadWithBody(head, body)) continue;
+      if (npcTemplates.some(([id]) => id === head.id)) killNpc(head);
+      else killPlayer(head);
+      break;
+    }
+  }
 }
 
 function publicWorm(worm) {
@@ -260,22 +297,7 @@ async function tick() {
       if (npc.isAlive) moveNpc(npc);
     }
 
-    const all = [...npcs.values(), ...players.values()];
-    for (const npc of npcs.values()) {
-      if (!npc.isAlive) continue;
-      let dead = false;
-      for (const other of all) {
-        if (!other.isAlive || other.id === npc.id) continue;
-        if (collides(npc, other)) {
-          dead = true;
-          break;
-        }
-      }
-      if (dead) {
-        npc.isAlive = false;
-        setTimeout(() => resetNpc(npc), 700);
-      }
-    }
+    resolveCollisions();
 
     const now = Date.now();
     if (now - lastLeaderboardAt > 3000) {
@@ -324,7 +346,7 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server, path: '/ws' });
-wss.on('connection', (ws) => {
+wss.on('connection', ws => {
   sockets.add(ws);
   ws.send(worldPayload());
   ws.on('message', raw => {
