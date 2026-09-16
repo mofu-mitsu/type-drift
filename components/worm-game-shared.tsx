@@ -2,39 +2,295 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
-type P={x:number;y:number};
-type W={id:string;name:string;emoji:string;body:string;x:number;y:number;dir:P;history:P[];score:number;length:number;isAlive:boolean;isNpc:boolean};
-type R={client_key?:string;nickname:string;score:number};
-const S=3000,SPEED=5,NPC_SEGMENT_STEP=2,PLAYER_SEGMENT_STEP=6,MAX=600,FOOD=30,HIT=20;
-const API=process.env.NEXT_PUBLIC_API_URL||'https://type-drift-api.onrender.com';
-const WORLD=process.env.NEXT_PUBLIC_WORM_WORLD_URL||'https://type-drift-worm-world.onrender.com';
-const WS=`${WORLD.replace(/^https:/,'wss:').replace(/^http:/,'ws:')}/ws`;
-const makePlayer=(name:string):W=>({id:'player',name:name||'匿名の芋虫',emoji:'🐛',body:'🟢',x:S/2,y:S/2,dir:{x:1,y:0},history:Array.from({length:30},(_,i)=>({x:S/2-i*6,y:S/2})),score:0,length:3,isAlive:true,isNpc:false});
+type P = { x: number; y: number };
+type W = { id: string; name: string; emoji: string; body: string; x: number; y: number; dir: P; history: P[]; score: number; length: number; isAlive: boolean; isNpc: boolean };
+type R = { client_key?: string; nickname: string; score: number };
 
-export default function WormGameShared({nickname,onExit}:{nickname:string;onExit:()=>void}){
- const [score,setScore]=useState(0),[state,setState]=useState<'playing'|'gameover'>('playing'),[net,setNet]=useState<'connecting'|'connected'|'offline'>('connecting'),[ranking,setRanking]=useState<R[]>([]),[rules,setRules]=useState(false),[onlinePlayers,setOnlinePlayers]=useState(1);
- const canvas=useRef<HTMLCanvasElement>(null),box=useRef<HTMLDivElement>(null),p=useRef<W>(makePlayer(nickname)),remotes=useRef<Map<string,W>>(new Map()),foods=useRef<P[]>([]),socket=useRef<WebSocket|null>(null),key=useRef(''),raf=useRef(0),lastFrame=useRef(0),desired=useRef<P>({x:1,y:0}),pointer=useRef({active:false,lastMove:0});
- const load=useCallback(async()=>{if(!key.current)return;try{const r=await fetch(`${API}/api/worm/ranking?clientKey=${encodeURIComponent(key.current)}`,{cache:'no-store'});if(r.ok){const d=await r.json();setRanking(Array.isArray(d.scores)?d.scores:[])}}catch{}},[]);
- const send=useCallback(()=>{const ws=socket.current,w=p.current;if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'player',clientId:key.current,name:w.name,emoji:w.emoji,body:w.body,x:w.x,y:w.y,dirX:w.dir.x,dirY:w.dir.y,score:w.score,length:w.length,isAlive:w.isAlive,history:w.history.slice(0,MAX)}))},[]);
- const save=useCallback(async()=>{if(!key.current||p.current.score<=0)return;try{await fetch(`${API}/api/worm/ranking`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientKey:key.current,nickname:p.current.name.slice(0,80),score:p.current.score})})}catch{}},[]);
- useEffect(()=>{let k=sessionStorage.getItem('type-drift-worm-tab-key');if(!k){k=crypto.randomUUID();sessionStorage.setItem('type-drift-worm-tab-key',k)}key.current=k;foods.current=Array.from({length:180},()=>({x:Math.random()*S,y:Math.random()*S}));void load()},[load]);
- useEffect(()=>{const t=setInterval(()=>void load(),3000);return()=>clearInterval(t)},[load]);
- useEffect(()=>{const t=setInterval(()=>void save(),3000);return()=>clearInterval(t)},[save]);
- useEffect(()=>{let closed=false,timer:ReturnType<typeof setTimeout>|null=null;const connect=()=>{if(closed)return;setNet('connecting');const ws=new WebSocket(WS);socket.current=ws;ws.onopen=()=>{setNet('connected');send()};ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type!=='world')return;setOnlinePlayers(Math.max(0,Number(m.playerCount)||0));const seen=new Set<string>();for(const q of m.worms||[]){if(!q?.clientId||q.clientId===key.current)continue;seen.add(q.clientId);const old=remotes.current.get(q.clientId),x=Number(q.x)||0,y=Number(q.y)||0,h=Array.isArray(q.history)&&q.history.length?q.history.map((v:any)=>({x:Number(v.x)||0,y:Number(v.y)||0})):old?.history||[{x,y}];const npc=q.isNpc===true;remotes.current.set(q.clientId,{id:q.clientId,name:q.name||'匿名の芋虫',emoji:q.emoji||'🐛',body:q.body||(npc?'🔵':'🟢'),x,y,dir:{x:Number(q.dirX)||0,y:Number(q.dirY)||0},history:h,length:Math.max(3,Number(q.length)||3),score:Number(q.score)||0,isAlive:q.isAlive!==false,isNpc:npc})}remotes.current.forEach((_,id)=>{if(!seen.has(id))remotes.current.delete(id)})}catch{}};ws.onclose=()=>{if(!closed){setNet('offline');timer=setTimeout(connect,1000)}};ws.onerror=()=>setNet('offline')};connect();return()=>{closed=true;if(timer)clearTimeout(timer);socket.current?.close()}},[send]);
- useEffect(()=>{const t=setInterval(send,100);return()=>clearInterval(t)},[send]);
- const camera=useCallback((w:W,dw:number,dh:number)=>{const scale=Math.max(.38,Math.min(1,Math.min(dw/900,dh/600))),vw=dw/scale,vh=dh/scale,cx=vw>=S?S/2:Math.max(vw/2,Math.min(S-vw/2,w.x)),cy=vh>=S?S/2:Math.max(vh/2,Math.min(S-vh/2,w.y));return{scale,ox:dw/2-cx*scale,oy:dh/2-cy*scale}},[]);
- const draw=useCallback(()=>{const c=canvas.current;if(!c)return;const ctx=c.getContext('2d');if(!ctx)return;const w=p.current,r=c.getBoundingClientRect(),dw=Math.max(1,r.width),dh=Math.max(1,r.height),dpr=Math.min(devicePixelRatio||1,2);if(c.width!==Math.round(dw*dpr)||c.height!==Math.round(dh*dpr)){c.width=Math.round(dw*dpr);c.height=Math.round(dh*dpr)}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#a9d9c5';ctx.fillRect(0,0,dw,dh);const {scale,ox,oy}=camera(w,dw,dh),sx=(x:number)=>x*scale+ox,sy=(y:number)=>y*scale+oy;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='27px sans-serif';for(const f of foods.current){const x=sx(f.x),y=sy(f.y);if(x>-40&&x<dw+40&&y>-40&&y<dh+40)ctx.fillText('🥬',x,y)}
-  const head=(q:W)=>{ctx.save();ctx.translate(sx(q.x),sy(q.y));if(q.dir.x>0)ctx.scale(-1,1);ctx.font='34px sans-serif';ctx.fillText(q.emoji,0,0);ctx.restore()};
-  const worm=(q:W)=>{if(!q.isAlive)return;const step=q.isNpc?NPC_SEGMENT_STEP:PLAYER_SEGMENT_STEP,n=Math.min(q.length,Math.floor((q.history.length-1)/step)+1);ctx.font='25px sans-serif';for(let i=n-1;i>=0;i--){const pt=q.history[Math.min(i*step,q.history.length-1)];const x=sx(pt.x),y=sy(pt.y);if(x>-35&&x<dw+35&&y>-35&&y<dh+35)ctx.fillText(q.body||'🟢',x,y)}head(q);ctx.font='10px sans-serif';ctx.fillStyle='#466f71';ctx.fillText(q.name,sx(q.x),sy(q.y)-25)};
-  remotes.current.forEach(worm);worm(w);
- },[camera]);
- const update=useCallback((now:number)=>{const w=p.current,dt=lastFrame.current?Math.min(.033,(now-lastFrame.current)/1000):0;lastFrame.current=now;if(w.isAlive){const stopped=pointer.current.active&&now-pointer.current.lastMove>140,target=stopped?{x:0,y:0}:desired.current;if(Math.hypot(target.x,target.y)>0){const turn=Math.min(1,dt*30);w.dir.x+=(target.x-w.dir.x)*turn;w.dir.y+=(target.y-w.dir.y)*turn;const l=Math.hypot(w.dir.x,w.dir.y)||1;w.dir.x/=l;w.dir.y/=l;w.x=Math.max(0,Math.min(S,w.x+w.dir.x*SPEED*(dt*60)));w.y=Math.max(0,Math.min(S,w.y+w.dir.y*SPEED*(dt*60)));w.history.unshift({x:w.x,y:w.y});if(w.history.length>MAX)w.history.pop()}
-   let next:P[]=[],eat=0;for(const f of foods.current){if(Math.hypot(f.x-w.x,f.y-w.y)<FOOD)eat++;else next.push(f)}if(eat){w.score+=eat;w.length=3+Math.floor(w.score/5);setScore(w.score)}foods.current=next;let hit=false;remotes.current.forEach(o=>{if(hit||!o.isAlive)return;for(let i=0;i<o.history.length&&i<o.length*NPC_SEGMENT_STEP;i+=NPC_SEGMENT_STEP)if(Math.hypot(w.x-o.history[i].x,w.y-o.history[i].y)<HIT){hit=true;break}});if(hit){w.isAlive=false;setState('gameover');void save()}}
-  draw();raf.current=requestAnimationFrame(update)},[draw,save]);
- useEffect(()=>{raf.current=requestAnimationFrame(update);return()=>cancelAnimationFrame(raf.current)},[update]);
- const pointerMove=useCallback((x:number,y:number)=>{const c=canvas.current;if(!c)return;const r=c.getBoundingClientRect(),{scale,ox,oy}=camera(p.current,r.width,r.height),hx=r.left+p.current.x*scale+ox,hy=r.top+p.current.y*scale+oy,dx=x-hx,dy=y-hy,d=Math.hypot(dx,dy);pointer.current={active:true,lastMove:performance.now()};if(d>5)desired.current={x:dx/d,y:dy/d}},[camera]);
- useEffect(()=>{const move=(e:PointerEvent)=>{pointerMove(e.clientX,e.clientY);e.preventDefault()},down=(e:PointerEvent)=>{pointerMove(e.clientX,e.clientY);try{(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}catch{}},up=()=>{pointer.current.active=false;desired.current={x:0,y:0}};const el=box.current;if(!el)return;el.addEventListener('pointermove',move,{passive:false});el.addEventListener('pointerdown',down);el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);return()=>{el.removeEventListener('pointermove',move);el.removeEventListener('pointerdown',down);el.removeEventListener('pointerup',up);el.removeEventListener('pointercancel',up)}},[pointerMove]);
- useEffect(()=>{const k=(e:KeyboardEvent)=>{const directions:Record<string,P>={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0}};const d=directions[e.key];if(d){e.preventDefault();pointer.current.active=false;desired.current=d}};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k)},[]);
- const respawn=()=>{p.current=makePlayer(nickname);desired.current={x:1,y:0};pointer.current={active:false,lastMove:0};setScore(0);setState('playing');void send()};
- return <section className="activity-section game-page"><p className="eyebrow">WORM BEACH</p><h2>芋虫浜 <small className="score-label">🥬 {score} <span style={{opacity:.7,fontSize:'.9em'}}>({score%5}/5で🟢)</span></small></h2><div style={{display:'flex',gap:8,marginBottom:8,fontSize:10,color:'#6f8d86'}}><span>{net==='connected'?'🟢 オンライン':net==='connecting'?'🟡 接続中…':'⚪ 再接続中…'}</span><span>👥 {onlinePlayers}人</span></div><div ref={box} className="worm-game" style={{position:'relative',width:'100%',height:450,overflow:'hidden',background:'#a9d9c5',borderRadius:'12px 30px 30px 30px',touchAction:'none'}}><canvas ref={canvas} style={{display:'block',width:'100%',height:'100%',touchAction:'none'}}/>{state==='playing'&&<p style={{position:'absolute',bottom:16,left:20,margin:0,zIndex:20,color:'#57877c',fontSize:9,pointerEvents:'none'}}>指やマウスを動かした方向へ進みます · 矢印キーでも操作できます</p>}{state==='gameover'&&<div style={{position:'absolute',inset:0,background:'rgba(34,56,62,.5)',display:'grid',placeItems:'center',zIndex:100}}><div style={{background:'#fffaf1',padding:'30px 40px',borderRadius:16,textAlign:'center'}}><h3>観測終了</h3><p>集めたキャベツ: <b>{score}</b></p><button className="pick-button" onClick={respawn}>もう一度遊ぶ</button></div></div>}</div><div className="worm-below"><div className="worm-ranking"><h3 className="worm-ranking-title">🏆 芋虫浜ランキング <small>上位＋あなた</small></h3><div className="worm-ranking-list">{ranking.length===0&&<span>まだ記録がありません。最初の芋虫になろう。</span>}{ranking.map((r,i)=>{const self=!!r.client_key&&r.client_key===key.current;return <div key={`${r.client_key||r.nickname}-${i}`} className={`worm-rank-row${self?' is-self':''}${i===0?' is-first':''}`}><span>{i+1}.</span><span className="worm-rank-name">{r.nickname}</span><b>{r.score} 🥬</b></div>})}</div></div><div className="worm-actions"><button className="play-button" onClick={onExit}>← 広場へ戻る</button><button className="ghost-button" onClick={()=>setRules(true)}>？ ルール</button><button className="ghost-button" style={{color:'#d87070'}} onClick={()=>{p.current.isAlive=false;void save();setState('gameover')}}>退出して共有</button></div></div>{rules&&<div className="modal-backdrop" onClick={()=>setRules(false)}><div className="detail-modal" style={{width:'min(100%,400px)'}} onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setRules(false)}><X size={18}/></button><p className="eyebrow">RULES</p><h2>芋虫浜の歩き方</h2><ul style={{color:'#7b9694',fontSize:12,lineHeight:2}}><li>🥬を食べるとスコアが上がり、5つごとに体が長くなります。</li><li>他の芋虫の体に頭がぶつかると消滅します。</li><li>NPCは人がいなくてもサーバー上で動き続けます。</li><li>ランキングは上位と自分の記録を表示します。</li></ul><button className="primary-button" style={{width:'100%',justifyContent:'center'}} onClick={()=>setRules(false)}>閉じる</button></div></div>}<style jsx>{`.worm-below{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:15px;align-items:start;margin-top:15px}.worm-ranking{min-width:0}.worm-ranking-title{margin:0 0 8px;color:#466f71;font-size:15px;white-space:nowrap}.worm-ranking-title small{font-weight:normal;opacity:.65}.worm-ranking-list{display:grid;gap:4px;font-size:11px;color:#6f8d86}.worm-rank-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:6px;align-items:center;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.45);min-width:0}.worm-rank-row.is-first{background:rgba(255,242,185,.55)}.worm-rank-row.is-self{background:rgba(207,239,229,.9);box-shadow:inset 3px 0 #55a89b}.worm-rank-row.is-first.is-self{background:rgba(255,242,185,.72);box-shadow:inset 3px 0 #55a89b}.worm-rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;color:#466f71}.worm-rank-row b{white-space:nowrap}.worm-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}@media(max-width:760px){.worm-below{display:flex;flex-direction:column;gap:12px}.worm-ranking{width:100%}.worm-ranking-title{font-size:15px;white-space:nowrap;writing-mode:horizontal-tb;display:block;line-height:1.5}.worm-ranking-title small{display:inline}.worm-ranking-list{width:100%}.worm-rank-row{grid-template-columns:28px minmax(0,1fr) auto}.worm-actions{width:100%;justify-content:flex-start}.worm-actions button{flex:1 1 auto}.worm-game{height:min(450px,calc(100vw * .78))!important;min-height:300px}}`}</style></section>;
+const S = 3000;
+const SPEED = 5;
+const NPC_SEGMENT_STEP = 2;
+const PLAYER_SEGMENT_STEP = 9;
+const MAX = 600;
+const FOOD = 30;
+const HIT = 20;
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://type-drift-api.onrender.com';
+const WORLD = process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
+const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
+
+const makePlayer = (name: string): W => ({
+  id: 'player', name: name || '匿名の芋虫', emoji: '🐛', body: '🟢', x: S / 2, y: S / 2,
+  dir: { x: 1, y: 0 },
+  history: Array.from({ length: 30 }, (_, i) => ({ x: S / 2 - i * SPEED, y: S / 2 })),
+  score: 0, length: 3, isAlive: true, isNpc: false,
+});
+
+export default function WormGameShared({ nickname, onExit }: { nickname: string; onExit: () => void }) {
+  const [score, setScore] = useState(0);
+  const [state, setState] = useState<'playing' | 'gameover'>('playing');
+  const [net, setNet] = useState<'connecting' | 'connected' | 'offline'>('connecting');
+  const [ranking, setRanking] = useState<R[]>([]);
+  const [rules, setRules] = useState(false);
+  const [onlinePlayers, setOnlinePlayers] = useState(1);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const p = useRef<W>(makePlayer(nickname));
+  const remotes = useRef<Map<string, W>>(new Map());
+  const foods = useRef<P[]>([]);
+  const socket = useRef<WebSocket | null>(null);
+  const key = useRef('');
+  const raf = useRef(0);
+  const lastFrame = useRef(0);
+  const desired = useRef<P>({ x: 1, y: 0 });
+  const pointer = useRef({ active: false, lastMove: 0 });
+
+  const load = useCallback(async () => {
+    if (!key.current) return;
+    try {
+      const r = await fetch(`${API}/api/worm/ranking?clientKey=${encodeURIComponent(key.current)}`, { cache: 'no-store' });
+      if (r.ok) {
+        const d = await r.json();
+        setRanking(Array.isArray(d.scores) ? d.scores : []);
+      }
+    } catch {}
+  }, []);
+
+  const send = useCallback(() => {
+    const ws = socket.current;
+    const w = p.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'player', clientId: key.current, name: w.name, emoji: w.emoji, body: w.body, x: w.x, y: w.y, dirX: w.dir.x, dirY: w.dir.y, score: w.score, length: w.length, isAlive: w.isAlive, history: w.history.slice(0, MAX) }));
+    }
+  }, []);
+
+  const save = useCallback(async () => {
+    if (!key.current || p.current.score <= 0) return;
+    try {
+      await fetch(`${API}/api/worm/ranking`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientKey: key.current, nickname: p.current.name.slice(0, 80), score: p.current.score }),
+      });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    let k = sessionStorage.getItem('type-drift-worm-tab-key');
+    if (!k) {
+      k = crypto.randomUUID();
+      sessionStorage.setItem('type-drift-worm-tab-key', k);
+    }
+    key.current = k;
+    foods.current = Array.from({ length: 180 }, () => ({ x: Math.random() * S, y: Math.random() * S }));
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const t = setInterval(() => void load(), 3000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  useEffect(() => {
+    const t = setInterval(() => void save(), 3000);
+    return () => clearInterval(t);
+  }, [save]);
+
+  useEffect(() => {
+    let closed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const connect = () => {
+      if (closed) return;
+      setNet('connecting');
+      const ws = new WebSocket(WS);
+      socket.current = ws;
+      ws.onopen = () => { setNet('connected'); send(); };
+      ws.onmessage = e => {
+        try {
+          const m = JSON.parse(e.data);
+          if (m.type !== 'world') return;
+          setOnlinePlayers(Math.max(0, Number(m.playerCount) || 0));
+          const seen = new Set<string>();
+          for (const q of m.worms || []) {
+            if (!q?.clientId || q.clientId === key.current) continue;
+            seen.add(q.clientId);
+            const old = remotes.current.get(q.clientId);
+            const x = Number(q.x) || 0;
+            const y = Number(q.y) || 0;
+            const h = Array.isArray(q.history) && q.history.length
+              ? q.history.map((v: any) => ({ x: Number(v.x) || 0, y: Number(v.y) || 0 }))
+              : old?.history || [{ x, y }];
+            const npc = q.isNpc === true;
+            remotes.current.set(q.clientId, {
+              id: q.clientId, name: q.name || '匿名の芋虫', emoji: q.emoji || '🐛', body: q.body || (npc ? '🔵' : '🟢'),
+              x, y, dir: { x: Number(q.dirX) || 0, y: Number(q.dirY) || 0 }, history: h,
+              length: Math.max(3, Number(q.length) || 3), score: Number(q.score) || 0, isAlive: q.isAlive !== false, isNpc: npc,
+            });
+          }
+          remotes.current.forEach((_, id) => { if (!seen.has(id)) remotes.current.delete(id); });
+        } catch {}
+      };
+      ws.onclose = () => { if (!closed) { setNet('offline'); timer = setTimeout(connect, 1000); } };
+      ws.onerror = () => setNet('offline');
+    };
+    connect();
+    return () => { closed = true; if (timer) clearTimeout(timer); socket.current?.close(); };
+  }, [send]);
+
+  useEffect(() => {
+    const t = setInterval(send, 100);
+    return () => clearInterval(t);
+  }, [send]);
+
+  const camera = useCallback((w: W, dw: number, dh: number) => {
+    const scale = Math.max(.38, Math.min(1, Math.min(dw / 900, dh / 600)));
+    const vw = dw / scale, vh = dh / scale;
+    const cx = vw >= S ? S / 2 : Math.max(vw / 2, Math.min(S - vw / 2, w.x));
+    const cy = vh >= S ? S / 2 : Math.max(vh / 2, Math.min(S - vh / 2, w.y));
+    return { scale, ox: dw / 2 - cx * scale, oy: dh / 2 - cy * scale };
+  }, []);
+
+  const draw = useCallback(() => {
+    const c = canvas.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const w = p.current;
+    const r = c.getBoundingClientRect();
+    const dw = Math.max(1, r.width), dh = Math.max(1, r.height), dpr = Math.min(devicePixelRatio || 1, 2);
+    if (c.width !== Math.round(dw * dpr) || c.height !== Math.round(dh * dpr)) {
+      c.width = Math.round(dw * dpr); c.height = Math.round(dh * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#a9d9c5';
+    ctx.fillRect(0, 0, dw, dh);
+    const { scale, ox, oy } = camera(w, dw, dh);
+    const sx = (x: number) => x * scale + ox;
+    const sy = (y: number) => y * scale + oy;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '27px sans-serif';
+    for (const f of foods.current) {
+      const x = sx(f.x), y = sy(f.y);
+      if (x > -40 && x < dw + 40 && y > -40 && y < dh + 40) ctx.fillText('🥬', x, y);
+    }
+
+    const head = (q: W) => {
+      ctx.save();
+      ctx.translate(sx(q.x), sy(q.y));
+      if (q.dir.x > 0) ctx.scale(-1, 1);
+      ctx.font = '34px sans-serif';
+      ctx.fillText(q.emoji, 0, 0);
+      ctx.restore();
+    };
+
+    const worm = (q: W) => {
+      if (!q.isAlive) return;
+      const step = q.isNpc ? NPC_SEGMENT_STEP : PLAYER_SEGMENT_STEP;
+      const bodyCount = Math.min(Math.max(0, q.length - 1), Math.floor((q.history.length - 1) / step));
+      ctx.font = '25px sans-serif';
+      for (let i = bodyCount; i >= 1; i--) {
+        const pt = q.history[Math.min(i * step, q.history.length - 1)];
+        const x = sx(pt.x), y = sy(pt.y);
+        if (x > -35 && x < dw + 35 && y > -35 && y < dh + 35) ctx.fillText(q.body || '🟢', x, y);
+      }
+      head(q);
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = '#466f71';
+      ctx.fillText(q.name, sx(q.x), sy(q.y) - 25);
+    };
+
+    remotes.current.forEach(worm);
+    worm(w);
+  }, [camera]);
+
+  const update = useCallback((now: number) => {
+    const w = p.current;
+    const dt = lastFrame.current ? Math.min(.033, (now - lastFrame.current) / 1000) : 0;
+    lastFrame.current = now;
+    if (w.isAlive) {
+      const stopped = pointer.current.active && now - pointer.current.lastMove > 140;
+      const target = stopped ? { x: 0, y: 0 } : desired.current;
+      if (Math.hypot(target.x, target.y) > 0) {
+        const turn = Math.min(1, dt * 30);
+        w.dir.x += (target.x - w.dir.x) * turn;
+        w.dir.y += (target.y - w.dir.y) * turn;
+        const l = Math.hypot(w.dir.x, w.dir.y) || 1;
+        w.dir.x /= l; w.dir.y /= l;
+        w.x = Math.max(0, Math.min(S, w.x + w.dir.x * SPEED * (dt * 60)));
+        w.y = Math.max(0, Math.min(S, w.y + w.dir.y * SPEED * (dt * 60)));
+        w.history.unshift({ x: w.x, y: w.y });
+        if (w.history.length > MAX) w.history.pop();
+      }
+      let next: P[] = [], eat = 0;
+      for (const f of foods.current) {
+        if (Math.hypot(f.x - w.x, f.y - w.y) < FOOD) eat++; else next.push(f);
+      }
+      if (eat) { w.score += eat; w.length = 3 + Math.floor(w.score / 5); setScore(w.score); }
+      foods.current = next;
+      let hit = false;
+      remotes.current.forEach(o => {
+        if (hit || !o.isAlive) return;
+        for (let i = 0; i < o.history.length && i < o.length * NPC_SEGMENT_STEP; i += NPC_SEGMENT_STEP) {
+          if (Math.hypot(w.x - o.history[i].x, w.y - o.history[i].y) < HIT) { hit = true; break; }
+        }
+      });
+      if (hit) { w.isAlive = false; setState('gameover'); void save(); }
+    }
+    draw();
+    raf.current = requestAnimationFrame(update);
+  }, [draw, save]);
+
+  useEffect(() => { raf.current = requestAnimationFrame(update); return () => cancelAnimationFrame(raf.current); }, [update]);
+
+  const pointerMove = useCallback((x: number, y: number) => {
+    const c = canvas.current;
+    if (!c) return;
+    const r = c.getBoundingClientRect();
+    const { scale, ox, oy } = camera(p.current, r.width, r.height);
+    const hx = r.left + p.current.x * scale + ox;
+    const hy = r.top + p.current.y * scale + oy;
+    const dx = x - hx, dy = y - hy, d = Math.hypot(dx, dy);
+    pointer.current = { active: true, lastMove: performance.now() };
+    if (d > 5) desired.current = { x: dx / d, y: dy / d };
+  }, [camera]);
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => { pointerMove(e.clientX, e.clientY); e.preventDefault(); };
+    const down = (e: PointerEvent) => { pointerMove(e.clientX, e.clientY); try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {} };
+    const up = () => { pointer.current.active = false; desired.current = { x: 0, y: 0 }; };
+    const el = box.current;
+    if (!el) return;
+    el.addEventListener('pointermove', move, { passive: false });
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    return () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerdown', down); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+  }, [pointerMove]);
+
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const directions: Record<string, P> = { ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 }, ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 } };
+      const d = directions[e.key];
+      if (d) { e.preventDefault(); pointer.current.active = false; desired.current = d; }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
+
+  const respawn = () => { p.current = makePlayer(nickname); desired.current = { x: 1, y: 0 }; pointer.current = { active: false, lastMove: 0 }; setScore(0); setState('playing'); void send(); };
+
+  return <section className="activity-section game-page">
+    <p className="eyebrow">WORM BEACH</p>
+    <h2>芋虫浜 <small className="score-label">🥬 {score} <span style={{ opacity: .7, fontSize: '.9em' }}>({score % 5}/5で🟢)</span></small></h2>
+    <div style={{ display: 'flex', gap: 8, marginBottom: 8, fontSize: 10, color: '#6f8d86' }}><span>{net === 'connected' ? '🟢 オンライン' : net === 'connecting' ? '🟡 接続中…' : '⚪ 再接続中…'}</span><span>👥 {onlinePlayers}人</span></div>
+    <div ref={box} className="worm-game" style={{ position: 'relative', width: '100%', height: 450, overflow: 'hidden', background: '#a9d9c5', borderRadius: '12px 30px 30px 30px', touchAction: 'none' }}>
+      <canvas ref={canvas} style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none' }} />
+      {state === 'playing' && <p style={{ position: 'absolute', bottom: 16, left: 20, margin: 0, zIndex: 20, color: '#57877c', fontSize: 9, pointerEvents: 'none' }}>指やマウスを動かした方向へ進みます · 矢印キーでも操作できます</p>}
+      {state === 'gameover' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(34,56,62,.5)', display: 'grid', placeItems: 'center', zIndex: 100 }}><div style={{ background: '#fffaf1', padding: '30px 40px', borderRadius: 16, textAlign: 'center' }}><h3>観測終了</h3><p>集めたキャベツ: <b>{score}</b></p><button className="pick-button" onClick={respawn}>もう一度遊ぶ</button></div></div>}
+    </div>
+    <div className="worm-below">
+      <div className="worm-ranking"><h3 className="worm-ranking-title">🏆 芋虫浜ランキング <small>上位＋あなた</small></h3><div className="worm-ranking-list">{ranking.length === 0 && <span>まだ記録がありません。最初の芋虫になろう。</span>}{ranking.map((r, i) => { const self = !!r.client_key && r.client_key === key.current; return <div key={`${r.client_key || r.nickname}-${i}`} className={`worm-rank-row${self ? ' is-self' : ''}${i === 0 ? ' is-first' : ''}`}><span>{i + 1}.</span><span className="worm-rank-name">{r.nickname}</span><b>{r.score} 🥬</b></div>; })}</div></div>
+      <div className="worm-actions"><button className="play-button" onClick={onExit}>← 広場へ戻る</button><button className="ghost-button" onClick={() => setRules(true)}>？ ルール</button><button className="ghost-button" style={{ color: '#d87070' }} onClick={() => { p.current.isAlive = false; void save(); setState('gameover'); }}>退出して共有</button></div>
+    </div>
+    {rules && <div className="modal-backdrop" onClick={() => setRules(false)}><div className="detail-modal" style={{ width: 'min(100%,400px)' }} onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setRules(false)}><X size={18} /></button><p className="eyebrow">RULES</p><h2>芋虫浜の歩き方</h2><ul style={{ color: '#7b9694', fontSize: 12, lineHeight: 2 }}><li>🥬を食べるとスコアが上がり、5つごとに体が長くなります。</li><li>他の芋虫の体に頭がぶつかると消滅します。</li><li>NPCは人がいなくてもサーバー上で動き続けます。</li><li>ランキングは上位と自分の記録を表示します。</li></ul><button className="primary-button" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setRules(false)}>閉じる</button></div></div>}
+    <style jsx>{`.worm-below{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:15px;align-items:start;margin-top:15px}.worm-ranking{min-width:0}.worm-ranking-title{margin:0 0 8px;color:#466f71;font-size:15px;white-space:nowrap}.worm-ranking-title small{font-weight:normal;opacity:.65}.worm-ranking-list{display:grid;gap:4px;font-size:11px;color:#6f8d86}.worm-rank-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:6px;align-items:center;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.45);min-width:0}.worm-rank-row.is-first{background:rgba(255,242,185,.55)}.worm-rank-row.is-self{background:rgba(207,239,229,.9);box-shadow:inset 3px 0 #55a89b}.worm-rank-row.is-first.is-self{background:rgba(255,242,185,.72);box-shadow:inset 3px 0 #55a89b}.worm-rank-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;color:#466f71}.worm-rank-row b{white-space:nowrap}.worm-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}@media(max-width:760px){.worm-below{display:flex;flex-direction:column;gap:12px}.worm-ranking{width:100%}.worm-ranking-title{font-size:15px;white-space:nowrap;writing-mode:horizontal-tb;display:block;line-height:1.5}.worm-ranking-title small{display:inline}.worm-ranking-list{width:100%}.worm-rank-row{grid-template-columns:28px minmax(0,1fr) auto}.worm-actions{width:100%;justify-content:flex-start}.worm-actions button{flex:1 1 auto}.worm-game{height:min(450px,calc(100vw * .78))!important;min-height:300px}}`}</style>
+  </section>;
 }
