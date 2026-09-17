@@ -38,9 +38,13 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
   }, [presence]);
 
   useEffect(() => {
+    if (!portalTarget) {
+      setConnected(false);
+      return;
+    }
     let alive = true;
     const connect = () => {
-      if (!alive || !document.querySelector('.plaza-section')) return;
+      if (!alive) return;
       const ws = new WebSocket(WS);
       wsRef.current = ws;
       ws.onopen = () => { setConnected(true); ws.send(JSON.stringify({ type: 'plaza_join' })); };
@@ -57,7 +61,7 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
       };
       ws.onclose = () => {
         setConnected(false);
-        if (alive && document.querySelector('.plaza-section')) reconnectRef.current = window.setTimeout(connect, 1800);
+        if (alive) reconnectRef.current = window.setTimeout(connect, 1800);
       };
       ws.onerror = () => ws.close();
     };
@@ -69,8 +73,9 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
         wsRef.current.send(JSON.stringify({ type: 'plaza_leave' }));
         wsRef.current.close();
       }
+      wsRef.current = null;
     };
-  }, []);
+  }, [portalTarget]);
 
   useEffect(() => {
     if (!listRef.current) return;
