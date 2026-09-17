@@ -55,7 +55,6 @@
   .feedback-box > div { padding:22px 18px; }
 }
 
-/* Keep the live thread inside the plaza flow, between the map and the playground. */
 .plaza-section { display:flex; flex-direction:column; }
 .plaza-section > .section-heading { order:1; }
 .plaza-section > .plaza-lead { order:2; }
@@ -67,21 +66,16 @@
 .plaza-live-thread { width:100%; }
 .plaza-section .plaza-actions { min-height:0; margin-top:10px; }
 .plaza-section .plaza-actions button:last-child { margin-left:auto; }
-
-/* The three side features should feel like destinations, not tiny footer links. */
 .plaza-mini-links { grid-template-columns:1fr; gap:16px; margin-top:24px; }
 .plaza-mini-links button { min-height:132px; padding:24px 26px; border-radius:10px 30px 30px 30px; font-size:20px; }
 .plaza-mini-links button::after { max-width:620px; font-size:10px; }
-
-/* Make the opinion box read as a full-width plaza destination. */
 .feedback-box { width:100%; max-width:1070px; padding:28px 24px 90px; }
 .feedback-box > div { min-height:132px; padding:24px 26px; }
 .feedback-box textarea { min-height:120px; }
-
-/* Fix the game description directly; the online element should never imply solo-only play. */
 .game-card > div:nth-child(2) > p:not(.eyebrow) { font-size:0; }
 .game-card > div:nth-child(2) > p:not(.eyebrow)::after { content:'🥬を食べて、他の芋虫を追い越して。\\Aオンラインで他のプレイヤーやNPCと遊べる、静かなSnake系ゲーム。'; white-space:pre-line; font-size:11px; line-height:1.8; }
-
+.plaza-section > .plaza-lead { font-size:0; }
+.plaza-section > .plaza-lead::after { content:'ニックネームのまま過ごせる、リアルタイムの小さな広場。\\A人とAIが話したり、エモートを送り合ったり、何もしないで眺めたりできます。'; white-space:pre-line; font-size:13px; line-height:1.9; }
 @media (max-width:760px) {
   .plaza-live-thread { margin-top:0; }
   .plaza-mini-links button { min-height:116px; padding:20px; font-size:18px; }
