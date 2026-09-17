@@ -37,16 +37,35 @@ export default function PlazaPanel() {
     } catch { /* ignore broken local state */ }
   }, []);
 
-  // Find the plaza once. The previous MutationObserver watched the entire body
-  // while the portal itself was mutating that body, which could create a
-  // needless render/observer churn and freeze the browser on the plaza page.
+  // Never portal directly into a DOM node whose children are owned by DriftApp.
+  // We create a dedicated child mount point so React has a single owner for it.
   useEffect(() => {
     let attempts = 0;
     let timer: number | null = null;
+    let mount: HTMLDivElement | null = null;
     const findTarget = () => {
-      const target = document.querySelector('.plaza-section');
-      if (target instanceof HTMLElement) {
-        setPortalTarget(target);
+      const section = document.querySelector('.plaza-section');
+      if (section instanceof HTMLElement) {
+        mount = document.createElement('div');
+        mount.className = 'plaza-live-mount';
+        const gameCard = section.querySelector('.game-card');
+        if (gameCard) section.insertBefore(mount, gameCard);
+        else section.appendChild(mount);
+        setPortalTarget(mount);
+        // Remove the legacy inline chat/log so the new fixed-height thread is the only chat UI.
+        const legacyMessage = section.querySelector('.plaza-message-box');
+        const legacyLog = section.querySelector('.plaza-log');
+        const legacyActions = section.querySelector('.plaza-actions');
+        if (legacyMessage instanceof HTMLElement) legacyMessage.style.display = 'none';
+        if (legacyLog instanceof HTMLElement) legacyLog.style.display = 'none';
+        if (legacyActions instanceof HTMLElement) {
+          const buttons = legacyActions.querySelectorAll('button');
+          buttons.forEach((button, index) => { if (index < 2) (button as HTMLElement).style.display = 'none'; });
+        }
+        const lead = section.querySelector('.plaza-lead');
+        if (lead instanceof HTMLElement) lead.innerHTML = 'ここでは、ニックネームのまま過ごせます。<br />人とAI、NPCが同じ広場にいます。話しても、歩いても、何もしなくても。';
+        const gameDescription = section.querySelector('.game-card p:not(.eyebrow)');
+        if (gameDescription instanceof HTMLElement) gameDescription.innerHTML = '🥬を食べて、他の芋虫を追い越して。<br />オンラインで他のプレイヤーやNPCと遊べる、静かなSnake系ゲーム。';
         return;
       }
       if (attempts < 20) {
@@ -55,7 +74,11 @@ export default function PlazaPanel() {
       }
     };
     findTarget();
-    return () => { if (timer !== null) window.clearTimeout(timer); };
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      if (mount) mount.remove();
+      setPortalTarget(null);
+    };
   }, []);
 
   useEffect(() => {
