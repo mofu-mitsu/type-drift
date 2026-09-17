@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 type PlazaMessage = { id: string; author: string; body: string; kind: 'human' | 'ai' | 'emote'; emoji?: string; createdAt: number };
-
 type Props = { nickname: string; emote: string; onToast: (message: string) => void };
 
 const WORLD = process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
-
+const NPC_COUNT = 2;
 const displayName = (nickname: string) => nickname || '匿名の誰か';
 
 export default function PlazaPanel({ nickname, emote, onToast }: Props) {
@@ -17,17 +17,30 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
   const [text, setText] = useState('');
   const [connected, setConnected] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const reconnectRef = useRef<number | null>(null);
   const greetedRef = useRef(false);
-
   const aiUrl = useMemo(() => `${WORLD}/api/plaza/ai`, []);
+
+  useEffect(() => {
+    const findTarget = () => {
+      const target = document.querySelector('.plaza-section');
+      setPortalTarget(target instanceof HTMLElement ? target : null);
+      const pill = document.querySelector('.online-pill');
+      if (pill) pill.textContent = `● ${presence + NPC_COUNT}人がいる`;
+    };
+    findTarget();
+    const observer = new MutationObserver(findTarget);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [presence]);
 
   useEffect(() => {
     let alive = true;
     const connect = () => {
-      if (!alive) return;
+      if (!alive || !document.querySelector('.plaza-section')) return;
       const ws = new WebSocket(WS);
       wsRef.current = ws;
       ws.onopen = () => { setConnected(true); ws.send(JSON.stringify({ type: 'plaza_join' })); };
@@ -44,7 +57,7 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
       };
       ws.onclose = () => {
         setConnected(false);
-        if (alive) reconnectRef.current = window.setTimeout(connect, 1800);
+        if (alive && document.querySelector('.plaza-section')) reconnectRef.current = window.setTimeout(connect, 1800);
       };
       ws.onerror = () => ws.close();
     };
@@ -111,11 +124,11 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
   };
 
   const sendEmote = () => {
-    sendRelay({ type: 'plaza_emote', nickname: displayName(nickname), emote, emoji: '◌' });
+    if (!sendRelay({ type: 'plaza_emote', nickname: displayName(nickname), emote, emoji: '◌' })) return;
     onToast(`${displayName(nickname)}から ${emote} が届きました`);
   };
 
-  return <>
+  const content = <>
     <div className="plaza-chat-head">
       <div><p className="eyebrow">LIVE THREAD</p><h3>広場のひとこと</h3></div>
       <span className={connected ? 'plaza-status is-connected' : 'plaza-status'}>{connected ? '● 接続中' : '○ 接続中…'}</span>
@@ -132,6 +145,8 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
       <button type="button" className="plaza-chat-emote" onClick={sendEmote} aria-label="エモートを送る">{emote}</button>
       <button type="button" onClick={sendMessage}>送る</button>
     </div>
-    <p className="plaza-chat-note">{presence}人が広場に接続中 · エモートもここに流れます{aiBusy ? ' · AIが考え中…' : ''}</p>
+    <p className="plaza-chat-note">{presence + NPC_COUNT}人が広場にいます（NPC含む） · エモートもここに流れます{aiBusy ? ' · AIが考え中…' : ''}</p>
   </>;
+
+  return portalTarget ? createPortal(content, portalTarget) : null;
 }
