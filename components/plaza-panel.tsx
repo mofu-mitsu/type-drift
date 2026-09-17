@@ -153,26 +153,28 @@ export default function PlazaPanel() {
     setEmote(current => EMOTES[(EMOTES.indexOf(current) + 1) % EMOTES.length]);
   };
 
-  const content = <>
-    <div className="plaza-chat-head">
-      <div><p className="eyebrow">LIVE THREAD</p><h3>広場のひとこと</h3></div>
-      <span className={connected ? 'plaza-status is-connected' : 'plaza-status'}>{connected ? '● 接続中' : '○ 接続中…'}</span>
+  const content = (
+    <div className="plaza-live-thread">
+      <div className="plaza-chat-head">
+        <div><p className="eyebrow">LIVE THREAD</p><h3>広場のひとこと</h3></div>
+        <span className={connected ? 'plaza-status is-connected' : 'plaza-status'}>{connected ? '● 接続中' : '○ 接続中…'}</span>
+      </div>
+      <div className="plaza-chat" ref={listRef} aria-live="polite">
+        {messages.length === 0 && <p className="plaza-chat-empty">まだ誰も話していません。ひとこと置いてみる？</p>}
+        {messages.map(message => <article className={`plaza-chat-item plaza-chat-item--${message.kind}`} key={message.id}>
+          <span className="plaza-chat-avatar">{message.emoji || (message.kind === 'ai' ? '🥺' : '◌')}</span>
+          <div><div className="plaza-chat-meta"><strong>{message.author}</strong>{message.kind === 'ai' && <small>AI</small>}</div><p>{message.body}</p></div>
+        </article>)}
+      </div>
+      <div className="plaza-chat-compose">
+        <input value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendMessage(); }} placeholder="広場にひとこと…" maxLength={120} />
+        <button type="button" className="plaza-chat-emote" onClick={sendEmote} aria-label="エモートを送る">{emote}</button>
+        <button type="button" onClick={sendMessage}>送る</button>
+      </div>
+      <p className="plaza-chat-note">{presence + NPC_COUNT}人が広場にいます（NPC含む） · エモートもここに流れます{aiBusy ? ' · AIが考え中…' : ''}</p>
+      {toast && <div className="plaza-chat-toast">{toast}</div>}
     </div>
-    <div className="plaza-chat" ref={listRef} aria-live="polite">
-      {messages.length === 0 && <p className="plaza-chat-empty">まだ誰も話していません。ひとこと置いてみる？</p>}
-      {messages.map(message => <article className={`plaza-chat-item plaza-chat-item--${message.kind}`} key={message.id}>
-        <span className="plaza-chat-avatar">{message.emoji || (message.kind === 'ai' ? '🥺' : '◌')}</span>
-        <div><div className="plaza-chat-meta"><strong>{message.author}</strong>{message.kind === 'ai' && <small>AI</small>}</div><p>{message.body}</p></div>
-      </article>)}
-    </div>
-    <div className="plaza-chat-compose">
-      <input value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendMessage(); }} placeholder="広場にひとこと…" maxLength={120} />
-      <button type="button" className="plaza-chat-emote" onClick={sendEmote} aria-label="エモートを送る">{emote}</button>
-      <button type="button" onClick={sendMessage}>送る</button>
-    </div>
-    <p className="plaza-chat-note">{presence + NPC_COUNT}人が広場にいます（NPC含む） · エモートもここに流れます{aiBusy ? ' · AIが考え中…' : ''}</p>
-    {toast && <div className="plaza-chat-toast">{toast}</div>}
-  </>;
+  );
 
   return portalTarget ? createPortal(content, portalTarget) : null;
 }
