@@ -1,0 +1,12 @@
+name = "type-drift-worm-realtime"
+main = "src/index.ts"
+compatibility_date = "2026-09-17"
+
+[durable_objects]
+bindings = [
+  { name = "WORM_WORLD", class_name = "WormWorld" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WormWorld"]
