@@ -3,10 +3,14 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = Number(process.env.PORT || 10000);
 const BROADCAST_MS = 50;
+const PLAZA_HISTORY_MAX = 80;
 
 const players = new Map();
 const playerSockets = new Map();
 const sockets = new Set();
+const plazaSockets = new Set();
+const plazaMessages = [];
+const plazaAiState = new Map();
 
 function publicPlayer(player) {
   return {
@@ -41,6 +45,35 @@ function broadcastWorld() {
   }
 }
 
+function plazaPayload() {
+  return JSON.stringify({
+    type: 'plaza_presence',
+    count: plazaSockets.size,
+    messages: plazaMessages.slice(-PLAZA_HISTORY_MAX),
+    sentAt: Date.now(),
+  });
+}
+
+function broadcastPlazaPresence() {
+  const payload = plazaPayload();
+  for (const ws of plazaSockets) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastPlazaMessage(message) {
+  const payload = JSON.stringify({ type: 'plaza_message', message });
+  for (const ws of plazaSockets) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  }
+}
+
+function addPlazaMessage(message) {
+  plazaMessages.push(message);
+  while (plazaMessages.length > PLAZA_HISTORY_MAX) plazaMessages.shift();
+  broadcastPlazaMessage(message);
+}
+
 function storePlayer(data, socket = null) {
   if (!data?.clientId) throw new Error('clientId required');
   const clientId = String(data.clientId).slice(0, 80);
@@ -70,7 +103,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ ok: true, npcs: 0, players: players.size, clients: sockets.size }));
+    return res.end(JSON.stringify({ ok: true, npcs: 0, players: players.size, clients: sockets.size, plaza: plazaSockets.size }));
   }
   if (req.url === '/api/player' && req.method === 'POST') {
     let body = '';
@@ -101,19 +134,70 @@ wss.on('connection', ws => {
   ws.on('message', raw => {
     try {
       const message = JSON.parse(raw.toString());
-      if (message.type === 'player') storePlayer(message, ws);
+      if (message.type === 'player') {
+        storePlayer(message, ws);
+        return;
+      }
+      if (message.type === 'plaza_join') {
+        plazaSockets.add(ws);
+        plazaAiState.set(ws, { waitingForHuman: false });
+        ws.send(plazaPayload());
+        broadcastPlazaPresence();
+        return;
+      }
+      if (message.type === 'plaza_leave') {
+        plazaSockets.delete(ws);
+        plazaAiState.delete(ws);
+        broadcastPlazaPresence();
+        return;
+      }
+      if (message.type === 'plaza_message') {
+        if (!plazaSockets.has(ws)) return;
+        const body = String(message.body || '').trim().slice(0, 120);
+        if (!body) return;
+        const item = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          author: String(message.nickname || '匿名の誰か').trim().slice(0, 24) || '匿名の誰か',
+          body,
+          kind: 'human',
+          emoji: String(message.emoji || '').slice(0, 4),
+          createdAt: Date.now(),
+        };
+        addPlazaMessage(item);
+        for (const socket of plazaSockets) {
+          const state = plazaAiState.get(socket) || { waitingForHuman: false };
+          state.waitingForHuman = true;
+          plazaAiState.set(socket, state);
+        }
+        return;
+      }
+      if (message.type === 'plaza_emote') {
+        if (!plazaSockets.has(ws)) return;
+        const item = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          author: String(message.nickname || '匿名の誰か').trim().slice(0, 24) || '匿名の誰か',
+          body: String(message.emote || '✦').slice(0, 4),
+          kind: 'emote',
+          emoji: String(message.emoji || '').slice(0, 4),
+          createdAt: Date.now(),
+        };
+        addPlazaMessage(item);
+      }
     } catch (error) {
       console.error('WS message failed', error.message);
     }
   });
   ws.on('close', () => {
     sockets.delete(ws);
+    plazaSockets.delete(ws);
+    plazaAiState.delete(ws);
     for (const [clientId, owner] of playerSockets) {
       if (owner === ws) {
         playerSockets.delete(clientId);
         players.delete(clientId);
       }
     }
+    broadcastPlazaPresence();
   });
 });
 
