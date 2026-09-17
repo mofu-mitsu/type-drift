@@ -4,25 +4,38 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 type PlazaMessage = { id: string; author: string; body: string; kind: 'human' | 'ai' | 'emote'; emoji?: string; createdAt: number };
-type Props = { nickname: string; emote: string; onToast: (message: string) => void };
 
 const WORLD = process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
 const NPC_COUNT = 2;
+const EMOTES = ['✦', '🌊', '💭', '♡'];
 const displayName = (nickname: string) => nickname || '匿名の誰か';
 
-export default function PlazaPanel({ nickname, emote, onToast }: Props) {
+export default function PlazaPanel() {
   const [messages, setMessages] = useState<PlazaMessage[]>([]);
   const [presence, setPresence] = useState(0);
   const [text, setText] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [emote, setEmote] = useState('✦');
   const [connected, setConnected] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [toast, setToast] = useState('');
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const reconnectRef = useRef<number | null>(null);
   const greetedRef = useRef(false);
   const aiUrl = useMemo(() => `${WORLD}/api/plaza/ai`, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('type-drift-state');
+      if (saved) {
+        const state = JSON.parse(saved);
+        if (typeof state.nickname === 'string') setNickname(state.nickname);
+      }
+    } catch { /* ignore broken local state */ }
+  }, []);
 
   useEffect(() => {
     const findTarget = () => {
@@ -83,6 +96,12 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
   }, [messages]);
 
   useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(''), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
     if (!connected || greetedRef.current || sessionStorage.getItem('type-drift-plaza-greeted')) return;
     greetedRef.current = true;
     sessionStorage.setItem('type-drift-plaza-greeted', '1');
@@ -92,7 +111,7 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
   const sendRelay = (payload: unknown) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      onToast('広場との接続を待っています…');
+      setToast('広場との接続を待っています…');
       return false;
     }
     ws.send(JSON.stringify(payload));
@@ -130,7 +149,8 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
 
   const sendEmote = () => {
     if (!sendRelay({ type: 'plaza_emote', nickname: displayName(nickname), emote, emoji: '◌' })) return;
-    onToast(`${displayName(nickname)}から ${emote} が届きました`);
+    setToast(`${displayName(nickname)}から ${emote} が届きました`);
+    setEmote(current => EMOTES[(EMOTES.indexOf(current) + 1) % EMOTES.length]);
   };
 
   const content = <>
@@ -151,6 +171,7 @@ export default function PlazaPanel({ nickname, emote, onToast }: Props) {
       <button type="button" onClick={sendMessage}>送る</button>
     </div>
     <p className="plaza-chat-note">{presence + NPC_COUNT}人が広場にいます（NPC含む） · エモートもここに流れます{aiBusy ? ' · AIが考え中…' : ''}</p>
+    {toast && <div className="plaza-chat-toast">{toast}</div>}
   </>;
 
   return portalTarget ? createPortal(content, portalTarget) : null;
