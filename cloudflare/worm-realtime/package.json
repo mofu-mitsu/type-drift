@@ -2,10 +2,7 @@
   "name": "type-drift-worm-realtime",
   "private": true,
   "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
-  },
-  "devDependencies": {
-    "wrangler": "^4.38.0"
+    "deploy": "npx wrangler@4.38.0 deploy",
+    "dev": "npx wrangler@4.38.0 dev"
   }
 }
