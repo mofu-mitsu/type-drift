@@ -37,18 +37,26 @@ export default function PlazaPanel() {
     } catch { /* ignore broken local state */ }
   }, []);
 
+  // Find the plaza once. The previous MutationObserver watched the entire body
+  // while the portal itself was mutating that body, which could create a
+  // needless render/observer churn and freeze the browser on the plaza page.
   useEffect(() => {
+    let attempts = 0;
+    let timer: number | null = null;
     const findTarget = () => {
       const target = document.querySelector('.plaza-section');
-      setPortalTarget(target instanceof HTMLElement ? target : null);
-      const pill = document.querySelector('.online-pill');
-      if (pill) pill.textContent = `● ${presence + NPC_COUNT}人がいる`;
+      if (target instanceof HTMLElement) {
+        setPortalTarget(target);
+        return;
+      }
+      if (attempts < 20) {
+        attempts += 1;
+        timer = window.setTimeout(findTarget, 100);
+      }
     };
     findTarget();
-    const observer = new MutationObserver(findTarget);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [presence]);
+    return () => { if (timer !== null) window.clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     if (!portalTarget) {
