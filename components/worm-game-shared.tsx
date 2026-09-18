@@ -8,7 +8,6 @@ type W={id:string;name:string;emoji:string;body:string;x:number;y:number;dir:P;h
 type R={client_key?:string;nickname:string;score:number};
 const S=3000,SPEED=5,NPC_SPEED=3.4,NPC_STEP=9,PLAYER_STEP=9,REMOTE_STEP=1,MAX=600,FOOD=30,REMOTE_DELAY=140,REMOTE_BUFFER=180,REMOTE_BODY_MS=450,BODY_GAP=PLAYER_STEP*SPEED,SEND_MS=50,NPC_AI_MS=120;
 const API=process.env.NEXT_PUBLIC_API_URL||'https://type-drift-api.onrender.com';
-const WORLD=process.env.NEXT_PUBLIC_WORM_WORLD_URL||'https://type-drift-worm-world.onrender.com';
 const REALTIME=process.env.NEXT_PUBLIC_WORM_REALTIME_URL||'https://type-drift-worm-realtime.mitsuki-momoka.workers.dev';
 const WS=`${REALTIME.replace(/^https:/,'wss:').replace(/^http:/,'ws:')}/ws`;
 const COLORS=['🔵','🟣','🟠','🩷','🟡','🔷'];
