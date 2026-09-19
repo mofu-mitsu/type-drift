@@ -1,0 +1,11 @@
+{
+  "name": "type-drift-ranking-api",
+  "private": true,
+  "scripts": {
+    "deploy": "npx wrangler@4.38.0 deploy",
+    "dev": "npx wrangler@4.38.0 dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2"
+  }
+}
