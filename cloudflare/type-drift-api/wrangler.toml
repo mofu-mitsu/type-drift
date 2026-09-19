@@ -1,0 +1,6 @@
+name = "type-drift-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-19"
+
+[vars]
+ALLOWED_ORIGIN = "https://type-drift.vercel.app"
