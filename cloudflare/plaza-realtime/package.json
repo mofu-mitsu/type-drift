@@ -1,0 +1,8 @@
+{
+  "name": "type-drift-plaza-realtime",
+  "private": true,
+  "scripts": {
+    "deploy": "npx wrangler@4.38.0 deploy",
+    "dev": "npx wrangler@4.38.0 dev"
+  }
+}
