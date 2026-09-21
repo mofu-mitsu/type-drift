@@ -14,21 +14,23 @@ export type PlazaMessage = {
 const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
 const NPC_COUNT = 2;
-const EMOTES = ['👋', '✦', '🌊', '💭', '♡', '✨', '🍵'];
+const EMOTES = ['👋', '✦', '🌊', '💭', '🩷', '✨', '🍵'];
 const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か';
 
 export type PlazaPanelProps = {
   nickname?: string;
   externalEmote?: { emote: string; label?: string; id: number } | null;
+  externalMessage?: { author: string; body: string; kind: 'human' | 'ai'; emoji?: string; id: number } | null;
   onToast?: (message: string) => void;
   onPresenceUpdate?: (count: number) => void;
+  onUserMessageSent?: (text: string, author?: string) => void;
 };
 
 const defaultInitialMessages: PlazaMessage[] = [
   {
     id: 'init-darling',
     author: 'ダーリンちゃん',
-    body: 'いらっしゃい♡ ここはみんなの広場だよ。何でもつぶやいてね。',
+    body: 'あら、いらっしゃい、ダーリン♡ ここは匿名という薄い仮面を被った子供たちが集まる、退屈なトランプの城よ。……ねぇ、あなたが今からここに流し込む言葉、“本音”と“演出”……一体どっちが多くなっちゃうのかしら？ ふふ、ログの漏れ、楽しみに観測してあげるね♡',
     kind: 'ai',
     emoji: '🥺',
     createdAt: Date.now() - 60000,
@@ -36,7 +38,7 @@ const defaultInitialMessages: PlazaMessage[] = [
   {
     id: 'init-worm',
     author: 'LSI芋虫',
-    body: '広場のリアルタイム接続を確認しました。発言やエモートはスレッドに記録されます。',
+    body: '境界線確認。広場への侵入者ログを捕捉。匿名性の保持は仮初めであり、全発言およびエモートの構造データは当領域のデータベースへ永久に固定される。逃亡は不可。発言を継続せよ。',
     kind: 'ai',
     emoji: '🐛',
     createdAt: Date.now() - 30000,
@@ -46,8 +48,10 @@ const defaultInitialMessages: PlazaMessage[] = [
 export default function PlazaPanel({
   nickname = '',
   externalEmote = null,
+  externalMessage = null,
   onToast,
   onPresenceUpdate,
+  onUserMessageSent,
 }: PlazaPanelProps) {
   const [messages, setMessages] = useState<PlazaMessage[]>(defaultInitialMessages);
   const [presence, setPresence] = useState(0);
@@ -61,6 +65,7 @@ export default function PlazaPanel({
   const reconnectRef = useRef<number | null>(null);
   const greetedRef = useRef(false);
   const lastHandledEmoteId = useRef<number | null>(null);
+  const lastHandledMessageId = useRef<number | null>(null);
   const aiUrl = useMemo(() => `${WORLD}/api/plaza/ai`, []);
 
   // WebSocket 接続
@@ -91,6 +96,9 @@ export default function PlazaPanel({
                 const filtered = current.filter(item => item.id !== msg.id);
                 return [...filtered, msg].slice(-80);
               });
+              if (msg.kind === 'human') {
+                onUserMessageSent?.(msg.body, msg.author);
+              }
               // エモートの場合、トースト通知も出す
               if (msg.kind === 'emote') {
                 const notice = `${msg.author}から ${msg.body} が届きました`;
@@ -201,6 +209,7 @@ export default function PlazaPanel({
       setMessages(curr => [...curr, localMsg]);
     }
     setText('');
+    onUserMessageSent?.(body, author);
     window.setTimeout(() => void requestAi(body), 350);
   };
 
@@ -233,6 +242,26 @@ export default function PlazaPanel({
     lastHandledEmoteId.current = externalEmote.id;
     sendEmote(externalEmote.emote);
   }, [externalEmote]);
+
+  // 親コンポーネントからの外部メッセージ要求（ブリプレゼント反応など）
+  useEffect(() => {
+    if (!externalMessage || externalMessage.id === lastHandledMessageId.current) return;
+    lastHandledMessageId.current = externalMessage.id;
+    const newMsg: PlazaMessage = {
+      id: `ext-${Date.now()}-${Math.random()}`,
+      author: externalMessage.author,
+      body: externalMessage.body,
+      kind: externalMessage.kind,
+      emoji: externalMessage.emoji,
+      createdAt: Date.now(),
+    };
+    setMessages(curr => [...curr, newMsg]);
+    sendRelay({
+      type: 'plaza_message',
+      nickname: externalMessage.author,
+      body: externalMessage.body,
+    });
+  }, [externalMessage]);
 
   const currentQuickEmote = EMOTES[emoteIndex % EMOTES.length];
 
@@ -284,7 +313,7 @@ export default function PlazaPanel({
                     <strong>{message.author}</strong>
                     {isAi && <small className="ai-tag">AI</small>}
                   </div>
-                  <p>{message.body}</p>
+                  <p className="plaza-chat-text">{message.body}</p>
                 </div>
               </article>
             );
@@ -294,14 +323,13 @@ export default function PlazaPanel({
 
       {/* 入力バー */}
       <div className="plaza-chat-compose">
-        <input
+        <textarea
           value={text}
           onChange={event => setText(event.target.value)}
-          onKeyDown={event => {
-            if (event.key === 'Enter') sendMessage();
-          }}
-          placeholder="広場にひとこと…（Enterで送信）"
-          maxLength={120}
+          placeholder="広場にひとこと…（改行可能 / 送るボタンで送信）"
+          maxLength={300}
+          rows={2}
+          className="plaza-chat-textarea"
         />
         <button
           type="button"

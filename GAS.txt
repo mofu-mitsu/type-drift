@@ -1,56 +1,257 @@
-Type Drift / Render keep-alive 設定
+/**
+ * =========================================================================
+ *  TYPE DRIFT - Google スプレッドシート連携 Google Apps Script (GAS)
+ * =========================================================================
+ * 
+ * 【機能】
+ * 1. 意見箱の受信 & 返信希望の記録 (doPost: action="feedback" または無指定)
+ *    アプリの意見箱から送信されたメッセージを「意見箱」シートに自動記録します。
+ *    「返信を希望する」がONの場合、返信希望フラグとユーザー識別キーも記録されます。
+ * 
+ * 2. 開発者からのお知らせ直接配信 (doPost: action="announcement")
+ *    管理トレイから投稿された新しいお知らせを「お知らせ」シートに自動追記します。
+ * 
+ * 3. 運営からの返信送信 (doPost: action="reply")
+ *    管理トレイからユーザーへの返信を「問い合わせ返信」シートに自動記録します。
+ * 
+ * 4. お知らせ一覧の取得 (doGet: action="notices" または無指定)
+ *    「お知らせ」シートのデータを読み出し、アプリのヘッダー（🔔）へ配信します。
+ * 
+ * 5. ユーザー宛ての問い合わせ返信取得 (doGet: action="replies" & userKey=...)
+ *    ユーザーの活動タブ「問い合わせ・返信」にお返事を届けます。
+ *
+ * 【設定手順】
+ * 1. Google スプレッドシートを新規作成します。
+ * 2. 下部のシート名を以下のように3つ用意してください：
+ *    - シート1: 「意見箱」
+ *    - シート2: 「お知らせ」
+ *    - シート3: 「問い合わせ返信」
+ *    ※ シートが存在しない場合は、リクエスト時に自動作成されます。
+ *
+ * 3. 各シートの1行目の見出し（自動作成されますが、手動で作る場合の目安）：
+ *    - 「意見箱」:
+ *      A1: 受信日時 | B1: 送信者ニックネーム | C1: ユーザー自認タイプ | D1: メッセージ本文 | E1: 種類 | F1: 返信希望 | G1: ユーザーキー | H1: 意見ID
+ *    - 「お知らせ」:
+ *      A1: ID | B1: 日付 | C1: タイトル | D1: 本文 | E1: バッジ | F1: 重要度
+ *    - 「問い合わせ返信」:
+ *      A1: 返信ID | B1: 意見ID | C1: ユーザーキー | D1: 返信日時 | E1: 運営者 | F1: 返信本文
+ *
+ * 4. メニューの「拡張機能」 > 「Apps Script」を開きます。
+ * 5. エディタの内容を本コードで全置換して保存（Ctrl+S / Cmd+S）します。
+ * 6. 右上の「デプロイ」ボタン > 「新しいデプロイ」をクリックします。
+ * 7. 種類の選択（歯車アイコン）で「ウェブアプリ」を選択します。
+ *    - 説明: Type Drift 連携 API v2
+ *    - 次のユーザーとして実行: 自分
+ *    - アクセスできるユーザー: 「全員」（Anyone） ← ※必ず「全員」にしてください
+ * 8. 「デプロイ」をクリックし、表示された「ウェブアプリのURL」をコピーしてアプリの管理トレイに設定してください。
+ * =========================================================================
+ */
 
-目的
-Render無料Web Serviceは一定時間アクセスがないと休止するため、10分ごとにLaravel APIのヘルスチェックへアクセスします。
-これは「完全な常時稼働」の保証ではなく、コールドスタートを減らすための補助です。
-
-1. Render側
-
-RenderでLaravel APIをデプロイ後、サービスURLを確認します。
-例:
-https://type-drift-api.onrender.com
-
-確認するURL:
-https://type-drift-api.onrender.com/api/health
-
-2. Google Apps Script
-
-script.google.com で新しいプロジェクトを作り、次のコードを貼り付けます。
-
-const RENDER_HEALTH_URL = 'https://YOUR-SERVICE.onrender.com/api/health';
-
-function wakeUpRender() {
+// POSTリクエスト処理
+function doPost(e) {
   try {
-    const response = UrlFetchApp.fetch(RENDER_HEALTH_URL, {
-      method: 'get',
-      muteHttpExceptions: true,
-      followRedirects: true,
-    });
-    console.log('Render health: ' + response.getResponseCode());
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var data = {};
+    if (e.postData && e.postData.contents) {
+      data = JSON.parse(e.postData.contents);
+    } else if (e.parameter) {
+      data = e.parameter;
+    }
+
+    var action = data.action || "feedback";
+    var now = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+
+    // ----------------------------------------------------
+    // 1. 意見箱の受信
+    // ----------------------------------------------------
+    if (action === "feedback") {
+      var sheet = ss.getSheetByName("意見箱");
+      if (!sheet) {
+        sheet = ss.insertSheet("意見箱");
+        sheet.appendRow(["受信日時", "送信者ニックネーム", "ユーザー自認タイプ", "メッセージ本文", "種類", "返信希望", "ユーザーキー", "意見ID"]);
+        sheet.setFrozenRows(1);
+      }
+
+      var nickname = data.nickname || data.author || "匿名";
+      var userType = data.userType || data.type || "未設定";
+      var message = data.message || data.body || data.content || "";
+      var category = data.category || "意見箱";
+      var needsReply = data.needsReply ? "希望する" : "希望しない";
+      var userKey = data.userKey || "";
+      var feedbackId = data.feedbackId || ("fb-" + new Date().getTime());
+
+      sheet.appendRow([now, nickname, userType, message, category, needsReply, userKey, feedbackId]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "意見箱に正常に届きました。ありがとうございます！",
+        feedbackId: feedbackId,
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 2. お知らせの追加配信（開発者トレイから直接送信）
+    // ----------------------------------------------------
+    if (action === "announcement") {
+      var noticeSheet = ss.getSheetByName("お知らせ");
+      if (!noticeSheet) {
+        noticeSheet = ss.insertSheet("お知らせ");
+        noticeSheet.appendRow(["ID", "日付", "タイトル", "本文", "バッジ", "重要度"]);
+        noticeSheet.setFrozenRows(1);
+      }
+
+      var noticeId = data.id || ("notice-" + new Date().getTime());
+      var noticeDate = data.date || Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd");
+      var title = data.title || "お知らせ";
+      var body = data.body || "";
+      var badge = data.badge || "info";
+      var important = data.important ? "important" : "normal";
+
+      noticeSheet.appendRow([noticeId, noticeDate, title, body, badge, important]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "お知らせを配信しました！",
+        noticeId: noticeId,
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 3. 運営からの返信送信
+    // ----------------------------------------------------
+    if (action === "reply") {
+      var replySheet = ss.getSheetByName("問い合わせ返信");
+      if (!replySheet) {
+        replySheet = ss.insertSheet("問い合わせ返信");
+        replySheet.appendRow(["返信ID", "意見ID", "ユーザーキー", "返信日時", "運営者", "返信本文"]);
+        replySheet.setFrozenRows(1);
+      }
+
+      var replyId = data.replyId || ("rep-" + new Date().getTime());
+      var targetFeedbackId = data.feedbackId || "";
+      var targetUserKey = data.userKey || "";
+      var adminName = data.adminName || "運営チーム";
+      var replyBody = data.replyBody || data.body || "";
+
+      replySheet.appendRow([replyId, targetFeedbackId, targetUserKey, now, adminName, replyBody]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "返信を記録しました。",
+        replyId: replyId,
+        timestamp: now
+      });
+    }
+
+    return createJsonResponse({ status: "ignored", message: "不明なアクションです" });
+
   } catch (error) {
-    console.error('Render health failed: ' + error.message);
+    return createJsonResponse({
+      status: "error",
+      message: error.toString()
+    });
   }
 }
 
-3. トリガー
+// GETリクエスト処理
+function doGet(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var params = e.parameter || {};
+    var action = params.action || "notices";
 
-左側の「トリガー」→「トリガーを追加」から、次の設定にします。
+    // ----------------------------------------------------
+    // 1. お知らせ一覧の取得
+    // ----------------------------------------------------
+    if (action === "notices") {
+      var sheet = ss.getSheetByName("お知らせ");
+      if (!sheet) {
+        sheet = ss.insertSheet("お知らせ");
+        sheet.appendRow(["ID", "日付", "タイトル", "本文", "バッジ", "重要度"]);
+        sheet.appendRow([
+          "notice-1",
+          Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd"),
+          "Type Driftへようこそ！",
+          "思考を海へ流したり、広場で対話やミニゲームをお楽しみいただけます。ご意見やご感想はページ下部の意見箱からいつでもお送りください。",
+          "new",
+          "important"
+        ]);
+        sheet.setFrozenRows(1);
+      }
 
-- 実行する関数: wakeUpRender
-- イベントのソース: 時間主導型
-- 時間ベースのトリガー: 分ベースのタイマー
-- 間隔: 10分おき
+      var data = sheet.getDataRange().getValues();
+      var notices = [];
 
-初回実行時にUrlFetchAppの権限確認が出たら、内容を確認して許可します。
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        if (!row[1] && !row[2]) continue;
 
-4. UptimeRobot
+        notices.push({
+          id: String(row[0] || ("notice-" + i)),
+          date: row[1] instanceof Date ? Utilities.formatDate(row[1], "Asia/Tokyo", "yyyy/MM/dd") : String(row[1] || ""),
+          title: String(row[2] || ""),
+          body: String(row[3] || ""),
+          badge: String(row[4] || "info"),
+          important: String(row[5] || "").toLowerCase() === "important"
+        });
+      }
 
-監視URLは同じ /api/health にします。
-Laravel側はGETでJSONを返すため、通常のHTTP(s)監視で利用できます。
-キーワード監視を使う場合は `status` または `database` を指定します。
+      // 最新のお知らせを上部に配置
+      notices.reverse();
 
-注意
+      return createJsonResponse({
+        status: "success",
+        notices: notices,
+        updatedAt: Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss")
+      });
+    }
 
-- GASはRenderのスリープを必ず防ぐものではありません。
-- 無料プランの制限や仕様変更があるため、重要な本番運用では有料インスタンスを検討します。
-- Neonの接続障害も検知したい場合は、healthレスポンスのdatabase値を監視します。
+    // ----------------------------------------------------
+    // 2. ユーザー宛ての問い合わせ返信取得
+    // ----------------------------------------------------
+    if (action === "replies") {
+      var targetUserKey = params.userKey || "";
+      var replySheet = ss.getSheetByName("問い合わせ返信");
+      var replies = [];
+
+      if (replySheet && targetUserKey) {
+        var rData = replySheet.getDataRange().getValues();
+        for (var j = 1; j < rData.length; j++) {
+          var rRow = rData[j];
+          if (String(rRow[2]) === String(targetUserKey)) {
+            replies.push({
+              replyId: String(rRow[0]),
+              feedbackId: String(rRow[1]),
+              userKey: String(rRow[2]),
+              date: rRow[3] instanceof Date ? Utilities.formatDate(rRow[3], "Asia/Tokyo", "yyyy/MM/dd HH:mm") : String(rRow[3] || ""),
+              sender: String(rRow[4] || "運営チーム"),
+              body: String(rRow[5] || "")
+            });
+          }
+        }
+      }
+
+      return createJsonResponse({
+        status: "success",
+        replies: replies
+      });
+    }
+
+    return createJsonResponse({ status: "ignored" });
+
+  } catch (error) {
+    return createJsonResponse({
+      status: "error",
+      message: error.toString(),
+      notices: []
+    });
+  }
+}
+
+function createJsonResponse(data) {
+  var output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}
