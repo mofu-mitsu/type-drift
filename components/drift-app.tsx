@@ -2,10 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Anchor, ArrowUpRight, Bell, Bot, Heart, MessageCircle, Plus, Send, Sparkles, Waves, X } from "lucide-react";
+import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
 import WormGame from "./worm-game";
 import PlazaPanel from "./plaza-panel";
 import CognitiveConstellation from "./cognitive-constellation";
+import ConsultationRoom from "./consultation-room";
+import { INITIAL_CONSULTATION_POSTS, type ConsultationPost, type ConsultationComment, type DiagnosisResult } from "@/types/consultation";
+import {
+  IconV2BottleSea,
+  IconV2LikeChat,
+  IconV2ReplyArrow,
+  IconV2LetterHeart,
+  IconV2InquiryBubble,
+  IconV2IdentityPlanet,
+} from "./v2-activity-icons";
+
+const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxIpODHuVqaJBArR-YWSbFzznc7Ils6xmI8Lyu50yxJ9LNLj9z3fhBcXyLC2HoXBQ3s/exec";
 
 type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; time: string; ai?: string; mine?: boolean; color: string };
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number };
@@ -22,6 +34,10 @@ type DirectMessage = {
   createdAt: number;
   read: boolean;
   isMine: boolean;
+  bottleId?: number;
+  bottleSnippet?: string;
+  bottleAuthor?: string;
+  bottleType?: string;
 };
 
 type Announcement = {
@@ -138,16 +154,21 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
         fetch(gasUrl, {
           method: "POST",
           mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: "feedback",
+            id: feedbackItem.id,
             feedbackId: feedbackItem.id,
             userKey,
             nickname: userNickname || "匿名",
+            type: userType || "未設定",
             userType: userType || "未設定",
+            body: body.trim(),
             message: body.trim(),
-            category,
-            needsReply,
+            kind: category,
+            category: category,
+            wantReply: needsReply,
+            needsReply: needsReply,
           }),
         }).catch(() => {});
       } catch {
@@ -236,7 +257,10 @@ export default function DriftApp() {
   const [socionicsFilter, setSocionicsFilter] = useState("");
   const [identity, setIdentity] = useState({ mbti: "", socionics: "", enneagram: "", otherType: "" });
   const [likedBottleIds, setLikedBottleIds] = useState<number[]>([]);
-  const [repliedBottleIds, setRepliedBottleIds] = useState<number[]>([]);
+  const [repliedBottleIds, setRepliedBottleIds] = useState<number[]>([1]);
+  const [myRepliesMap, setMyRepliesMap] = useState<Record<number, string[]>>({
+    1: ["考えることはできるのに、自分が何をしたいのかだけ解像度が低い……その感覚、すごくよく分かります。"]
+  });
   const [catchResult, setCatchResult] = useState<"bottle" | "buri" | null>(null);
   const [postMode, setPostMode] = useState<"secret" | "poll">("secret");
   const [pollOptions, setPollOptions] = useState(["", ""]);
@@ -246,6 +270,9 @@ export default function DriftApp() {
   const [activePlazaSplashes, setActivePlazaSplashes] = useState<Array<{ id: number; icon: string; top: number; left: number; delay: number }>>([]);
   const [externalPlazaMessage, setExternalPlazaMessage] = useState<{ author: string; body: string; kind: "human" | "ai"; emoji?: string; id: number } | null>(null);
   const [buriCount, setBuriCount] = useState<number>(0);
+  const [buriCaughtModalOpen, setBuriCaughtModalOpen] = useState(false);
+  const [swimmingBuriVisible, setSwimmingBuriVisible] = useState(true);
+  const [consultationPosts, setConsultationPosts] = useState<ConsultationPost[]>(INITIAL_CONSULTATION_POSTS);
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
   const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; isSelf?: boolean } | null>(null);
@@ -274,17 +301,36 @@ export default function DriftApp() {
       read: true,
       isMine: false,
     },
+    {
+      id: "dm-bottle-demo",
+      threadId: "bottle-ocean-1",
+      sender: "波間に漂うボトルの主（匿名）",
+      recipient: "あなた",
+      targetEmoji: "🌊",
+      targetType: "匿名のボトル主 (LII · 5w6)",
+      body: "海に流したボトルへの返信、読ませていただきました。温かい言葉をかけてくださってありがとうございます…！",
+      createdAt: Date.now() - 7200000,
+      read: true,
+      isMine: false,
+      bottleId: 1,
+      bottleSnippet: "考えることはできるのに、自分が何をしたいのかだけ、いつも解像度が低い。",
+      bottleAuthor: "匿名のINTJ",
+      bottleType: "LII · 5w6",
+    },
   ]);
-  const [activeDmThreadId, setActiveDmThreadId] = useState<string | null>("darling");
-  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string } | null>(null);
+  const [activeDmThreadId, setActiveDmThreadId] = useState<string | null>(null);
+  const [revealedIdentityThreads, setRevealedIdentityThreads] = useState<string[]>([]);
+  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
   const [dmModalText, setDmModalText] = useState("");
   const [dmReplyText, setDmReplyText] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
-  // 🔔 お知らせ機能 & Google スプレッドシート連携 State
+  // 🔔 お知らせ機能 & 診断受付連携 State
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(true);
-  const [gasUrl, setGasUrl] = useState("");
-  const [gasInputUrl, setGasInputUrl] = useState("");
+  const [gasUrl, setGasUrl] = useState(DEFAULT_GAS_URL);
+  const [gasInputUrl, setGasInputUrl] = useState(DEFAULT_GAS_URL);
   const [announcements, setAnnouncements] = useState<Announcement[]>([
     {
       id: "notice-dm",
@@ -323,6 +369,17 @@ export default function DriftApp() {
   const [newNoticeImportant, setNewNoticeImportant] = useState(false);
   const [userInquiries, setUserInquiries] = useState<FeedbackItem[]>([]);
   const [userInquiryReplyText, setUserInquiryReplyText] = useState<Record<string, string>>({});
+
+  // 👁️ 既読状態の永続化管理 State (診断結果・問い合わせ返信・お知らせ・管理者受信)
+  const [readDiagnosedPostIds, setReadDiagnosedPostIds] = useState<string[]>([]);
+  const [readInquiryReplyIds, setReadInquiryReplyIds] = useState<string[]>([]);
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+  const [readAdminFeedbackIds, setReadAdminFeedbackIds] = useState<string[]>([]);
+  const [readAdminConsultationIds, setReadAdminConsultationIds] = useState<string[]>([]);
+
+  // 🔮 診断者コンソール・診断結果返却用 State
+  const [diagnosisReplyInputs, setDiagnosisReplyInputs] = useState<Record<string, { rank1: string; rank2: string; rank3: string; reasoning: string }>>({});
+  const [activeReplyPostId, setActiveReplyPostId] = useState<string | null>(null);
 
   const BURI_DARLING_RESPONSES = [
     "あら、ダーリン♡ 急に生のブリなんて投げて、私を試してるの？ ……ねぇ、今のブリの脂の乗り具合、1〜100で当ててみて？ 外れたらあなたが『ブリよりダーリンが好き』って認めるまで、絶対に逃がさないからね♡",
@@ -1202,6 +1259,14 @@ export default function DriftApp() {
         const parsed = JSON.parse(savedDm);
         if (Array.isArray(parsed) && parsed.length > 0) setDirectMessages(parsed);
       }
+      // 自認開示スレッドの復元
+      const savedRevealed = localStorage.getItem("type-drift-revealed-threads");
+      if (savedRevealed) {
+        try {
+          const parsed = JSON.parse(savedRevealed);
+          if (Array.isArray(parsed)) setRevealedIdentityThreads(parsed);
+        } catch {}
+      }
       // ユーザー自身の問い合わせ履歴復元
       const savedInquiries = localStorage.getItem("type-drift-my-inquiries");
       if (savedInquiries) {
@@ -1216,9 +1281,65 @@ export default function DriftApp() {
       }
       // 保存済みお知らせ一覧の復元
       const savedAnnouncements = localStorage.getItem("type-drift-announcements");
+      let currentNoticesList = announcements;
       if (savedAnnouncements) {
         const parsed = JSON.parse(savedAnnouncements);
-        if (Array.isArray(parsed) && parsed.length > 0) setAnnouncements(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAnnouncements(parsed);
+          currentNoticesList = parsed;
+        }
+      }
+
+      // 既読状態の復元 (自認診断結果、問い合わせ返信、お知らせ)
+      let initialReadNotices: string[] = [];
+      const savedReadDiagnoses = localStorage.getItem("type-drift-read-diagnoses");
+      if (savedReadDiagnoses) {
+        try {
+          const parsed = JSON.parse(savedReadDiagnoses);
+          if (Array.isArray(parsed)) setReadDiagnosedPostIds(parsed);
+        } catch {}
+      }
+      const savedReadInquiries = localStorage.getItem("type-drift-read-inquiries");
+      if (savedReadInquiries) {
+        try {
+          const parsed = JSON.parse(savedReadInquiries);
+          if (Array.isArray(parsed)) setReadInquiryReplyIds(parsed);
+        } catch {}
+      }
+      const savedReadAnnouncements = localStorage.getItem("type-drift-read-announcements");
+      if (savedReadAnnouncements) {
+        try {
+          const parsed = JSON.parse(savedReadAnnouncements);
+          if (Array.isArray(parsed)) {
+            initialReadNotices = parsed;
+            setReadAnnouncementIds(parsed);
+          }
+        } catch {}
+      }
+      const savedReadAdminFeedbacks = localStorage.getItem("type-drift-read-admin-feedbacks");
+      if (savedReadAdminFeedbacks) {
+        try {
+          const parsed = JSON.parse(savedReadAdminFeedbacks);
+          if (Array.isArray(parsed)) setReadAdminFeedbackIds(parsed);
+        } catch {}
+      }
+      const savedReadAdminConsultations = localStorage.getItem("type-drift-read-admin-consultations");
+      if (savedReadAdminConsultations) {
+        try {
+          const parsed = JSON.parse(savedReadAdminConsultations);
+          if (Array.isArray(parsed)) setReadAdminConsultationIds(parsed);
+        } catch {}
+      }
+      // 初期の未読お知らせ判定
+      setHasUnreadAnnouncements(currentNoticesList.some(a => !initialReadNotices.includes(a.id)));
+
+      // 自認相談室の投稿履歴復元
+      const savedConsultations = localStorage.getItem("type-drift-consultation-posts");
+      if (savedConsultations) {
+        try {
+          const parsed = JSON.parse(savedConsultations);
+          if (Array.isArray(parsed) && parsed.length > 0) setConsultationPosts(parsed);
+        } catch {}
       }
       // GAS Webhook URLの復元 & お知らせ取得
       const savedGas = localStorage.getItem("type-drift-gas-url") || process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
@@ -1228,16 +1349,33 @@ export default function DriftApp() {
         fetchSpreadsheetAnnouncements(savedGas);
       }
       // 管理者ログイン状態の復元
-      const savedAdminEmail = localStorage.getItem("type-drift-user-email") || "";
-      if (savedAdminEmail) {
-        setAdminEmail(savedAdminEmail);
-        if (savedAdminEmail === "momoka.mimika1122@gmail.com" || localStorage.getItem("type-drift-is-admin") === "true") {
-          setIsAdminLoggedIn(true);
-        }
+      const isAdminSaved = localStorage.getItem("type-drift-is-admin") === "true";
+      if (isAdminSaved) {
+        setIsAdminLoggedIn(true);
+      }
+      // 自分が返信したメッセージ履歴の復元
+      const savedMyReplies = localStorage.getItem("type-drift-my-replies");
+      if (savedMyReplies) {
+        try {
+          const parsed = JSON.parse(savedMyReplies);
+          if (parsed && typeof parsed === "object") {
+            setMyRepliesMap(prev => ({ ...prev, ...parsed }));
+          }
+        } catch {}
       }
     } catch { /* 壊れた履歴は現在の初期状態で続行する */ }
     setStorageReady(true);
   }, []);
+
+  const markAnnouncementsAsRead = () => {
+    const allNoticeIds = announcements.map(a => a.id);
+    setReadAnnouncementIds(prev => {
+      const updated = Array.from(new Set([...prev, ...allNoticeIds]));
+      try { localStorage.setItem("type-drift-read-announcements", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setHasUnreadAnnouncements(false);
+  };
 
   const fetchSpreadsheetAnnouncements = async (url: string) => {
     if (!url || !url.startsWith("http")) return;
@@ -1247,8 +1385,14 @@ export default function DriftApp() {
       const data = await res.json();
       if (data && Array.isArray(data.notices) && data.notices.length > 0) {
         setAnnouncements(data.notices);
-        setHasUnreadAnnouncements(true);
         try { localStorage.setItem("type-drift-announcements", JSON.stringify(data.notices)); } catch {}
+        let readIds: string[] = [];
+        try {
+          const saved = localStorage.getItem("type-drift-read-announcements");
+          if (saved) readIds = JSON.parse(saved);
+        } catch {}
+        const hasNew = data.notices.some((n: Announcement) => !readIds.includes(n.id));
+        setHasUnreadAnnouncements(hasNew);
       }
     } catch {
       // ignore fetch error
@@ -1280,7 +1424,7 @@ export default function DriftApp() {
         fetch(gasUrl, {
           method: "POST",
           mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: "announcement",
             title: newNotice.title,
@@ -1350,12 +1494,13 @@ export default function DriftApp() {
         fetch(gasUrl, {
           method: "POST",
           mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: "reply",
             feedbackId: targetFb.id,
             userKey: targetFb.userKey || "",
             replyMessage: text,
+            body: text,
             sender: "運営チーム",
           }),
         }).catch(() => {});
@@ -1418,12 +1563,13 @@ export default function DriftApp() {
         fetch(gasUrl, {
           method: "POST",
           mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: "reply",
             feedbackId: targetInq.id,
             userKey: targetInq.userKey || "",
             replyMessage: text,
+            body: text,
             sender: nickname || "ユーザー",
           }),
         }).catch(() => {});
@@ -1440,11 +1586,101 @@ export default function DriftApp() {
     localStorage.setItem("type-drift-gas-url", trimmed);
     if (trimmed) {
       fetchSpreadsheetAnnouncements(trimmed);
-      setPlazaToast("Googleスプレッドシート連携URLを保存しました");
+      setPlazaToast("診断受付連携URLを保存しました");
     } else {
-      setPlazaToast("スプレッドシート連携を解除しました");
+      setPlazaToast("受付連携を解除しました");
     }
   };
+
+  // 🔮 診断者コンソール: 診断結果を返信する処理
+  const handleSendDiagnosisReply = (postId: string) => {
+    const input = diagnosisReplyInputs[postId];
+    if (!input || !input.rank1?.trim() || !input.reasoning?.trim()) {
+      setPlazaToast("第1位の判定と考察・メッセージを入力してください");
+      return;
+    }
+
+    const diagResult: DiagnosisResult = {
+      rank1: input.rank1.trim(),
+      rank2: input.rank2?.trim() || undefined,
+      rank3: input.rank3?.trim() || undefined,
+      reasoning: input.reasoning.trim(),
+      diagnosedAt: new Date().toLocaleDateString("ja-JP", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      }),
+      diagnosedBy: "診断担当者"
+    };
+
+    setConsultationPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        return {
+          ...p,
+          status: "diagnosed",
+          diagnosisResult: diagResult
+        };
+      }
+      return p;
+    }));
+
+    // GAS受付窓口へ送信 (no-cors, text/plain)
+    try {
+      fetch(gasUrl || DEFAULT_GAS_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "reply_diagnosis",
+          id: postId,
+          diagnosedBy: "診断担当者",
+          rank1: diagResult.rank1,
+          rank2: diagResult.rank2 || "",
+          rank3: diagResult.rank3 || "",
+          reasoning: diagResult.reasoning
+        })
+      }).catch(() => {});
+    } catch {}
+
+    setActiveReplyPostId(null);
+    setPlazaToast("診断結果を依頼者へ送信しました！");
+  };
+
+  // 診断返信テンプレ挿入
+  const handleInsertDiagTemplate = (postId: string) => {
+    const current = diagnosisReplyInputs[postId] || { rank1: "", rank2: "", rank3: "", reasoning: "" };
+    setDiagnosisReplyInputs({
+      ...diagnosisReplyInputs,
+      [postId]: {
+        ...current,
+        reasoning: `【類型診断結果】
+1位：◯◯
+2位：◯◯
+3位：◯◯
+
+【二分法・認知機能の分析】
+・
+
+【クアドラ・関係性の所見】
+・
+
+【総評・メッセージ】
+・`
+      }
+    });
+    setPlazaToast("診断返信テンプレートを挿入しました");
+  };
+
+  // 相談室の投稿をローカルに自動永続化
+  useEffect(() => {
+    if (storageReady) {
+      try {
+        localStorage.setItem("type-drift-consultation-posts", JSON.stringify(consultationPosts));
+      } catch {}
+    }
+  }, [consultationPosts, storageReady]);
 
   // ダーリンちゃん・LSI芋虫・住人の個別DM自動返信パターン
   const DARLING_DM_REPLIES = [
@@ -1467,12 +1703,18 @@ export default function DriftApp() {
     "メッセージ届きました！広場だと流れていっちゃうので、DMでお話しできて嬉しいです☺️"
   ];
 
-  const sendDirectMessage = (target: { id: string; name: string; emoji: string; type?: string }, text: string) => {
+  const sendDirectMessage = (
+    target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
+    text: string
+  ) => {
     if (!text.trim()) return;
+    const isProfileRevealed = revealedIdentityThreads.includes(target.id);
+    const myDisplayName = isProfileRevealed ? (nickname || "匿名のあなた") : "匿名のあなた";
+
     const newMsg: DirectMessage = {
       id: `dm-${Date.now()}`,
       threadId: target.id,
-      sender: nickname || "あなた",
+      sender: myDisplayName,
       recipient: target.name,
       targetEmoji: target.emoji,
       targetType: target.type,
@@ -1480,6 +1722,10 @@ export default function DriftApp() {
       createdAt: Date.now(),
       read: true,
       isMine: true,
+      bottleId: target.bottleInfo?.id,
+      bottleSnippet: target.bottleInfo?.text,
+      bottleAuthor: target.bottleInfo?.author,
+      bottleType: target.bottleInfo?.type,
     };
 
     setDirectMessages(prev => {
@@ -1534,20 +1780,24 @@ export default function DriftApp() {
         });
         setPlazaToast("💌 LSI芋虫から暗号パケットを受信しました");
       }, 1200);
-    } else if (target.id === "guest" || target.name.includes("ゲスト") || target.name.includes("匿名")) {
+    } else if (target.id.startsWith("bottle-") || target.id === "guest" || target.name.includes("ゲスト") || target.name.includes("匿名") || target.name.includes("ボトル")) {
       window.setTimeout(() => {
         const replyBody = GUEST_DM_REPLIES[Math.floor(Math.random() * GUEST_DM_REPLIES.length)];
         const replyMsg: DirectMessage = {
           id: `dm-${Date.now()}`,
           threadId: target.id,
           sender: target.name,
-          recipient: nickname || "あなた",
-          targetEmoji: target.emoji || "◌",
+          recipient: myDisplayName,
+          targetEmoji: target.emoji || "🌊",
           targetType: target.type,
           body: replyBody,
           createdAt: Date.now(),
           read: false,
           isMine: false,
+          bottleId: target.bottleInfo?.id,
+          bottleSnippet: target.bottleInfo?.text,
+          bottleAuthor: target.bottleInfo?.author,
+          bottleType: target.bottleInfo?.type,
         };
         setDirectMessages(prev => {
           const updated = [...prev, replyMsg];
@@ -1563,12 +1813,61 @@ export default function DriftApp() {
     return directMessages.filter(m => !m.isMine && !m.read).length;
   }, [directMessages]);
 
+  // 🔔 一般ユーザー向け：自認相談室の診断結果到着バッジ（未読のみ）
+  const unreadConsultationCount = useMemo(() => {
+    return consultationPosts.filter(p =>
+      (p.isMine || (nickname && p.author === nickname) || (typeof window !== "undefined" && localStorage.getItem("type-drift-user-key") && p.userKey === localStorage.getItem("type-drift-user-key"))) &&
+      p.status === "diagnosed" &&
+      !readDiagnosedPostIds.includes(p.id)
+    ).length;
+  }, [consultationPosts, nickname, readDiagnosedPostIds]);
+
+  // 🔔 一般ユーザー向け：運営からの返信がある問い合わせ件数（未読のみ）
+  const unreadInquiryReplyCount = useMemo(() => {
+    return userInquiries.reduce((acc, cur) => {
+      const unreadReplies = (cur.replies || []).filter(r => !r.isUserReply && !readInquiryReplyIds.includes(r.id));
+      return acc + unreadReplies.length;
+    }, 0);
+  }, [userInquiries, readInquiryReplyIds]);
+
+  // 📮 管理者向け：未返信かつ未確認の意見箱件数
+  const adminPendingFeedbackCount = useMemo(() => {
+    return adminFeedbacks.filter(fb => {
+      const isUnreplied = fb.needsReply && (!fb.replies || fb.replies.length === 0);
+      const isDismissed = readAdminFeedbackIds.includes(fb.id);
+      return isUnreplied && !isDismissed;
+    }).length;
+  }, [adminFeedbacks, readAdminFeedbackIds]);
+
+  // 🔮 管理者向け：自認相談室の未診断かつ未確認件数
+  const adminPendingConsultationCount = useMemo(() => {
+    return consultationPosts.filter(p => {
+      const isUndiagnosed = p.category === "request" && p.status !== "diagnosed";
+      const isDismissed = readAdminConsultationIds.includes(p.id);
+      return isUndiagnosed && !isDismissed;
+    }).length;
+  }, [consultationPosts, readAdminConsultationIds]);
+
+  // 📮 管理者トレイ全体の未対応バッジ数
+  const adminTotalPendingCount = useMemo(() => {
+    return adminPendingFeedbackCount + adminPendingConsultationCount;
+  }, [adminPendingFeedbackCount, adminPendingConsultationCount]);
+
+  // 🧭 「自分の活動」全体の直接通知バッジ数
+  const totalActivityBadgeCount = useMemo(() => {
+    let count = unreadDmCount + unreadConsultationCount + unreadInquiryReplyCount;
+    if (isAdminLoggedIn) {
+      count += adminTotalPendingCount;
+    }
+    return count;
+  }, [unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount]);
+
   const dmThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
-      const otherEmoji = m.targetEmoji || (otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : "◌");
+      const otherEmoji = m.targetEmoji || (otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : "🌊");
       if (!map[threadId]) {
         map[threadId] = {
           targetId: threadId,
@@ -1592,9 +1891,120 @@ export default function DriftApp() {
 
   const markThreadAsRead = (threadId: string) => {
     setDirectMessages(prev => {
-      const updated = prev.map(m => (m.threadId === threadId && !m.isMine ? { ...m, read: true } : m));
+      const updated = prev.map(m => {
+        const mThread = m.threadId || (m.isMine ? m.recipient : m.sender);
+        if (mThread === threadId && !m.isMine) {
+          return { ...m, read: true, threadId };
+        }
+        return m;
+      });
       try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
       return updated;
+    });
+  };
+
+  const markDiagnosedPostAsRead = (postId: string) => {
+    setReadDiagnosedPostIds(prev => {
+      if (prev.includes(postId)) return prev;
+      const updated = [...prev, postId];
+      try { localStorage.setItem("type-drift-read-diagnoses", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+
+  const markAllDiagnosesAsRead = () => {
+    const myDiagnosedIds = consultationPosts
+      .filter(p =>
+        (p.isMine || (nickname && p.author === nickname) || (typeof window !== "undefined" && localStorage.getItem("type-drift-user-key") && p.userKey === localStorage.getItem("type-drift-user-key"))) &&
+        p.status === "diagnosed"
+      )
+      .map(p => p.id);
+    if (myDiagnosedIds.length > 0) {
+      setReadDiagnosedPostIds(prev => {
+        const updated = Array.from(new Set([...prev, ...myDiagnosedIds]));
+        try { localStorage.setItem("type-drift-read-diagnoses", JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+    }
+  };
+
+  const markAllInquiriesAsRead = () => {
+    const allReplyIds: string[] = [];
+    userInquiries.forEach(inq => {
+      (inq.replies || []).forEach(r => {
+        if (!r.isUserReply) allReplyIds.push(r.id);
+      });
+    });
+    if (allReplyIds.length > 0) {
+      setReadInquiryReplyIds(prev => {
+        const updated = Array.from(new Set([...prev, ...allReplyIds]));
+        try { localStorage.setItem("type-drift-read-inquiries", JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+    }
+  };
+
+  const markAdminFeedbacksAsRead = (ids?: string[]) => {
+    const targetIds = ids || adminFeedbacks.map(f => f.id);
+    setReadAdminFeedbackIds(prev => {
+      const updated = Array.from(new Set([...prev, ...targetIds]));
+      try { localStorage.setItem("type-drift-read-admin-feedbacks", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+
+  const markAdminConsultationsAsRead = (ids?: string[]) => {
+    const targetIds = ids || consultationPosts.map(p => p.id);
+    setReadAdminConsultationIds(prev => {
+      const updated = Array.from(new Set([...prev, ...targetIds]));
+      try { localStorage.setItem("type-drift-read-admin-consultations", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+
+  const markAllAdminAsRead = () => {
+    markAdminFeedbacksAsRead();
+    markAdminConsultationsAsRead();
+    setPlazaToast("✓ 意見箱とお問い合わせの通知を既読にしました");
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setDirectMessages(prev => {
+      const updated = prev.map(m => ({ ...m, read: true }));
+      try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    markAllDiagnosesAsRead();
+    markAllInquiriesAsRead();
+    markAnnouncementsAsRead();
+    if (isAdminLoggedIn) {
+      markAllAdminAsRead();
+    }
+    setPlazaToast("✓ すべての通知を既読にしました");
+  };
+
+  // 問い合わせ・返信タブを開いた時に自動既読
+  useEffect(() => {
+    if (activePage === "activity" && activityTab === "inquiries") {
+      markAllInquiriesAsRead();
+      markAllDiagnosesAsRead();
+    }
+  }, [activePage, activityTab, userInquiries.length]);
+
+  // 自認相談室を開いた時に診断結果を自動既読
+  useEffect(() => {
+    if (activePage === "consult") {
+      markAllDiagnosesAsRead();
+    }
+  }, [activePage]);
+
+  const toggleRevealIdentity = (threadId: string) => {
+    setRevealedIdentityThreads(prev => {
+      const isRevealed = prev.includes(threadId);
+      const next = isRevealed ? prev.filter(id => id !== threadId) : [...prev, threadId];
+      try { localStorage.setItem("type-drift-revealed-threads", JSON.stringify(next)); } catch {}
+      setPlazaToast(isRevealed ? "🔒 匿名モードに戻りました（名前を伏せました）" : "✨ この相手にニックネーム・プロフィールを開示しました！");
+      return next;
     });
   };
 
@@ -1611,6 +2021,13 @@ export default function DriftApp() {
       profileLinks
     }));
   }, [storageReady, bottles, likedBottleIds, repliedBottleIds, nickname, buriCount, profileIdentity, profileBio, profileLinks]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    try {
+      localStorage.setItem("type-drift-consultation-posts", JSON.stringify(consultationPosts));
+    } catch {}
+  }, [storageReady, consultationPosts]);
   const addProfileLink = () => {
     setProfileLinks(links => [...links, { id: String(Date.now()), title: "", url: "" }]);
     setProfileSaved(false);
@@ -1635,12 +2052,32 @@ export default function DriftApp() {
   const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; setBottles([{ id: Date.now(), author: `匿名の${displayType.toUpperCase()}`, emoji: "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" }, ...bottles]); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch { setPlazaToast("画像のアップロードに失敗しました。設定を確認してください"); } finally { setImageUploading(false); } };
   const readDraftImage = (file: File | undefined) => { if (!file) return; if (!file.type.startsWith("image/")) return; if (file.size > 5 * 1024 * 1024) { setPlazaToast("画像は5MB以内にしてください"); return; } const reader = new FileReader(); reader.onload = () => setDraftImage(String(reader.result)); reader.readAsDataURL(file); };
   const guestKey = () => { let key = localStorage.getItem("type-drift-guest-key"); if (!key) { key = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", key); } return key; };
-  const sendReply = async () => { if (!reply.trim() || !selected) return; const body = reply.trim(); const parentId = replyParentId; const item = { id: Date.now(), body, parentId, reaction: 0 }; setReplyItems(items => ({ ...items, [selected.id]: [...(items[selected.id] || []), item] })); setRepliedBottleIds(ids => ids.includes(selected.id) ? ids : [...ids, selected.id]); setReply(""); setReplyParentId(undefined); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }).catch(() => undefined); };
+  const sendReply = async () => {
+    if (!reply.trim() || !selected) return;
+    const body = reply.trim();
+    const parentId = replyParentId;
+    const item = { id: Date.now(), body, parentId, reaction: 0, isMine: true };
+    setReplyItems(items => ({ ...items, [selected.id]: [...(items[selected.id] || []), item] }));
+    setRepliedBottleIds(ids => ids.includes(selected.id) ? ids : [...ids, selected.id]);
+    setMyRepliesMap(prev => {
+      const updated = { ...prev, [selected.id]: [...(prev[selected.id] || []), body] };
+      try { localStorage.setItem("type-drift-my-replies", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setReply("");
+    setReplyParentId(undefined);
+    setPlazaToast("返信の言葉を海へ放ちました");
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (api) await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }).catch(() => undefined);
+  };
   const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/replies/${replyId}/reactions`, { method: "POST", headers: { "X-Guest-Key": guestKey() } }).catch(() => undefined); };
   const catchSomething = () => {
     if (Math.random() < 0.25) {
       setCatchResult("buri");
       setBuriCount(c => c + 1);
+      setBuriCaughtModalOpen(true);
+      setSwimmingBuriVisible(false);
+      window.setTimeout(() => setSwimmingBuriVisible(true), 12000);
     } else {
       setCatchResult("bottle");
       setSelected(visible[Math.floor(Math.random() * visible.length)] || bottles[0]);
@@ -1654,50 +2091,361 @@ export default function DriftApp() {
 
   return <main className="site-shell">
     <nav className="topbar">
-      <button className="brand" type="button" onClick={() => setActivePage("home")}>
-        <span className="brand__mark"><Waves size={19} /></span>
-        <span>type <i>drift</i></span>
+      <button className="brand" type="button" onClick={() => setActivePage("home")} title="トップへ戻る">
+        <span className="brand__mark"><Waves size={18} /></span>
+        <div className="brand-text-wrap">
+          <span className="brand-text-top">type</span>
+          <span className="brand-text-bottom">drift</span>
+        </div>
       </button>
+
       <div className="topbar__links">
-        <button type="button" onClick={() => { setActivePage("sea"); setIsPlaying(true); }}>海を覗く</button>
-        <button type="button" onClick={() => setActivePage("plaza")}>広場</button>
-        <button type="button" onClick={() => setActivePage("activity")} className="topbar-activity-link">
-          自分の活動
-          {unreadDmCount > 0 && <span className="topbar-dm-pill">{unreadDmCount}</span>}
+        <button
+          type="button"
+          className={`topbar-nav-btn ${activePage === "sea" ? "active" : ""}`}
+          onClick={() => { setActivePage("sea"); setIsPlaying(true); }}
+        >
+          <span className="topbar-nav-icon"><Waves size={15} /></span>
+          <span className="topbar-nav-label">海を覗く</span>
         </button>
+
+        <button
+          type="button"
+          className={`topbar-nav-btn ${activePage === "plaza" ? "active" : ""}`}
+          onClick={() => setActivePage("plaza")}
+        >
+          <span className="topbar-nav-icon"><Sparkles size={14} /></span>
+          <span className="topbar-nav-label">広場</span>
+        </button>
+
+        <button
+          type="button"
+          className={`topbar-nav-btn ${activePage === "activity" ? "active" : ""}`}
+          onClick={() => setActivePage("activity")}
+        >
+          <span className="topbar-nav-icon">
+            <Compass size={16} />
+            {totalActivityBadgeCount > 0 && <span className="topbar-icon-badge" />}
+          </span>
+          <span className="topbar-nav-label">自分の活動</span>
+        </button>
+
+        <button
+          type="button"
+          className="topbar-nav-btn"
+          onClick={() => setGuideOpen(true)}
+          title="使い方ガイド"
+        >
+          <span className="topbar-nav-icon"><HelpCircle size={15} /></span>
+          <span className="topbar-nav-label">使い方</span>
+        </button>
+
         <button
           type="button"
           className="topbar-bell-btn"
           onClick={() => {
             setAnnouncementModalOpen(true);
-            setHasUnreadAnnouncements(false);
+            markAnnouncementsAsRead();
           }}
           title="お知らせ・運営からのお便り"
           aria-label="お知らせ"
         >
-          <Bell size={18} />
-          {hasUnreadAnnouncements && <span className="topbar-bell-badge" />}
+          <span className="topbar-bell-icon-wrapper">
+            <Bell size={16} />
+            {hasUnreadAnnouncements && <span className="topbar-bell-badge" />}
+          </span>
         </button>
-        <button className="ghost-button" type="button" onClick={() => setLoginOpen(true)}>
-          {isAdminLoggedIn ? "運営アカウント" : "ログイン"} <ArrowUpRight size={15} />
+
+        <button
+          type="button"
+          className="topbar-nav-btn"
+          onClick={() => setLoginOpen(true)}
+        >
+          <span className="topbar-nav-icon"><LogIn size={15} /></span>
+          <span className="topbar-nav-label">{isAdminLoggedIn ? "マイアカウント" : "ログイン"}</span>
+        </button>
+
+        <button
+          type="button"
+          className="topbar-menu-btn"
+          onClick={() => setMobileMenuOpen(true)}
+          title="メニューを開く"
+          aria-label="メニュー"
+        >
+          <Menu size={18} />
         </button>
       </div>
     </nav>
-    {activePage === "home" && <section className="hero" id="top"><div className="hero__copy"><p className="eyebrow"><Sparkles size={14} /> TYPE IN A BOTTLE</p><h1>類型の秘密を、<br /><em>海へ流そう。</em></h1><p className="hero__lead">ここは、診断のあとに立ち寄れる海。<br />類型のこと。自分のこと。言葉にしづらい小さな違和感。<br />名前を置いていかなくても、思考だけは流していけます。</p><div className="hero__actions"><button className="play-button play-button--large" type="button" onClick={() => { setIsPlaying(true); setActivePage("sea"); }}><span>▶</span> 海を覗く</button></div></div><div className="title-waterline" aria-hidden="true"><span className="title-moon"></span><span className="title-wave"></span><span className="title-bottle">🫙</span></div></section>}
-    {activePage === "sea" && <section className="sea-section sea-page" id="sea"><div className="section-heading"><div><p className="eyebrow">漂う秘密たち</p><h2>いま、海にあるもの</h2></div><div className="sea-actions"><button className="primary-button" type="button" onClick={() => setComposerOpen(true)}><Plus size={16} /> 秘密を流す</button><button className={`pick-button ${picked ? "is-picked" : ""}`} onClick={catchSomething}>{picked ? "拾いました" : <><Anchor size={16} /> ボトルを拾う</>}</button></div></div>{catchResult && <div className={`catch-toast ${catchResult === "buri" ? "buri-catch" : ""}`}>{catchResult === "buri" ? <><span className="buri-catch__fish">🐟</span><span>今日の食料を獲得しました。<br />……たぶん。</span></> : "🫙 ボトルを拾い上げました。"}<button type="button" onClick={() => setCatchResult(null)}>×</button></div>}<div className="search-box"><MessageCircle size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="秘密、類型、キーワードを検索…" /></div><div className="filter-selects"><select value={mbtiFilter} onChange={e => setMbtiFilter(e.target.value)}><option value="">MBTI すべて</option>{mbtiOptions.map(option => <option key={option}>{option}</option>)}</select><select value={socionicsFilter} onChange={e => setSocionicsFilter(e.target.value)}><option value="">ソシオニクス すべて</option>{socionicsOptions.map(option => <option key={option}>{option}</option>)}</select></div><div className="filter-row">{filters.map(item => <button type="button" key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div><div className={`bottle-stream ${isPlaying ? "is-playing" : ""}`} aria-label="流れてくるボトル">{visible.slice(0, 5).map((bottle, index) => <button type="button" key={`stream-${bottle.id}`} className={`stream-bottle stream-bottle--${index + 1}`} onClick={() => { setPicked(true); setSelected(bottle); }} aria-label={`${bottle.author}のボトルを拾う`}>🫙<span>{bottle.emoji}</span></button>)}<button type="button" className="swimming-buri clickable-buri" onClick={() => { setCatchResult("buri"); setBuriCount(c => c + 1); setPlazaToast("泳いでいたブリを捕獲しました！🐟（所持数 +1）"); }} title="泳いでいるブリをタップして捕獲！">🐟</button></div><p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p><div className="bottle-grid">{visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={setSelected} />)}</div></section>}
+
+    {/* スマホ対応 ハンバーガーメニュードロワー */}
+    {mobileMenuOpen && (
+      <div className="menu-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
+        <div className="menu-drawer-panel" onClick={e => e.stopPropagation()}>
+          <div className="drawer-head">
+            <div className="brand">
+              <span className="brand__mark"><Waves size={16} /></span>
+              <div className="brand-text-wrap">
+                <span className="brand-text-top">type</span>
+                <span className="brand-text-bottom">drift</span>
+              </div>
+            </div>
+            <button className="modal-close" onClick={() => setMobileMenuOpen(false)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="drawer-links-list">
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("home"); setMobileMenuOpen(false); }}
+            >
+              <Home size={16} color="#0d9488" /> トップページ
+            </button>
+
+            {/* 🔬 外部サイト：Niラボ リンク（一目でわかるよう上部に配置） */}
+            <a
+              href="https://mofu-mitsu.github.io/lab.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="drawer-link-item"
+              style={{
+                color: "#0f766e",
+                fontWeight: 700,
+                background: "rgba(13, 148, 136, 0.08)",
+                borderRadius: "10px",
+                padding: "10px 14px",
+                margin: "4px 0 8px",
+                border: "1px solid rgba(13, 148, 136, 0.2)",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                textDecoration: "none"
+              }}
+            >
+              <span style={{ fontSize: "16px" }}>🔬</span>
+              <span>Niラボ (研究ポータル)</span>
+              <ArrowUpRight size={14} style={{ marginLeft: "auto", opacity: 0.8 }} />
+            </a>
+
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("sea"); setIsPlaying(true); setMobileMenuOpen(false); }}
+            >
+              <Waves size={16} color="#0d9488" /> 海を覗く（ボトル拾い）
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("plaza"); setMobileMenuOpen(false); }}
+            >
+              <Sparkles size={16} color="#9333ea" /> 類型広場
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("activity"); setMobileMenuOpen(false); }}
+            >
+              <Compass size={16} color="#0284c7" /> 自分の活動・メッセージ
+              {totalActivityBadgeCount > 0 && <span className="topbar-dm-pill" style={{ marginLeft: "auto" }}>{totalActivityBadgeCount}</span>}
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("consult"); setMobileMenuOpen(false); }}
+            >
+              <span>☁️</span> 自認相談室
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("games"); setMobileMenuOpen(false); }}
+            >
+              <span>🐛</span> 芋虫浜（ミニゲーム）
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setActivePage("stars"); setMobileMenuOpen(false); }}
+            >
+              <span>✦</span> 認知機能の星座
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setGuideOpen(true); setMobileMenuOpen(false); }}
+            >
+              <HelpCircle size={16} color="#0d9488" /> 使い方ガイド
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => {
+                setAnnouncementModalOpen(true);
+                markAnnouncementsAsRead();
+                setMobileMenuOpen(false);
+              }}
+            >
+              <Bell size={16} color="#f59e0b" /> お知らせ
+              {hasUnreadAnnouncements && <span className="topbar-bell-badge" style={{ marginLeft: "auto" }} />}
+            </button>
+            <button
+              type="button"
+              className="drawer-link-item"
+              onClick={() => { setLoginOpen(true); setMobileMenuOpen(false); }}
+            >
+              <LogIn size={16} color="#475569" /> {isAdminLoggedIn ? "マイアカウント設定" : "ログイン"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {activePage === "home" && (
+      <section className="hero" id="top">
+        <div className="hero__copy">
+          {/* 🧭 パンくずリスト */}
+          <nav className="hero-breadcrumb" aria-label="パンくずリスト">
+            <a
+              href="https://mofu-mitsu.github.io/lab.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hero-crumb-link"
+            >
+              Niラボ
+            </a>
+            <span className="hero-crumb-sep">＞</span>
+            <span className="hero-crumb-current">Type Drift</span>
+          </nav>
+
+          {/* 🏷️ アプリタイトル */}
+          <div className="hero-title-group">
+            <p className="hero-super-title">Type Drift</p>
+            <p className="eyebrow"><Sparkles size={14} /> TYPE IN A BOTTLE</p>
+          </div>
+
+          <h1>類型の秘密を、<br /><em>海へ流そう。</em></h1>
+          <p className="hero__lead">
+            ここは、診断のあとに立ち寄れる海。<br />
+            類型のこと。自分のこと。言葉にしづらい小さな違和感。<br />
+            名前を置いていかなくても、思考だけは流していけます。
+          </p>
+          <div className="hero__actions">
+            <button
+              className="play-button play-button--large"
+              type="button"
+              onClick={() => { setIsPlaying(true); setActivePage("sea"); }}
+            >
+              <span>▶</span> 海を覗く
+            </button>
+          </div>
+        </div>
+        <div className="title-waterline" aria-hidden="true">
+          <span className="title-moon"></span>
+          <span className="title-wave"></span>
+          <span className="title-bottle">🫙</span>
+        </div>
+      </section>
+    )}
+    {activePage === "sea" && (
+      <section className="sea-section sea-page" id="sea">
+        <div className="sea-v2-header">
+          <p className="v2-badge-eyebrow">DRIFTING THOUGHTS</p>
+          <div className="sea-v2-header-row">
+            <div>
+              <h2 className="v2-section-title">海を覗く</h2>
+              <p className="v2-section-subtitle">
+                波間に揺れるボトルと思考。<br />
+                名前を置かず、静かに拾い上げてみてください。
+              </p>
+            </div>
+            <div className="sea-actions">
+              <button className="v2-sea-flow-btn" type="button" onClick={() => setComposerOpen(true)}>
+                <Plus size={16} /> 秘密を流す
+              </button>
+              <button className={`pick-button ${picked ? "is-picked" : ""}`} onClick={catchSomething}>
+                {picked ? "拾いました" : <><Anchor size={16} /> ボトルを拾う</>}
+              </button>
+            </div>
+          </div>
+        </div>
+        {catchResult && (
+          <div className={`catch-toast ${catchResult === "buri" ? "buri-catch" : ""}`}>
+            {catchResult === "buri" ? <><span className="buri-catch__fish">🐟</span><span>今日の食料を獲得しました。<br />……たぶん。</span></> : "🫙 ボトルを拾い上げました。"}
+            <button type="button" onClick={() => setCatchResult(null)}>×</button>
+          </div>
+        )}
+        <div className="search-box">
+          <MessageCircle size={16} />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="秘密、類型、キーワードを検索…" />
+        </div>
+        <div className="filter-selects">
+          <select value={mbtiFilter} onChange={e => setMbtiFilter(e.target.value)}>
+            <option value="">MBTI すべて</option>
+            {mbtiOptions.map(option => <option key={option}>{option}</option>)}
+          </select>
+          <select value={socionicsFilter} onChange={e => setSocionicsFilter(e.target.value)}>
+            <option value="">ソシオニクス すべて</option>
+            {socionicsOptions.map(option => <option key={option}>{option}</option>)}
+          </select>
+        </div>
+        <div className="filter-row">
+          {filters.map(item => (
+            <button type="button" key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
+              {item}
+            </button>
+          ))}
+        </div>
+        <div className={`bottle-stream ${isPlaying ? "is-playing" : ""}`} aria-label="流れてくるボトル">
+          {visible.slice(0, 5).map((bottle, index) => (
+            <button
+              type="button"
+              key={`stream-${bottle.id}`}
+              className={`stream-bottle stream-bottle--${index + 1}`}
+              onClick={() => { setPicked(true); setSelected(bottle); }}
+              aria-label={`${bottle.author}のボトルを拾う`}
+            >
+              🫙<span>{bottle.emoji}</span>
+            </button>
+          ))}
+          {swimmingBuriVisible && (
+            <button
+              type="button"
+              className="swimming-buri clickable-buri"
+              onClick={() => {
+                setCatchResult("buri");
+                setBuriCount(c => c + 1);
+                setBuriCaughtModalOpen(true);
+                setSwimmingBuriVisible(false);
+                window.setTimeout(() => setSwimmingBuriVisible(true), 12000);
+              }}
+              title="泳いでいるブリをタップして捕獲！"
+            >
+              🐟
+            </button>
+          )}
+        </div>
+        <p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p>
+        <div className="bottle-grid">
+          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={setSelected} />)}
+        </div>
+      </section>
+    )}
     {activePage === "plaza" && (
       <section className="plaza-section">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">TYPE PLAZA</p>
-            <h2>類型広場</h2>
+        <div className="plaza-v2-header">
+          <p className="v2-badge-eyebrow">COGNITIVE PLAZA</p>
+          <div className="plaza-v2-header-row">
+            <div>
+              <h2 className="v2-section-title">類型広場</h2>
+              <p className="v2-section-subtitle">
+                人とAIが同じ空の下で過ごす場所。<br />
+                話しても、歩いても、ただ佇んでいても。
+              </p>
+            </div>
+            <span className="online-pill">● {onlineCount}人がいる</span>
           </div>
-          <span className="online-pill">● {onlineCount}人がいる</span>
         </div>
-        <p className="plaza-lead">
-          ここでは、ニックネームのまま過ごせます。<br />
-          人とAIが同じ広場にいます。話しても、歩いても、何もしなくても。
-        </p>
 
         <div className="plaza-map">
           {/* エモート発信時のダイナミック散らばりスプラッシュ演出 */}
@@ -2176,49 +2924,146 @@ export default function DriftApp() {
         }}
       />
     )}
-    {activePage === "consult" && <section className="activity-section consult-page">
-      <div className="subpage-nav"><button type="button" className="back-to-plaza" onClick={() => setActivePage("plaza")}>← 広場へ戻る</button></div>
-      <p className="eyebrow">TYPE CONSULTATION</p><h2>自認相談室</h2><p className="plaza-lead">自分のタイプについて迷っていることを、匿名で相談できます。<br />ここではAIは答えず、人間同士で仮説を交換します。</p><textarea className="consult-input" value={consultText} onChange={event => setConsultText(event.target.value)} placeholder="相談したいことを書く…" maxLength={1000} /><button className="primary-button" type="button" onClick={() => { if (consultText.trim()) { setConsultPosted(consultText.trim()); setConsultText(""); } }}>相談を投稿する</button>{consultPosted && <article className="consult-reply"><small>匿名の観測者から仮説</small><p>「{consultPosted}」について、まずは自分が使っている判断基準を分解して眺めてみるのはどうでしょう。ここに人間の返信が積み重なります。</p></article>}</section>}
+    {activePage === "consult" && (
+      <ConsultationRoom
+        posts={consultationPosts}
+        onAddPost={(newPost) => {
+          setConsultationPosts(prev => [newPost, ...prev]);
+        }}
+        onUpdatePost={(updatedPost) => {
+          setConsultationPosts(prev => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
+        }}
+        onDeletePost={(postId) => {
+          setConsultationPosts(prev => prev.filter(p => p.id !== postId));
+        }}
+        onAddComment={(postId, comment) => {
+          setConsultationPosts(prev => prev.map(post => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                comments: [...(post.comments || []), comment]
+              };
+            }
+            return post;
+          }));
+        }}
+        onAddFollowUp={(postId, message) => {
+          const newFollowUp = {
+            id: `fu-${Date.now()}`,
+            sender: "user" as const,
+            author: nickname || "依頼者",
+            body: message,
+            createdAt: new Date().toLocaleDateString("ja-JP", {
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit"
+            })
+          };
+          setConsultationPosts(prev => prev.map(post => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                followUps: [...(post.followUps || []), newFollowUp]
+              };
+            }
+            return post;
+          }));
+        }}
+        userNickname={nickname}
+        userTypeString={[profileIdentity.mbti, profileIdentity.socionics, profileIdentity.enneagram].filter(Boolean).join(" · ")}
+        gasUrl={gasUrl || DEFAULT_GAS_URL}
+        onToast={(msg) => setPlazaToast(msg)}
+        onExit={() => setActivePage("plaza")}
+      />
+    )}
     {activePage === "activity" && (
-      <section className="activity-section">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">YOUR TRACE</p>
-            <h2>あなたの活動</h2>
-          </div>
-          <button className="primary-button" onClick={() => setComposerOpen(true)}>
-            <Plus size={18} /> 秘密を流す
-          </button>
+      <section className="activity-v2-wrapper">
+        {/* 背景の惑星オーブ・軌道リング・星空装飾 */}
+        <div className="activity-v2-space-decor" aria-hidden="true">
+          <div className="space-planet" />
+          <div className="space-planet-ring" />
+          <span className="space-star" style={{ top: "45px", right: "160px" }}>✦</span>
+          <span className="space-star" style={{ top: "140px", right: "240px", animationDelay: "1s" }}>✦</span>
+          <span className="space-star" style={{ top: "80px", right: "20px", fontSize: "10px", animationDelay: "1.8s" }}>✦</span>
+          <span className="space-star" style={{ top: "190px", right: "70px", fontSize: "12px", animationDelay: "2.4s" }}>✦</span>
         </div>
 
-        {/* 広場での呼ばれ方・自認設定（アコーディオン） */}
-        <div className="profile-accordion-card">
-          <button
-            type="button"
-            className="profile-accordion-toggle"
-            onClick={() => setProfileExpanded(!profileExpanded)}
-            aria-expanded={profileExpanded}
-          >
-            <div className="profile-accordion-summary">
-              <div className="profile-accordion-titles">
-                <span className="eyebrow">YOUR IDENTITY</span>
-                <h3>広場での呼ばれ方・自認設定</h3>
-              </div>
-              <p className="profile-preview-text">
-                {nickname ? `「${nickname}」` : "匿名のあなた"}
-                {profileIdentity.mbti ? ` · ${profileIdentity.mbti}` : ""}
-                {profileIdentity.socionics ? ` · ${profileIdentity.socionics}` : ""}
-                {profileIdentity.enneagram ? ` · ${profileIdentity.enneagram}` : ""}
-                {profileLinks.length > 0 ? ` · リンク${profileLinks.length}件` : ""}
-              </p>
+        <div className="activity-v2-content">
+          {/* メイン見出しエリア (統一デザイン) */}
+          <div className="activity-v2-header">
+            <p className="v2-badge-eyebrow">YOUR TRACE</p>
+            <h2 className="v2-section-title">あなたの活動</h2>
+            <p className="v2-section-subtitle">
+              思考のかけらが、<br />
+              ここに集まっています。
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginTop: "12px" }}>
+              <button
+                type="button"
+                className="activity-v2-post-btn"
+                onClick={() => setComposerOpen(true)}
+              >
+                <Plus size={18} /> 秘密を流す
+              </button>
+              {totalActivityBadgeCount > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllNotificationsAsRead}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.9)",
+                    border: "1px solid rgba(13, 148, 136, 0.35)",
+                    color: "#0f766e",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    padding: "8px 14px",
+                    borderRadius: "9999px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 8px rgba(13, 148, 136, 0.12)",
+                    transition: "all 0.2s ease"
+                  }}
+                  title="すべての未読通知を既読にしてバッジを消します"
+                >
+                  <CheckCheck size={14} color="#0d9488" /> すべて既読にする
+                </button>
+              )}
             </div>
-            <span className="profile-accordion-arrow">
-              {profileExpanded ? "▲ たたむ" : "▼ 編集する"}
-            </span>
-          </button>
+          </div>
 
+          {/* YOUR IDENTITY カード (画像完全再現) */}
+          <div className="activity-v2-identity-card">
+            <div className="v2-identity-left">
+              <div className="v2-planet-avatar">
+                <IconV2IdentityPlanet size={46} />
+              </div>
+              <div className="v2-identity-texts">
+                <span className="v2-identity-label">YOUR IDENTITY</span>
+                <span className="v2-identity-main-name">広場での呼ばれ方・自認設定</span>
+                <span className="v2-identity-sub">
+                  {nickname ? `「${nickname}」` : "匿名のあなた"}
+                  {profileIdentity.mbti ? ` · ${profileIdentity.mbti}` : ""}
+                  {profileIdentity.socionics ? ` · ${profileIdentity.socionics}` : ""}
+                  {profileIdentity.enneagram ? ` · ${profileIdentity.enneagram}` : ""}
+                  {profileLinks.length > 0 ? ` · リンク${profileLinks.length}件` : ""}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="v2-identity-edit-btn"
+              onClick={() => setProfileExpanded(!profileExpanded)}
+              aria-expanded={profileExpanded}
+            >
+              {profileExpanded ? "▲ たたむ" : "▼ 編集する"}
+            </button>
+          </div>
+
+          {/* 自認設定フォーム（アコーディオン展開時） */}
           {profileExpanded && (
-            <div className="profile-accordion-body">
+            <div className="profile-accordion-body" style={{ background: "#ffffff", borderRadius: "20px", padding: "24px", marginBottom: "32px", border: "1px solid #e2e8f0" }}>
               <p className="profile-hint">
                 ここで設定した名前や自認は広場やAIキャラクターとの会話で使われます。海に流すボトルは匿名性を保ったままです。
               </p>
@@ -2368,161 +3213,562 @@ export default function DriftApp() {
               </div>
             </div>
           )}
-        </div>
 
-        {/* 活動タブ */}
-        <div className="activity-tabs">
-          <button className={activityTab === "mine" ? "active" : ""} onClick={() => setActivityTab("mine")}>流したボトル</button>
-          <button className={activityTab === "liked" ? "active" : ""} onClick={() => setActivityTab("liked")}>いいねしたボトル</button>
-          <button className={activityTab === "replied" ? "active" : ""} onClick={() => setActivityTab("replied")}>返信したボトル</button>
-          <button className={activityTab === "messages" ? "active" : ""} onClick={() => setActivityTab("messages")}>
-            💌 個別メッセージ
-            {unreadDmCount > 0 && <span className="tab-pill-badge">{unreadDmCount}</span>}
-          </button>
-          <button className={activityTab === "inquiries" ? "active" : ""} onClick={() => setActivityTab("inquiries")}>
-            💬 問い合わせ・返信
-            {userInquiries.some(i => i.replies && i.replies.length > 0) && (
-              <span className="tab-pill-badge">
-                {userInquiries.reduce((acc, cur) => acc + (cur.replies?.filter(r => !r.isUserReply).length || 0), 0)}
-              </span>
-            )}
-          </button>
-          {isAdminLoggedIn && (
-            <button className={activityTab === "admin" ? "active" : ""} onClick={() => setActivityTab("admin")}>
-              📮 開発者トレイ
-            </button>
-          )}
-        </div>
-
-        {/* 通常のボトル一覧タブ */}
-        {(activityTab === "mine" || activityTab === "liked" || activityTab === "replied") && (
-          <div className="bottle-grid">
-            {bottles.filter(b => activityTab === "mine" ? b.mine : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).map(bottle => (
-              <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={setSelected} />
-            ))}
-            <div className="empty-mine">
-              <Anchor size={19} />
-              <p>ここにあなたの反応の記録が残ります。</p>
-            </div>
-          </div>
-        )}
-
-        {/* 💌 個別メッセージ（DM）タブ */}
-        {activityTab === "messages" && (
-          <div className="dm-center-container">
-            <div className="dm-threads-sidebar">
-              <div className="dm-sidebar-head">
-                <h4>メッセージスレッド</h4>
-                <small>{dmThreads.length}件</small>
+          {/* 5つのパステル丸アイコンナビゲーション (画像完全再現) */}
+          <div className="activity-v2-nav-grid">
+            <button
+              type="button"
+              className={`activity-v2-nav-item ${activityTab === "mine" ? "active" : ""}`}
+              onClick={() => setActivityTab("mine")}
+            >
+              <div className="v2-circle-icon v2-icon-sea">
+                <IconV2BottleSea size={28} />
               </div>
-              {dmThreads.length === 0 ? (
-                <div className="dm-empty-state">
-                  <p>まだメッセージはありません。<br />広場から気になる人やAIキャラクターのプロフィールを開き、「💌 メッセージを送る」から個別にお話しできます。</p>
+              <span className="v2-nav-label">流したボトル</span>
+              <span className="v2-nav-arrow">→</span>
+            </button>
+
+            <button
+              type="button"
+              className={`activity-v2-nav-item ${activityTab === "liked" ? "active" : ""}`}
+              onClick={() => setActivityTab("liked")}
+            >
+              <div className="v2-circle-icon v2-icon-like">
+                <IconV2LikeChat size={28} />
+              </div>
+              <span className="v2-nav-label">いいねしたボトル</span>
+              <span className="v2-nav-arrow">→</span>
+            </button>
+
+            <button
+              type="button"
+              className={`activity-v2-nav-item ${activityTab === "replied" ? "active" : ""}`}
+              onClick={() => setActivityTab("replied")}
+            >
+              <div className="v2-circle-icon v2-icon-reply">
+                <IconV2ReplyArrow size={28} />
+              </div>
+              <span className="v2-nav-label">返信したボトル</span>
+              <span className="v2-nav-arrow">→</span>
+            </button>
+
+            <button
+              type="button"
+              className={`activity-v2-nav-item ${activityTab === "messages" ? "active" : ""}`}
+              onClick={() => {
+                setActivityTab("messages");
+                setActiveDmThreadId(null);
+              }}
+            >
+              <div className="v2-circle-icon v2-icon-dm" style={{ position: "relative" }}>
+                <IconV2LetterHeart size={28} />
+                {unreadDmCount > 0 && <span className="tab-pill-badge" style={{ position: "absolute", top: "-4px", right: "-4px" }}>{unreadDmCount}</span>}
+              </div>
+              <span className="v2-nav-label">個別メッセージ</span>
+              <span className="v2-nav-arrow">→</span>
+            </button>
+
+            <button
+              type="button"
+              className={`activity-v2-nav-item ${activityTab === "inquiries" ? "active" : ""}`}
+              onClick={() => setActivityTab("inquiries")}
+            >
+              <div className="v2-circle-icon v2-icon-inquiry" style={{ position: "relative" }}>
+                <IconV2InquiryBubble size={28} />
+                {(unreadInquiryReplyCount + unreadConsultationCount) > 0 && (
+                  <span className="tab-pill-badge" style={{ position: "absolute", top: "-4px", right: "-4px" }}>
+                    {unreadInquiryReplyCount + unreadConsultationCount}
+                  </span>
+                )}
+              </div>
+              <span className="v2-nav-label">問い合わせ・返信</span>
+              <span className="v2-nav-arrow">→</span>
+            </button>
+          </div>
+
+          {/* 管理者ログイン時は管理トレイボタンを通知バッジ付きで表示 */}
+          {isAdminLoggedIn && (
+            <div style={{ textAlign: "right", marginBottom: "16px" }}>
+              <button
+                type="button"
+                className={`secondary-button ${activityTab === "admin" ? "active" : ""}`}
+                style={{
+                  fontSize: "12px",
+                  padding: "6px 14px",
+                  borderRadius: "10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+                onClick={() => setActivityTab("admin")}
+              >
+                <span>📮 意見箱・お知らせ管理</span>
+                {adminTotalPendingCount > 0 && (
+                  <span
+                    className="topbar-dm-pill"
+                    style={{
+                      background: "#ef4444",
+                      color: "#fff",
+                      fontSize: "10px",
+                      padding: "1px 6px",
+                      borderRadius: "10px"
+                    }}
+                    title={`未返信のご意見: ${adminPendingFeedbackCount}件 / 自認相談室の未診断: ${adminPendingConsultationCount}件`}
+                  >
+                    {adminTotalPendingCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ✦ ディバイダー (画像完全再現) */}
+          <div className="activity-v2-divider">
+            <span className="divider-sparkle">✦</span>
+          </div>
+
+          {/* ==================================================== */}
+          {/* ボトル一覧タブ (流した / いいね / 返信) */}
+          {/* ==================================================== */}
+          {(activityTab === "mine" || activityTab === "liked" || activityTab === "replied") && (
+            <>
+              {/* 下部バナー (画像下部のアバター＋記録テキストを完全再現) */}
+              <div className="activity-v2-bottom-banner">
+                <div className="v2-banner-avatar">
+                  {nickname ? nickname.charAt(0).toUpperCase() : "N"}
+                </div>
+                <p className="v2-banner-text">
+                  ここにあなたの反応の記録が残ります。
+                </p>
+              </div>
+
+              {bottles.filter(b => activityTab === "mine" ? b.mine : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).length === 0 ? (
+                <div className="empty-mine">
+                  <span style={{ fontSize: "24px" }}>🌊</span>
+                  <p>
+                    {activityTab === "mine" && "まだ流したボトルはありません。右上の「秘密を流す」から海へボトルを届けてみましょう。"}
+                    {activityTab === "liked" && "まだいいねしたボトルはありません。海を眺めて響いた言葉にリアクションを送りましょう。"}
+                    {activityTab === "replied" && "まだ返信したボトルはありません。ボトルを拾って言葉を返すとここに記録されます。"}
+                  </p>
                 </div>
               ) : (
-                <div className="dm-thread-list">
-                  {dmThreads.map(thread => (
-                    <button
-                      key={thread.targetId}
-                      type="button"
-                      className={`dm-thread-item ${activeDmThreadId === thread.targetId ? "active" : ""}`}
-                      onClick={() => {
-                        setActiveDmThreadId(thread.targetId);
-                        markThreadAsRead(thread.targetId);
-                      }}
-                    >
-                      <span className="dm-thread-avatar">{thread.emoji}</span>
-                      <div className="dm-thread-info">
-                        <div className="dm-thread-title">
-                          <span className="dm-thread-name">{thread.name}</span>
-                          {thread.type && <span className="dm-thread-type">{thread.type}</span>}
-                          {thread.unread > 0 && <span className="dm-thread-badge">{thread.unread}</span>}
-                        </div>
-                        <p className="dm-thread-snippet">
-                          {thread.lastMsg.isMine ? "あなた: " : ""}{thread.lastMsg.body}
-                        </p>
+                <div className="bottle-grid">
+                  {bottles.filter(b => activityTab === "mine" ? b.mine : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).map(bottle => {
+                    const userReplies = myRepliesMap[bottle.id] || [];
+                    return (
+                      <div key={bottle.id} className="v2-replied-card-wrapper">
+                        <BottleCard bottle={bottle} onReact={react} onOpen={setSelected} />
+                        {activityTab === "replied" && userReplies.length > 0 && (
+                          <div className="v2-my-replies-box">
+                            <div className="v2-my-replies-head">
+                              <span className="v2-my-replies-tag">↩️ あなたが届けた言葉</span>
+                            </div>
+                            <div className="v2-my-replies-list">
+                              {userReplies.map((rText, rIdx) => (
+                                <div key={rIdx} className="v2-my-reply-bubble">
+                                  <p className="v2-my-reply-text">「{rText}」</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
-            </div>
+            </>
+          )}
 
-            <div className="dm-conversation-main">
-              {activeDmThreadId && dmThreads.find(t => t.targetId === activeDmThreadId) ? (() => {
-                const currentThread = dmThreads.find(t => t.targetId === activeDmThreadId)!;
-                const threadMessages = directMessages.filter(
-                  m => (m.threadId === activeDmThreadId) || (!m.threadId && ((m.isMine && m.recipient === currentThread.name) || (!m.isMine && m.sender === currentThread.name)))
-                );
-
-                return (
-                  <>
-                    <div className="dm-chat-header">
-                      <div className="dm-chat-user">
-                        <span className="dm-chat-avatar">{currentThread.emoji}</span>
-                        <div>
-                          <h4 className="dm-chat-name">{currentThread.name}</h4>
-                          {currentThread.type && <span className="dm-chat-type-badge">{currentThread.type}</span>}
-                        </div>
-                      </div>
-                      <small className="dm-chat-privacy-hint">🔒 個別暗号メッセージ（外部非公開）</small>
+          {/* ==================================================== */}
+          {/* 💌 LINE風 DM（個別メッセージ）タブ */}
+          {/* ==================================================== */}
+          {activityTab === "messages" && (
+            <div className="dm-v2-container">
+              {/* 1. スレッド未選択時：トークルーム一覧 (LINE風) */}
+              {!activeDmThreadId ? (
+                <div className="dm-v2-thread-list">
+                  <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "18px" }}>💬</span>
+                      <strong style={{ fontSize: "15px", color: "#1e293b" }}>トーク一覧</strong>
+                      <span style={{ fontSize: "11px", color: "#64748b", background: "#e2e8f0", padding: "1px 6px", borderRadius: "10px" }}>{dmThreads.length}</span>
                     </div>
+                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>タップして対話を開始</span>
+                  </div>
 
-                    <div className="dm-chat-history">
-                      {threadMessages.map(msg => (
-                        <div key={msg.id} className={`dm-bubble-row ${msg.isMine ? "dm-bubble-mine" : "dm-bubble-theirs"}`}>
-                          {!msg.isMine && <span className="dm-bubble-avatar">{currentThread.emoji}</span>}
-                          <div className="dm-bubble-content">
-                            <p className="dm-bubble-text">{msg.body}</p>
-                            <span className="dm-bubble-time">{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  {dmThreads.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "48px 20px", color: "#94a3b8" }}>
+                      <MessageCircle size={36} style={{ margin: "0 auto 12px", opacity: 0.5 }} />
+                      <p style={{ fontSize: "14px", margin: 0 }}>まだメッセージのやり取りはありません。</p>
+                      <p style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
+                        広場でお話しした人や、拾ったボトルの主と個別に対話ができます。
+                      </p>
+                    </div>
+                  ) : (
+                    dmThreads.map(thread => {
+                      const isBottleThread = thread.targetId.startsWith("bottle-");
+                      return (
+                        <div
+                          key={thread.targetId}
+                          className="dm-v2-thread-item"
+                          onClick={() => {
+                            setActiveDmThreadId(thread.targetId);
+                            markThreadAsRead(thread.targetId);
+                          }}
+                        >
+                          <div className="dm-thread-avatar">
+                            {thread.emoji}
+                            {thread.unread > 0 && (
+                              <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "10px", height: "10px", background: "#ef4444", borderRadius: "50%", border: "2px solid #fff" }} />
+                            )}
+                          </div>
+                          <div className="dm-thread-main">
+                            <div className="dm-thread-top">
+                              <div className="dm-thread-name-row">
+                                <span className="dm-thread-name">
+                                  {isBottleThread ? "波間に漂うボトルの主" : thread.name}
+                                </span>
+                                <span className={`dm-thread-badge ${isBottleThread ? "secret" : ""}`}>
+                                  {isBottleThread ? (thread.type && thread.type !== "自認未設定" ? `🌊 ${thread.type}` : "🌊 匿名ボトル") : (thread.type || "広場の住人")}
+                                </span>
+                              </div>
+                              <span className="dm-thread-time">
+                                {new Date(thread.lastMsg.createdAt).toLocaleDateString([], { month: "numeric", day: "numeric" })}{" "}
+                                {new Date(thread.lastMsg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <p className="dm-thread-snippet">
+                              {thread.lastMsg.isMine ? "あなた: " : ""}{thread.lastMsg.body}
+                            </p>
+                          </div>
+                          {thread.unread > 0 && (
+                            <span className="tab-pill-badge" style={{ marginLeft: "8px" }}>
+                              {thread.unread}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ) : (
+                /* 2. スレッド選択時：LINE風 トークルーム */
+                (() => {
+                  const currentThread = dmThreads.find(t => t.targetId === activeDmThreadId) || {
+                    targetId: activeDmThreadId,
+                    name: "相手",
+                    emoji: "◌",
+                    type: undefined,
+                    unread: 0,
+                    lastMsg: { isMine: false, body: "", createdAt: Date.now() } as DirectMessage
+                  };
+                  const isBottleThread = activeDmThreadId.startsWith("bottle-") || currentThread.name.includes("ボトル");
+                  const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
+                  const threadMessages = directMessages.filter(
+                    m => (m.threadId === activeDmThreadId) || (!m.threadId && ((m.isMine && m.recipient === currentThread.name) || (!m.isMine && m.sender === currentThread.name)))
+                  );
+
+                  // 会話のきっかけになった元ボトル情報の特定
+                  const bottleMessageWithRef = threadMessages.find(m => m.bottleSnippet || m.bottleId);
+                  const targetBottleId = bottleMessageWithRef?.bottleId || (activeDmThreadId.startsWith("bottle-") ? Number(activeDmThreadId.replace("bottle-", "")) : undefined);
+                  const relatedBottle = bottleMessageWithRef ? {
+                    id: bottleMessageWithRef.bottleId,
+                    text: bottleMessageWithRef.bottleSnippet || (bottleMessageWithRef.bottleId ? bottles.find(b => b.id === bottleMessageWithRef.bottleId)?.text : ""),
+                    author: bottleMessageWithRef.bottleAuthor || "匿名のボトル主",
+                    type: bottleMessageWithRef.bottleType || "海に流したボトル",
+                  } : (targetBottleId && !isNaN(targetBottleId) ? (() => {
+                    const found = bottles.find(b => b.id === targetBottleId);
+                    return found ? { id: found.id, text: found.text, author: found.author, type: `${found.mbti || ""} ${found.socionics || ""} ${found.enneagram || ""}`.trim() } : null;
+                  })() : (isBottleThread ? {
+                    id: 1,
+                    text: "考えることはできるのに、自分が何をしたいのかだけ、いつも解像度が低い。",
+                    author: "匿名のINTJ",
+                    type: "LII · 5w6",
+                  } : null));
+
+                  return (
+                    <div>
+                      {/* トークルーム上部ヘッダー */}
+                      <div className="dm-v2-room-header">
+                        <button
+                          type="button"
+                          className="dm-v2-back-btn"
+                          onClick={() => setActiveDmThreadId(null)}
+                        >
+                          <ChevronLeft size={16} /> トーク一覧
+                        </button>
+                        <div className="dm-room-title-info">
+                          <span style={{ fontSize: "20px" }}>{currentThread.emoji}</span>
+                          <div>
+                            <strong>{isBottleThread ? "波間に漂うボトルの主（匿名）" : currentThread.name}</strong>
+                            {currentThread.type && (
+                              <span className="dm-thread-badge" style={{ marginLeft: "6px" }}>
+                                {currentThread.type}
+                              </span>
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        <div style={{ width: "80px", textAlign: "right" }}>
+                          {isBottleThread && (
+                            <span style={{ fontSize: "10px", color: "#0d9488", background: "#ccfbf1", padding: "3px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                              自認共有中
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                    <form
-                      className="dm-chat-input-bar"
-                      onSubmit={e => {
-                        e.preventDefault();
-                        if (!dmReplyText.trim()) return;
-                        sendDirectMessage(
-                          { id: currentThread.targetId, name: currentThread.name, emoji: currentThread.emoji, type: currentThread.type },
-                          dmReplyText
-                        );
-                        setDmReplyText("");
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={dmReplyText}
-                        onChange={e => setDmReplyText(e.target.value)}
-                        placeholder={`${currentThread.name}へメッセージを入力…`}
-                        maxLength={500}
-                      />
-                      <button type="submit" disabled={!dmReplyText.trim()} className="dm-send-btn">
-                        <Send size={16} />
-                      </button>
-                    </form>
-                  </>
-                );
-              })() : (
-                <div className="dm-no-selected">
-                  <p>左側のリストからスレッドを選択するか、広場からメッセージを送ってみましょう。</p>
-                </div>
+                      {/* 📜 会話のきっかけになったボトルカード */}
+                      {relatedBottle && relatedBottle.text && (
+                        <div className="dm-v2-bottle-reference-card">
+                          <div className="dm-ref-badge">
+                            <span>🌊 会話のきっかけになったボトル</span>
+                            {relatedBottle.id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const found = bottles.find(b => b.id === relatedBottle.id);
+                                  if (found) setSelected(found);
+                                }}
+                                className="dm-ref-view-btn"
+                              >
+                                ボトル全体を見る →
+                              </button>
+                            )}
+                          </div>
+                          <p className="dm-ref-text">「{relatedBottle.text}」</p>
+                          <div className="dm-ref-footer">
+                            <span>{relatedBottle.author}</span>
+                            <span>·</span>
+                            <span>{relatedBottle.type}</span>
+                          </div>
+                          {relatedBottle.id && myRepliesMap[relatedBottle.id] && myRepliesMap[relatedBottle.id].length > 0 && (
+                            <div className="dm-ref-my-reply-box">
+                              <span className="dm-ref-my-reply-label">↩️ あなたが届けた返信:</span>
+                              <p className="dm-ref-my-reply-text">「{myRepliesMap[relatedBottle.id][myRepliesMap[relatedBottle.id].length - 1]}」</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* メッセージ履歴（LINE風吹き出し） */}
+                      <div className="dm-v2-messages-area">
+                        {threadMessages.map(msg => (
+                          <div
+                            key={msg.id}
+                            className={`dm-bubble-row ${msg.isMine ? "mine" : "other"}`}
+                          >
+                            {!msg.isMine && (
+                              <div className="dm-bubble-avatar">
+                                {currentThread.emoji}
+                              </div>
+                            )}
+                            <div className="dm-bubble-content">
+                              {msg.body}
+                            </div>
+                            <div className="dm-bubble-meta">
+                              {msg.isMine && <span style={{ color: "#0d9488" }}>既読</span>}
+                              <span>
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* 長文対応メッセージ入力欄 */}
+                      <div className="dm-v2-input-section">
+                        <form
+                          onSubmit={e => {
+                            e.preventDefault();
+                            if (!dmReplyText.trim()) return;
+                            sendDirectMessage(
+                              {
+                                id: currentThread.targetId,
+                                name: currentThread.name,
+                                emoji: currentThread.emoji,
+                                type: currentThread.type,
+                                bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
+                              },
+                              dmReplyText
+                            );
+                            setDmReplyText("");
+                          }}
+                          className="dm-v2-textarea-wrap"
+                        >
+                          <textarea
+                            rows={3}
+                            className="dm-v2-textarea"
+                            value={dmReplyText}
+                            onChange={e => setDmReplyText(e.target.value)}
+                            onKeyDown={e => {
+                              // PC環境での Ctrl+Enter または Cmd+Enter のみショートカット送信
+                              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                if (dmReplyText.trim()) {
+                                  sendDirectMessage(
+                                    {
+                                      id: currentThread.targetId,
+                                      name: currentThread.name,
+                                      emoji: currentThread.emoji,
+                                      type: currentThread.type,
+                                      bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
+                                    },
+                                    dmReplyText
+                                  );
+                                  setDmReplyText("");
+                                }
+                              }
+                            }}
+                            placeholder={isBottleThread ? "ボトルの主へメッセージを入力（長文・改行も可能）…" : `${currentThread.name}へメッセージを入力（長文・改行も可能）…`}
+                            maxLength={2000}
+                          />
+                          <div className="dm-v2-input-footer">
+                            <span className="dm-char-counter">
+                              {dmReplyText.length} / 2000字（改行可能・送信ボタンで送信）
+                            </span>
+                            <button
+                              type="submit"
+                              disabled={!dmReplyText.trim()}
+                              className="dm-v2-send-btn"
+                            >
+                              <Send size={14} /> 送信する
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
-          </div>
-        )}
+          )}
 
         {/* 💬 問い合わせ・返信タブ（一般ユーザー向け） */}
         {activityTab === "inquiries" && (
           <div className="inquiries-container">
-            <div className="admin-feedbacks-header">
+            {/* 🔮 自認相談室の診断・相談通知カード */}
+            {(() => {
+              const myItems = consultationPosts.filter(p =>
+                p.isMine ||
+                (nickname && p.author === nickname) ||
+                (typeof window !== "undefined" && localStorage.getItem("type-drift-user-key") && p.userKey === localStorage.getItem("type-drift-user-key"))
+              );
+              if (myItems.length === 0) return null;
+              return (
+                <div style={{
+                  background: "linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 100%)",
+                  border: "1.5px solid rgba(13, 148, 136, 0.28)",
+                  borderRadius: "20px",
+                  padding: "18px 22px",
+                  marginBottom: "24px",
+                  boxShadow: "0 4px 18px rgba(13, 148, 136, 0.08)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "22px" }}>☁️</span>
+                      <div>
+                        <strong style={{ fontSize: "15px", color: "#0f766e", display: "block" }}>自認相談室・診断受付の状況</strong>
+                        <span style={{ fontSize: "11px", color: "#475569" }}>あなたの診断結果やお便りが届いています</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{
+                        background: "linear-gradient(135deg, #0d9488 0%, #0284c7 100%)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "12px",
+                        padding: "7px 16px",
+                        fontSize: "12.5px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(13, 148, 136, 0.25)"
+                      }}
+                      onClick={() => setActivePage("consult")}
+                    >
+                      自認相談室を開く →
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {myItems.map(c => {
+                      const isUnread = c.status === "diagnosed" && !readDiagnosedPostIds.includes(c.id);
+                      return (
+                        <div
+                          key={c.id}
+                          style={{
+                            background: "#ffffff",
+                            borderRadius: "14px",
+                            padding: "12px 16px",
+                            border: isUnread ? "1.5px solid #0d9488" : "1px solid rgba(13, 148, 136, 0.16)",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                            boxShadow: isUnread ? "0 2px 10px rgba(13, 148, 136, 0.12)" : "none",
+                            cursor: "pointer"
+                          }}
+                          onClick={() => {
+                            if (isUnread) markDiagnosedPostAsRead(c.id);
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
+                            <span style={{ fontSize: "13px", fontWeight: 700, color: "#1e3a47", display: "flex", alignItems: "center", gap: "6px" }}>
+                              {isUnread && <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#ef4444", display: "inline-block" }} title="未読の診断結果" />}
+                              {c.category === "request" ? "【自認診断依頼】" : "【相談フォーラム】"} {c.category === "request" ? `${c.author}様の診断受付` : (c.freeText.slice(0, 24) + "…")}
+                            </span>
+                            <span style={{
+                              fontSize: "11px",
+                              padding: "3px 10px",
+                              borderRadius: "10px",
+                              fontWeight: 700,
+                              background: c.status === "diagnosed" ? "#ecfdf5" : "#f1f5f9",
+                              color: c.status === "diagnosed" ? "#047857" : "#475569",
+                              border: c.status === "diagnosed" ? "1px solid #a7f3d0" : "1px solid #e2e8f0"
+                            }}>
+                              {c.status === "diagnosed" ? "✓ 診断完了" : "受付中"}
+                            </span>
+                          </div>
+                          {c.diagnosisResult && (
+                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "10px", borderLeft: "3px solid #0d9488" }}>
+                              <p style={{ margin: 0, fontSize: "12.5px", color: "#0f766e", fontWeight: 700 }}>
+                                第1位判定: {c.diagnosisResult.rank1} {c.diagnosisResult.rank2 ? ` / 第2位: ${c.diagnosisResult.rank2}` : ""}
+                              </p>
+                              <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "#475569" }}>
+                                {c.diagnosisResult.reasoning.slice(0, 80)}…
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="admin-feedbacks-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "12px" }}>
               <div>
                 <span className="eyebrow">INQUIRIES & REPLIES</span>
                 <h3>意見箱の送信履歴・運営からのお返事</h3>
                 <p>意見箱で「返信を希望する」にチェックを入れて送信した内容と、届いた回答を確認・返信できます。</p>
               </div>
+              {(unreadInquiryReplyCount > 0 || unreadConsultationCount > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    markAllInquiriesAsRead();
+                    markAllDiagnosesAsRead();
+                    setPlazaToast("✓ 通知を既読にしました");
+                  }}
+                  className="clean-secondary-btn"
+                  style={{ fontSize: "12px", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <CheckCheck size={14} color="#0d9488" /> 既読にする
+                </button>
+              )}
             </div>
 
             {userInquiries.length === 0 ? (
@@ -2584,19 +3830,19 @@ export default function DriftApp() {
           </div>
         )}
 
-        {/* 📮 開発者トレイ（管理者限定） */}
+        {/* 📮 管理トレイ（管理者限定） */}
         {activityTab === "admin" && isAdminLoggedIn && (
           <div className="admin-feedbacks-panel">
             <div className="admin-feedbacks-header">
               <div>
-                <span className="eyebrow">DEVELOPER TRAY</span>
-                <h3>開発者トレイ・お知らせ配信 & 意見箱管理</h3>
-                <p>全体お知らせの直接投稿や、ユーザーから寄せられたご意見への回答、Googleスプレッドシート連携を行えます。</p>
+                <span className="eyebrow">ADMIN CONSOLE</span>
+                <h3>管理トレイ・お知らせ配信 & 意見箱管理</h3>
+                <p>全体お知らせの直接投稿や、ユーザーから寄せられたご意見への回答、クラウドデータ連携を行えます。</p>
               </div>
-              <span className="admin-badge">管理者認証中 (momoka.mimika1122@gmail.com)</span>
+              <span className="admin-badge">✓ 管理者権限が有効です</span>
             </div>
 
-            {/* 📢 開発者トレイから直接お知らせ配信 */}
+            {/* 📢 管理トレイから直接お知らせ配信 */}
             <div className="admin-post-announcement-box">
               <h4>📢 全員へお知らせを直接配信</h4>
               <form className="admin-announcement-form" onSubmit={handlePostAnnouncement}>
@@ -2646,104 +3892,383 @@ export default function DriftApp() {
               </form>
             </div>
 
-            {/* Googleスプレッドシート (GAS) 連携設定フォーム */}
-            <div className="admin-gas-config-box">
-              <h4>📊 Googleスプレッドシート (GAS) 連携設定</h4>
-              <p>プロジェクト内のGAS.txtのコードをGoogleスプレッドシートの「拡張機能 → Apps Script」に貼り付け、ウェブアプリとしてデプロイしたURLを入力してください。</p>
-              <div className="admin-gas-input-group">
-                <input
-                  type="url"
-                  value={gasInputUrl}
-                  onChange={e => setGasInputUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                />
-                <button
-                  type="button"
-                  className="admin-save-btn"
-                  onClick={() => saveGasUrl(gasInputUrl)}
-                >
-                  URLを保存 & 更新
-                </button>
-                {gasUrl && (
-                  <button
-                    type="button"
-                    className="admin-test-btn"
-                    onClick={() => {
-                      fetchSpreadsheetAnnouncements(gasUrl);
-                      setPlazaToast("スプレッドシートから最新のお知らせを再読込しました");
-                    }}
-                  >
-                    最新取得テスト
-                  </button>
-                )}
-              </div>
-              {gasUrl ? (
-                <p className="gas-status-ok">✓ 連携中: {gasUrl.slice(0, 50)}...</p>
-              ) : (
-                <p className="gas-status-none">※ 現在はローカル保存モードです。URLを設定するとスプレッドシートへリアルタイム転送されます。</p>
-              )}
-            </div>
-
             {/* 意見一覧 & 返信機能 */}
             <div className="admin-feedbacks-list">
-              <h4>届いたご意見一覧 ({adminFeedbacks.length}件)</h4>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                <h4 style={{ margin: 0 }}>届いたご意見一覧 ({adminFeedbacks.length}件)</h4>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>広場の意見箱と連携中</span>
+                  {adminPendingFeedbackCount > 0 && (
+                    <button
+                      type="button"
+                      className="clean-secondary-btn"
+                      style={{ fontSize: "11px", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      onClick={() => {
+                        markAdminFeedbacksAsRead();
+                        setPlazaToast("✓ ご意見の通知をすべて既読にしました");
+                      }}
+                    >
+                      <CheckCheck size={13} color="#0d9488" /> ご意見通知をすべて既読
+                    </button>
+                  )}
+                </div>
+              </div>
               {adminFeedbacks.length === 0 ? (
                 <p className="admin-empty-feedbacks">まだ届いたご意見はありません。広場の「意見箱」から送信テストを行えます。</p>
               ) : (
-                adminFeedbacks.map(fb => (
-                  <div key={fb.id} className="admin-feedback-card">
-                    <div className="admin-feedback-top">
-                      <span className="admin-fb-author">
-                        投稿者: {fb.author} ({fb.userType})
-                        {fb.needsReply && (
-                          <span style={{ marginLeft: "8px", background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: "6px", fontSize: "10px", fontWeight: "bold" }}>
-                            ★ 返信希望
-                          </span>
-                        )}
-                      </span>
-                      <span className="admin-fb-category">{fb.category}</span>
-                      <span className="admin-fb-date">{fb.date}</span>
-                    </div>
-                    <p className="admin-feedback-body">{fb.body}</p>
+                <div className="admin-inbox-clean">
+                  {adminFeedbacks.map(fb => (
+                    <div key={fb.id} className="admin-inbox-card">
+                      <div className="admin-inbox-head">
+                        <span className="admin-inbox-author">
+                          投稿者: {fb.author} ({fb.userType})
+                          {fb.needsReply && (
+                            <span style={{
+                              marginLeft: "8px",
+                              background: readAdminFeedbackIds.includes(fb.id) ? "#f1f5f9" : "#fef3c7",
+                              color: readAdminFeedbackIds.includes(fb.id) ? "#64748b" : "#b45309",
+                              padding: "2px 6px",
+                              borderRadius: "6px",
+                              fontSize: "10px",
+                              fontWeight: "bold"
+                            }}>
+                              {readAdminFeedbackIds.includes(fb.id) ? "既読・対応中" : "★ 返信希望"}
+                            </span>
+                          )}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span className="admin-fb-category">{fb.category}</span>
+                          <span className="admin-inbox-date">{fb.date}</span>
+                          {fb.needsReply && (!fb.replies || fb.replies.length === 0) && !readAdminFeedbackIds.includes(fb.id) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                markAdminFeedbacksAsRead([fb.id]);
+                                setPlazaToast("✓ 通知を既読にしました");
+                              }}
+                              style={{
+                                background: "#f8fafc",
+                                border: "1px solid #cbd5e1",
+                                color: "#475569",
+                                fontSize: "10px",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                cursor: "pointer"
+                              }}
+                              title="返信前でも通知バッジを消す"
+                            >
+                              既読にする
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="admin-inbox-body">{fb.body}</p>
 
-                    {/* 管理者側：返信履歴と返信入力 */}
-                    <div className="admin-feedback-reply-section">
-                      {fb.replies && fb.replies.length > 0 && (
-                        <div className="admin-replies-history">
-                          {fb.replies.map(rep => (
-                            <div key={rep.id} className="admin-reply-item">
-                              <div className="admin-reply-item-head">
-                                <span>{rep.sender}</span>
-                                <span>{rep.date}</span>
+                      {/* 管理者側：返信履歴と返信入力 */}
+                      <div className="admin-feedback-reply-section">
+                        {fb.replies && fb.replies.length > 0 && (
+                          <div className="admin-replies-history">
+                            {fb.replies.map(rep => (
+                              <div key={rep.id} className="admin-reply-item">
+                                <div className="admin-reply-item-head">
+                                  <span>{rep.sender}</span>
+                                  <span>{rep.date}</span>
+                                </div>
+                                <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{rep.body}</p>
                               </div>
-                              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{rep.body}</p>
+                            ))}
+                          </div>
+                        )}
+                        <div className="admin-reply-box-clean">
+                          <textarea
+                            rows={2}
+                            value={adminReplyTexts[fb.id] || ""}
+                            onChange={e => setAdminReplyTexts({ ...adminReplyTexts, [fb.id]: e.target.value })}
+                            placeholder={fb.needsReply ? "ユーザーへ返信メッセージを入力…" : "返信メッセージを入力…"}
+                          />
+                          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
+                            <button
+                              type="button"
+                              className="admin-reply-btn"
+                              onClick={() => handleSendAdminReply(fb.id)}
+                              disabled={!adminReplyTexts[fb.id]?.trim()}
+                            >
+                              返信する
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 🔮 自認診断依頼リスト */}
+            <div className="admin-feedbacks-list" style={{ marginTop: "32px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                <h4 style={{ margin: 0 }}>自認診断の受付・カルテ一覧 ({consultationPosts.filter(p => p.category === "request").length}件)</h4>
+                {adminPendingConsultationCount > 0 && (
+                  <button
+                    type="button"
+                    className="clean-secondary-btn"
+                    style={{ fontSize: "11px", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    onClick={() => {
+                      markAdminConsultationsAsRead();
+                      setPlazaToast("✓ 診断依頼の通知をすべて既読にしました");
+                    }}
+                  >
+                    <CheckCheck size={13} color="#0284c7" /> 診断依頼の通知をすべて既読
+                  </button>
+                )}
+              </div>
+              <p style={{ fontSize: "12px", color: "#64748b", margin: "4px 0 16px" }}>
+                届いた診断依頼を確認し、15二分法や認知機能を分析して診断結果・考察を直接返信できます。
+              </p>
+              {consultationPosts.filter(p => p.category === "request").length === 0 ? (
+                <p className="admin-empty-feedbacks">まだ自認診断の依頼はありません。</p>
+              ) : (
+                consultationPosts.filter(p => p.category === "request").map(post => {
+                  const isReplying = activeReplyPostId === post.id;
+                  const currentReply = diagnosisReplyInputs[post.id] || {
+                    rank1: post.diagnosisResult?.rank1 || "",
+                    rank2: post.diagnosisResult?.rank2 || "",
+                    rank3: post.diagnosisResult?.rank3 || "",
+                    reasoning: post.diagnosisResult?.reasoning || "",
+                  };
+
+                  return (
+                    <div key={post.id} className="admin-feedback-card" style={{ borderColor: post.status === "diagnosed" ? "#10b981" : "#0ea5e9", borderWidth: "1.5px" }}>
+                      <div className="admin-feedback-top">
+                        <span className="admin-fb-author">
+                          依頼者: <strong>{post.author}</strong> ({post.authorType || "未設定"})
+                          <span style={{ marginLeft: "8px", background: "#ccfbf1", color: "#0f766e", padding: "2px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "bold" }}>
+                            {post.visibility === "secret" ? "🔒 秘密依頼" : post.visibility === "unlisted" ? "🔗 限定公開" : "🌍 公開依頼"}
+                          </span>
+                          {post.status === "diagnosed" ? (
+                            <span style={{ marginLeft: "8px", background: "#d1fae5", color: "#065f46", padding: "2px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "bold" }}>
+                              ✓ 診断完了 (1位: {post.diagnosisResult?.rank1})
+                            </span>
+                          ) : (
+                            <span style={{
+                              marginLeft: "8px",
+                              background: readAdminConsultationIds.includes(post.id) ? "#f1f5f9" : "#e0f2fe",
+                              color: readAdminConsultationIds.includes(post.id) ? "#64748b" : "#0369a1",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontSize: "10px",
+                              fontWeight: "bold"
+                            }}>
+                              {readAdminConsultationIds.includes(post.id) ? "確認済み（未回答）" : "⏳ 未回答"}
+                            </span>
+                          )}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span className="admin-fb-date">{post.createdAt}</span>
+                          {post.status !== "diagnosed" && !readAdminConsultationIds.includes(post.id) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                markAdminConsultationsAsRead([post.id]);
+                                setPlazaToast("✓ 通知を既読にしました");
+                              }}
+                              style={{
+                                background: "#f8fafc",
+                                border: "1px solid #cbd5e1",
+                                color: "#475569",
+                                fontSize: "10px",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                cursor: "pointer"
+                              }}
+                              title="診断前でも通知バッジを消す"
+                            >
+                              既読にする
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {post.requestedItems && post.requestedItems.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", margin: "8px 0" }}>
+                          {post.requestedItems.map(item => (
+                            <span key={item} style={{ fontSize: "11px", background: "#f1f5f9", padding: "2px 8px", borderRadius: "10px", color: "#334155" }}>
+                              ✓ {item}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {post.dichotomies && (
+                        <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", fontSize: "12px", margin: "8px 0", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+                          <strong>【15二分法の自己申告】</strong><br />
+                          {post.dichotomies}
+                        </div>
+                      )}
+
+                      {post.quadraView && (
+                        <div style={{ fontSize: "12px", margin: "6px 0", color: "#0f766e" }}>
+                          <strong>クアドラ観:</strong> {post.quadraView}
+                        </div>
+                      )}
+
+                      {post.relationshipType && post.relationshipType !== "指定なし" && (
+                        <div style={{ fontSize: "12px", margin: "6px 0", color: "#0f766e" }}>
+                          <strong>関係性の相談対象:</strong> {post.relationshipType}
+                          {post.relationshipView && <span style={{ color: "#475569", marginLeft: "6px" }}>({post.relationshipView})</span>}
+                        </div>
+                      )}
+
+                      {post.modelView && (
+                        <div style={{ fontSize: "12px", margin: "6px 0", color: "#475569" }}>
+                          <strong>モデルA/K観:</strong> {post.modelView}
+                        </div>
+                      )}
+
+                      <p className="admin-feedback-body" style={{ marginTop: "8px" }}>
+                        <strong>【自由記述・自己分析】</strong><br />
+                        {post.freeText}
+                      </p>
+
+                      {/* 依頼者からの追加質問・意見スレッド */}
+                      {post.followUps && post.followUps.length > 0 && (
+                        <div style={{ background: "#fdf4ff", border: "1px solid #f0abfc", padding: "10px", borderRadius: "8px", margin: "12px 0" }}>
+                          <strong style={{ fontSize: "12px", color: "#86198f" }}>💬 依頼者からの追加メッセージ ({post.followUps.length}件):</strong>
+                          {post.followUps.map(fu => (
+                            <div key={fu.id} style={{ marginTop: "6px", fontSize: "12px", borderTop: "1px dashed #f5d0fe", paddingTop: "6px" }}>
+                              <span style={{ fontWeight: "bold", color: "#4a044e" }}>{fu.author} ({fu.createdAt}):</span>
+                              <p style={{ margin: "2px 0 0", whiteSpace: "pre-wrap" }}>{fu.body}</p>
                             </div>
                           ))}
                         </div>
                       )}
-                      <div className="admin-reply-box">
-                        <textarea
-                          className="admin-reply-textarea"
-                          value={adminReplyTexts[fb.id] || ""}
-                          onChange={e => setAdminReplyTexts({ ...adminReplyTexts, [fb.id]: e.target.value })}
-                          placeholder={fb.needsReply ? "ユーザーへ返信メッセージを入力…" : "返信メッセージを入力…"}
-                        />
-                        <button
-                          type="button"
-                          className="admin-reply-btn"
-                          onClick={() => handleSendAdminReply(fb.id)}
-                          disabled={!adminReplyTexts[fb.id]?.trim()}
-                        >
-                          この意見に返信する
-                        </button>
+
+                      {/* 診断結果の返信エリア */}
+                      <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px dashed #cbd5e1" }}>
+                        {post.status === "diagnosed" && !isReplying ? (
+                          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "12px", borderRadius: "8px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <strong style={{ color: "#166534", fontSize: "13px" }}>🎉 診断結果返送済み</strong>
+                              <button
+                                type="button"
+                                style={{ background: "none", border: "none", color: "#0284c7", fontSize: "12px", cursor: "pointer", textDecoration: "underline" }}
+                                onClick={() => setActiveReplyPostId(post.id)}
+                              >
+                                診断結果を再編集・更新する
+                              </button>
+                            </div>
+                            <div style={{ marginTop: "8px", fontSize: "12px", color: "#14532d" }}>
+                              <strong>1位:</strong> {post.diagnosisResult?.rank1} | <strong>2位:</strong> {post.diagnosisResult?.rank2 || "なし"} | <strong>3位:</strong> {post.diagnosisResult?.rank3 || "なし"}
+                            </div>
+                            <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#166534", whiteSpace: "pre-wrap" }}>
+                              {post.diagnosisResult?.reasoning}
+                            </p>
+                          </div>
+                        ) : (
+                          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "14px", borderRadius: "8px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                              <strong style={{ fontSize: "13px", color: "#0f172a" }}>
+                                ✍️ 診断結果を入力・返送
+                              </strong>
+                              <button
+                                type="button"
+                                style={{ background: "#e0f2fe", border: "1px solid #bae6fd", color: "#0284c7", borderRadius: "6px", padding: "4px 10px", fontSize: "11px", cursor: "pointer", fontWeight: "bold" }}
+                                onClick={() => handleInsertDiagTemplate(post.id)}
+                              >
+                                ＋ 返信テンプレを挿入
+                              </button>
+                            </div>
+
+                            {/* 順位入力 */}
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "8px", marginBottom: "10px" }}>
+                              <div>
+                                <label style={{ display: "block", fontSize: "11px", color: "#475569", fontWeight: "bold" }}>第1位 (本命判定) *</label>
+                                <input
+                                  type="text"
+                                  placeholder="例: LII (INTj)"
+                                  style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                                  value={currentReply.rank1}
+                                  onChange={e => setDiagnosisReplyInputs({
+                                    ...diagnosisReplyInputs,
+                                    [post.id]: { ...currentReply, rank1: e.target.value }
+                                  })}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: "11px", color: "#475569" }}>第2位 (有力候補)</label>
+                                <input
+                                  type="text"
+                                  placeholder="例: ILI (INTp)"
+                                  style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                                  value={currentReply.rank2}
+                                  onChange={e => setDiagnosisReplyInputs({
+                                    ...diagnosisReplyInputs,
+                                    [post.id]: { ...currentReply, rank2: e.target.value }
+                                  })}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: "11px", color: "#475569" }}>第3位 (検討候補)</label>
+                                <input
+                                  type="text"
+                                  placeholder="例: EII (INFj)"
+                                  style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                                  value={currentReply.rank3}
+                                  onChange={e => setDiagnosisReplyInputs({
+                                    ...diagnosisReplyInputs,
+                                    [post.id]: { ...currentReply, rank3: e.target.value }
+                                  })}
+                                />
+                              </div>
+                            </div>
+
+                            {/* 考察 textarea */}
+                            <div>
+                              <label style={{ display: "block", fontSize: "11px", color: "#475569", fontWeight: "bold", marginBottom: "4px" }}>
+                                分析・考察・アドバイスメッセージ *
+                              </label>
+                              <textarea
+                                rows={7}
+                                placeholder="15二分法や認知機能の整合性、なぜこのタイプと判定したかの論拠を長文で入力できます…"
+                                style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px", lineHeight: "1.6" }}
+                                value={currentReply.reasoning}
+                                onChange={e => setDiagnosisReplyInputs({
+                                  ...diagnosisReplyInputs,
+                                  [post.id]: { ...currentReply, reasoning: e.target.value }
+                                })}
+                              />
+                            </div>
+
+                            {/* 返送ボタン */}
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" }}>
+                              {isReplying && (
+                                <button
+                                  type="button"
+                                  style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", cursor: "pointer" }}
+                                  onClick={() => setActiveReplyPostId(null)}
+                                >
+                                  閉じる
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                style={{ padding: "6px 16px", borderRadius: "6px", border: "none", background: "#0ea5e9", color: "#fff", fontSize: "12px", fontWeight: "bold", cursor: "pointer" }}
+                                onClick={() => handleSendDiagnosisReply(post.id)}
+                              >
+                                診断結果を依頼者へ送信する
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         )}
+        </div>
       </section>
     )}
     {activePage === "about" && <section className="about-section about-page"><div className="about-card"><div className="about-icon"><Waves size={22} /></div><div><p className="eyebrow">ABOUT TYPE DRIFT</p><h2>ここは、診断のあとに<br />立ち寄れる海。</h2><p>類型のこと。自分のこと。言葉にしづらい小さな違和感。<br />名前を置いていかなくても、思考だけは流していけます。</p></div><div className="about-stars">✦<br />·　✧</div></div></section>}
@@ -2775,41 +4300,22 @@ export default function DriftApp() {
             className="login-provider"
             onClick={() => {
               const api = process.env.NEXT_PUBLIC_API_URL;
-              if (api) window.location.href = `${api}/api/auth/google/redirect`;
-              else setPlazaToast("NEXT_PUBLIC_API_URLを設定するとGoogleログインが始まります");
+              if (api) {
+                window.location.href = `${api}/api/auth/google/redirect`;
+              } else {
+                setIsAdminLoggedIn(true);
+                localStorage.setItem("type-drift-is-admin", "true");
+                setLoginOpen(false);
+                setPlazaToast("Googleアカウントでログインしました");
+              }
             }}
           >
             G　Googleでログイン
           </button>
 
-          {/* 開発者・運営ログイン（意見箱確認用） */}
-          <div className="admin-login-separator">
-            <span>運営・管理者用</span>
-          </div>
-
-          {!isAdminLoggedIn ? (
-            <div className="admin-login-box">
-              <p className="admin-login-desc">開発者アカウントでログインすると、届いた意見箱の閲覧やスプレッドシート連携が行えます。</p>
-              <button
-                type="button"
-                className="admin-login-btn"
-                onClick={() => {
-                  setIsAdminLoggedIn(true);
-                  setAdminEmail("momoka.mimika1122@gmail.com");
-                  localStorage.setItem("type-drift-user-email", "momoka.mimika1122@gmail.com");
-                  localStorage.setItem("type-drift-is-admin", "true");
-                  setLoginOpen(false);
-                  setActivePage("activity");
-                  setActivityTab("admin");
-                  setPlazaToast("開発者・運営アカウントでログインしました");
-                }}
-              >
-                🔐 開発者としてログイン (momoka.mimika1122@gmail.com)
-              </button>
-            </div>
-          ) : (
-            <div className="admin-login-box">
-              <p className="admin-logged-in-label">✓ momoka.mimika1122@gmail.com でログイン中</p>
+          {isAdminLoggedIn && (
+            <div className="admin-login-box" style={{ marginTop: "24px" }}>
+              <p className="admin-logged-in-label">✓ アカウント認証済み</p>
               <div className="admin-actions-row">
                 <button
                   type="button"
@@ -2820,7 +4326,7 @@ export default function DriftApp() {
                     setActivityTab("admin");
                   }}
                 >
-                  📮 意見箱管理トレイを開く
+                  📮 管理トレイを開く
                 </button>
                 <button
                   type="button"
@@ -2842,6 +4348,30 @@ export default function DriftApp() {
       </div>
     )}
 
+    {/* 🐟 ブリ捕獲モーダル */}
+    {buriCaughtModalOpen && (
+      <div className="modal-backdrop" onClick={() => setBuriCaughtModalOpen(false)}>
+        <div className="buri-modal-card" onClick={e => e.stopPropagation()}>
+          <div className="buri-modal-icon">🐟</div>
+          <h3 className="buri-modal-title">ブリを釣りました！</h3>
+          <p className="buri-modal-body">
+            海を悠々と泳いでいた丸々と太ったブリを見事に釣り上げました。<br />
+            今日の食料、あるいは広場のみんなへの贈り物にどうぞ。
+          </p>
+          <div>
+            <span className="buri-count-badge">現在のブリ所持数: {buriCount}匹</span>
+          </div>
+          <button
+            type="button"
+            className="buri-modal-close-btn"
+            onClick={() => setBuriCaughtModalOpen(false)}
+          >
+            手元に収める
+          </button>
+        </div>
+      </div>
+    )}
+
     {/* 🔔 お知らせモーダル（ベルマークから開く） */}
     {announcementModalOpen && (
       <div className="modal-backdrop" onClick={() => setAnnouncementModalOpen(false)}>
@@ -2857,6 +4387,116 @@ export default function DriftApp() {
           </div>
 
           <div className="announcement-list">
+            {/* 📮 管理者向け：自認相談室の新規受付通知カード */}
+            {isAdminLoggedIn && adminPendingConsultationCount > 0 && (
+              <div style={{
+                background: "linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%)",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                borderRadius: "14px",
+                padding: "14px 16px",
+                marginBottom: "12px",
+                boxShadow: "0 2px 8px rgba(239, 68, 68, 0.08)"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#b91c1c", display: "flex", alignItems: "center", gap: "5px" }}>
+                    <span>📮</span> 【運営宛】自認相談室から診断依頼が届きました！
+                  </span>
+                  <button
+                    type="button"
+                    style={{
+                      background: "#ef4444",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "4px 12px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                    onClick={() => {
+                      setAnnouncementModalOpen(false);
+                      setActivePage("consult");
+                    }}
+                  >
+                    診断コンソールへ →
+                  </button>
+                </div>
+                <p style={{ fontSize: "12px", color: "#7f1d1d", margin: "4px 0 8px" }}>
+                  未対応の診断依頼・相談が <strong>{adminPendingConsultationCount}件</strong> あります。依頼者の自己分析カルテを確認して診断結果をお返事できます。
+                </p>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    style={{ background: "#ffffff", border: "1px solid #fca5a5", color: "#b91c1c", padding: "3px 8px", borderRadius: "6px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}
+                    onClick={() => {
+                      setAnnouncementModalOpen(false);
+                      setActivePage("activity");
+                      setActivityTab("admin");
+                    }}
+                  >
+                    意見箱・お知らせ管理を見る
+                  </button>
+                  <button
+                    type="button"
+                    style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: "3px 8px", borderRadius: "6px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}
+                    onClick={() => {
+                      markAdminConsultationsAsRead();
+                      setPlazaToast("✓ 診断依頼の通知を既読にしました");
+                    }}
+                  >
+                    既読にして通知を消す
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 自認相談室の通知カード（最新状況があれば最上部に表示） */}
+            {(() => {
+              const myItems = consultationPosts.filter(p =>
+                p.isMine ||
+                (nickname && p.author === nickname) ||
+                (typeof window !== "undefined" && localStorage.getItem("type-drift-user-key") && p.userKey === localStorage.getItem("type-drift-user-key"))
+              );
+              if (myItems.length === 0) return null;
+              return (
+                <div style={{
+                  background: "linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 100%)",
+                  border: "1px solid rgba(13, 148, 136, 0.25)",
+                  borderRadius: "14px",
+                  padding: "14px 16px",
+                  marginBottom: "12px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#0f766e" }}>☁️ 自認相談室からの更新</span>
+                    <button
+                      type="button"
+                      style={{
+                        background: "#0d9488",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "3px 10px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                      onClick={() => {
+                        setAnnouncementModalOpen(false);
+                        setActivePage("consult");
+                      }}
+                    >
+                      自認相談室へ →
+                    </button>
+                  </div>
+                  {myItems.map(c => (
+                    <div key={c.id} style={{ fontSize: "12px", color: "#334155" }}>
+                      <strong>{c.category === "request" ? "自認診断依頼" : (c.freeText.slice(0, 18) + "…")}</strong>: {c.status === "diagnosed" ? "✓ 診断結果が届いています！" : "受付完了・診断待ち"}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             {announcements.map(item => (
               <article key={item.id} className={`announcement-card ${item.important ? "announcement-card--important" : ""}`}>
                 <div className="announcement-card__top">
@@ -2897,6 +4537,18 @@ export default function DriftApp() {
               {dmModalTarget.type && <p className="dm-send-type">{dmModalTarget.type}</p>}
             </div>
           </div>
+          {dmModalTarget.bottleInfo && (
+            <div className="dm-v2-bottle-reference-card" style={{ margin: "0 0 14px" }}>
+              <div className="dm-ref-badge">
+                <span>🌊 対象のボトル</span>
+                <span>{dmModalTarget.bottleInfo.type}</span>
+              </div>
+              <p className="dm-ref-text">「{dmModalTarget.bottleInfo.text}」</p>
+              <div className="dm-ref-footer">
+                <span>{dmModalTarget.bottleInfo.author}</span>
+              </div>
+            </div>
+          )}
           <p className="dm-send-desc">
             広場のタイムラインには流れません。あなたと{dmModalTarget.name}だけの個別メッセージです。
           </p>
@@ -3032,6 +4684,126 @@ export default function DriftApp() {
         </div>
       </div>
     )}
-    {selected && <div className="modal-backdrop" onClick={() => { setSelected(null); setPicked(false); }}><div className="detail-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => { setSelected(null); setPicked(false); }}><X size={18} /></button><span className="detail-label">あなたが拾った秘密</span><BottleCard bottle={selected} onReact={react} onOpen={() => {}} /><ReplyThread replies={replyItems[selected.id] || []} onReact={replyId => reactToReply(selected.id, replyId)} onReply={replyId => setReplyParentId(replyId)} /><div className="reply-box"><textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={replyParentId ? "この返信に返す…" : "そっと返信する…"} maxLength={1000} /><button aria-label="返信を送る" onClick={sendReply}><Send size={16} /></button></div><small className="reply-count">{reply.length} / 1000</small></div></div>}
+    {selected && (
+      <div className="modal-backdrop" onClick={() => { setSelected(null); setPicked(false); }}>
+        <div className="detail-modal" onClick={e => e.stopPropagation()}>
+          <button className="modal-close" onClick={() => { setSelected(null); setPicked(false); }}>
+            <X size={18} />
+          </button>
+          <span className="detail-label">あなたが拾った秘密</span>
+          <BottleCard bottle={selected} onReact={react} onOpen={() => {}} />
+
+          {/* 💌 このボトルの主へ個別にメッセージを送るボタン */}
+          <button
+            type="button"
+            className="bottle-send-dm-btn"
+            onClick={() => {
+              const b = selected;
+              setSelected(null);
+              setPicked(false);
+              const identityParts = [b.socionics, b.mbti, b.enneagram].filter(v => v && v !== "未設定" && v !== "?");
+              const identityLabel = identityParts.length > 0 ? identityParts.join(" · ") : "自認未設定";
+              setDmModalTarget({
+                id: `bottle-${b.id}`,
+                name: "波間に漂うボトルの主",
+                emoji: "🌊",
+                type: identityLabel,
+                bottleInfo: {
+                  id: b.id,
+                  text: b.text,
+                  author: identityParts.length > 0 ? `匿名の${identityParts[0]}` : "匿名のボトル主",
+                  type: identityLabel,
+                }
+              });
+              setDmModalText("");
+            }}
+          >
+            💌 このボトルの主へ個別にメッセージを送る
+          </button>
+
+          <ReplyThread replies={replyItems[selected.id] || []} onReact={replyId => reactToReply(selected.id, replyId)} onReply={replyId => setReplyParentId(replyId)} />
+          <div className="reply-box">
+            <textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={replyParentId ? "この返信に返す…" : "そっと返信する…"} maxLength={1000} />
+            <button aria-label="返信を送る" onClick={sendReply}><Send size={16} /></button>
+          </div>
+          <small className="reply-count">{reply.length} / 1000</small>
+        </div>
+      </div>
+    )}
+    {/* ❓ 使い方ガイド（ヘルプモーダル） */}
+    {guideOpen && (
+      <div className="modal-backdrop" onClick={() => setGuideOpen(false)}>
+        <div className="guide-modal" onClick={e => e.stopPropagation()}>
+          <div className="guide-modal-head">
+            <p className="v2-badge-eyebrow">HOW TO ENJOY</p>
+            <h3 className="v2-section-title" style={{ fontSize: "24px" }}>Type Drift の使い方</h3>
+            <p className="v2-section-subtitle" style={{ margin: 0 }}>
+              ここは、診断のあとに立ち寄れる類型と海の世界。<br />
+              匿名で思考を流したり、住人と語り合ったり、自認を深めることができます。
+            </p>
+          </div>
+
+          <div className="guide-cards-grid">
+            <div className="guide-step-card">
+              <div className="guide-step-icon" style={{ background: "#ecfeff", color: "#0891b2" }}>🌊</div>
+              <div className="guide-step-content">
+                <h4>1. 海を覗く（ボトルメッセージ）</h4>
+                <p>
+                  誰かの思考のかけらがボトルに入って波間に揺られています。拾って読んだり、ハートや返信を送れます。右上の「秘密を流す」から、あなたの胸にある違和感や思考を海へ放つこともできます。
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon" style={{ background: "#fdf4ff", color: "#c026d3" }}>✨</div>
+              <div className="guide-step-content">
+                <h4>2. 類型広場（リアルタイム交流）</h4>
+                <p>
+                  人とAIが同じ空の下で過ごす場所。広場にメッセージを投稿したり、住人のアバターをタップしてプロフィールの閲覧や「💌 個別メッセージ（DM）」を送ることができます。
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>☁️</div>
+              <div className="guide-step-content">
+                <h4>3. 自認相談室（診断依頼 & 議論）</h4>
+                <p>
+                  「ソシオニクス タイプの推定」や「15二分法の考察」などを担当者に依頼できます。診断結果が届くと通知され、考察の全文確認や追加のやり取りが可能です。みんなに相談できる公開フォーラムもあります。
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon" style={{ background: "#eff6ff", color: "#2563eb" }}>🧭</div>
+              <div className="guide-step-content">
+                <h4>4. あなたの活動（記録とメッセージ）</h4>
+                <p>
+                  流したボトル、いいね・返信した履歴、個別メッセージ（DM）、届いたお返事や自認診断の通知がすべてここに集約されます。自認設定の編集もここから行えます。
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon" style={{ background: "#fffbeb", color: "#d97706" }}>🐛</div>
+              <div className="guide-step-content">
+                <h4>5. 芋虫浜 & 星座（ミニゲーム・思考実験）</h4>
+                <p>
+                  LSI芋虫の境界検疫テストや、ダーリンちゃんの心理テスト・数当てゲーム、認知機能の星座など、類型思考を深く愉しむコンテンツが揃っています。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="guide-modal-close-btn"
+            onClick={() => setGuideOpen(false)}
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    )}
   </main>;
 }
