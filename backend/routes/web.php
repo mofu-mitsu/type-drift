@@ -5,6 +5,8 @@ use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\BottleController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ConsultationController;
+use App\Http\Controllers\QuestionPromptController;
+use App\Http\Controllers\NotificationController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -40,3 +42,7 @@ Route::post('/api/presence/heartbeat', [ActivityController::class, 'heartbeat'])
 Route::post('/api/presence/leave', [ActivityController::class, 'leave']);
 Route::get('/api/presence/online', [ActivityController::class, 'online']);
 Route::post('/api/consultations/events', [ConsultationController::class, 'store']);
+Route::get('/api/question-prompts', [QuestionPromptController::class, 'index']);
+Route::post('/api/question-prompts', [QuestionPromptController::class, 'store']);
+Route::get('/api/notifications/unread', [NotificationController::class, 'unread']);
+Route::post('/api/notifications/{notification}/read', [NotificationController::class, 'read']);

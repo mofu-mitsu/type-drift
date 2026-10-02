@@ -11,6 +11,7 @@ export type PlazaMessage = {
   emoji?: string;
   createdAt: number;
 };
+export type PlazaUser = { sessionKey: string; nickname: string; emoji: string };
 
 const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
@@ -24,6 +25,7 @@ export type PlazaPanelProps = {
   externalMessage?: { author: string; body: string; kind: 'human' | 'ai'; emoji?: string; id: number } | null;
   onToast?: (message: string) => void;
   onPresenceUpdate?: (count: number) => void;
+  onPresenceUsers?: (users: PlazaUser[]) => void;
   onUserMessageSent?: (text: string, author?: string) => void;
 };
 
@@ -52,6 +54,7 @@ export default function PlazaPanel({
   externalMessage = null,
   onToast,
   onPresenceUpdate,
+  onPresenceUsers,
   onUserMessageSent,
 }: PlazaPanelProps) {
   const [messages, setMessages] = useState<PlazaMessage[]>(defaultInitialMessages);
@@ -87,7 +90,7 @@ export default function PlazaPanel({
         wsRef.current = ws;
         ws.onopen = () => {
           setConnected(true);
-          ws.send(JSON.stringify({ type: 'plaza_join' }));
+          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: '◌' }));
           presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname) });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
@@ -98,6 +101,7 @@ export default function PlazaPanel({
               const count = Number(data.count) || 0;
               setPresence(count);
               onPresenceUpdate?.(count + NPC_COUNT);
+              onPresenceUsers?.(Array.isArray(data.users) ? data.users : []);
               if (Array.isArray(data.messages) && data.messages.length > 0) {
                 setMessages(data.messages);
               }

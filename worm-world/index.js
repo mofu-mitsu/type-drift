@@ -10,6 +10,7 @@ const players = new Map();
 const playerSockets = new Map();
 const sockets = new Set();
 const plazaSockets = new Set();
+const plazaUsers = new Map();
 const plazaMessages = [];
 const plazaAiState = new Map();
 
@@ -38,7 +39,7 @@ function broadcastWorld() {
   for (const ws of sockets) if (ws.readyState === WebSocket.OPEN) ws.send(payload);
 }
 function plazaPayload() {
-  return JSON.stringify({ type: 'plaza_presence', count: plazaSockets.size, messages: plazaMessages.slice(-PLAZA_HISTORY_MAX), sentAt: Date.now() });
+  return JSON.stringify({ type: 'plaza_presence', count: plazaSockets.size, users: [...plazaUsers.values()], messages: plazaMessages.slice(-PLAZA_HISTORY_MAX), sentAt: Date.now() });
 }
 function broadcastPlazaPresence() {
   const payload = plazaPayload();
@@ -181,13 +182,14 @@ wss.on('connection', ws => {
       if (message.type === 'player') { storePlayer(message, ws); return; }
       if (message.type === 'plaza_join') {
         plazaSockets.add(ws);
+        plazaUsers.set(ws, { sessionKey: String(message.sessionKey || `session-${Date.now()}-${Math.random()}`).slice(0, 120), nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4) });
         plazaAiState.set(ws, { waitingForHuman: false });
         ws.send(plazaPayload());
         broadcastPlazaPresence();
         return;
       }
       if (message.type === 'plaza_leave') {
-        plazaSockets.delete(ws); plazaAiState.delete(ws); broadcastPlazaPresence(); return;
+        plazaSockets.delete(ws); plazaUsers.delete(ws); plazaAiState.delete(ws); broadcastPlazaPresence(); return;
       }
       if (message.type === 'plaza_message') {
         if (!plazaSockets.has(ws)) return;
@@ -219,7 +221,7 @@ wss.on('connection', ws => {
     } catch (error) { console.error('WS message failed', error.message); }
   });
   ws.on('close', () => {
-    sockets.delete(ws); plazaSockets.delete(ws); plazaAiState.delete(ws);
+    sockets.delete(ws); plazaSockets.delete(ws); plazaUsers.delete(ws); plazaAiState.delete(ws);
     for (const [clientId, owner] of playerSockets) if (owner === ws) { playerSockets.delete(clientId); players.delete(clientId); }
     broadcastPlazaPresence();
   });

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ConsultationEntry;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 
 class ConsultationController extends Controller
@@ -21,6 +22,12 @@ class ConsultationController extends Controller
             ['external_id' => $data['external_id']],
             [...$data, 'user_id' => $request->user()?->id, 'guest_key' => $request->user() ? null : $request->header('X-Guest-Key')]
         );
+        if ($data['entry_type'] !== 'thread' && !empty($data['parent_external_id'])) {
+            $parent = ConsultationEntry::where('external_id', $data['parent_external_id'])->first();
+            if ($parent && ($parent->user_id || $parent->guest_key)) {
+                Notification::create(['user_id' => $parent->user_id, 'guest_key' => $parent->guest_key, 'type' => 'consultation_reply', 'entity_id' => $parent->external_id, 'message' => '自認相談室に新しい返信が届きました。']);
+            }
+        }
         return response()->json(['ok' => true, 'entry' => $entry], 201);
     }
 }

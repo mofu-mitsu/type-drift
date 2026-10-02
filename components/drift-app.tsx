@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
 import WormGame from "./worm-game";
-import PlazaPanel from "./plaza-panel";
+import PlazaPanel, { type PlazaUser } from "./plaza-panel";
 import CognitiveConstellation from "./cognitive-constellation";
 import ConsultationRoom from "./consultation-room";
 import { INITIAL_CONSULTATION_POSTS, type ConsultationPost, type ConsultationComment, type DiagnosisResult } from "@/types/consultation";
@@ -289,8 +289,10 @@ export default function DriftApp() {
   const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; isSelf?: boolean } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(false);
   const [onlineCount, setOnlineCount] = useState(4);
+  const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
+  const [serverNotificationCount, setServerNotificationCount] = useState(0);
 
   // ダーリンちゃんのミニゲーム・心理テスト用State
   const [darlingTargetNumber, setDarlingTargetNumber] = useState<number | null>(null);
@@ -1249,7 +1251,25 @@ export default function DriftApp() {
   const [profileExpanded, setProfileExpanded] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
+  const [questionBoxOpen, setQuestionBoxOpen] = useState(false);
+  const [questionDraft, setQuestionDraft] = useState("");
+  const [questionPrompts, setQuestionPrompts] = useState<string[]>(BOTTLE_PROMPTS);
   const filters = ["すべて", "AIの漂着"];
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    const refresh = () => fetch(`${api}/api/notifications/unread`, { headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => setServerNotificationCount(Number(data?.count || 0))).catch(() => undefined);
+    void refresh();
+    const timer = window.setInterval(refresh, 20000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    void fetch(`${api}/api/question-prompts`).then(response => response.ok ? response.json() : null).then(data => {
+      if (Array.isArray(data?.questions)) setQuestionPrompts([...data.questions.map((item: { body: string }) => item.body), ...BOTTLE_PROMPTS].filter((item, index, list) => list.indexOf(item) === index));
+    }).catch(() => undefined);
+  }, []);
   useEffect(() => {
     try {
       const saved = localStorage.getItem("type-drift-state");
@@ -1714,6 +1734,21 @@ export default function DriftApp() {
     "メッセージ届きました！広場だと流れていっちゃうので、DMでお話しできて嬉しいです☺️"
   ];
 
+  const requestDmAiReply = async (target: { id: string; name: string; emoji: string; type?: string }, userText: string) => {
+    const world = process.env.NEXT_PUBLIC_WORM_WORLD_URL || "https://type-drift-worm-world.onrender.com";
+    try {
+      const response = await fetch(`${world}/api/plaza/ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, history: [{ author: target.name, body: userText }] }) });
+      const data = response.ok ? await response.json() : null;
+      const preferred = target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
+      const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
+      const replyBody = String(reply?.body || (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)]));
+      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false };
+      setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
+      logActivity("direct_message_ai_reply", { target: preferred, bodyLength: replyBody.length }, { type: "direct_message", id: target.id });
+      setPlazaToast(`💌 ${preferred}から返信が届きました`);
+    } catch { /* テンプレート返信は既存のフォールバックで維持 */ }
+  };
+
   const sendDirectMessage = (
     target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
@@ -1744,10 +1779,13 @@ export default function DriftApp() {
       try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
       return updated;
     });
+    logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
     setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
 
     // AIキャラクターや相手からの自動返信シミュレーション
     if (target.id === "darling" || target.name.includes("ダーリン")) {
+      void requestDmAiReply({ ...target, id: "darling" }, text.trim());
+      return;
       window.setTimeout(() => {
         const replyBody = DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)];
         const replyMsg: DirectMessage = {
@@ -1770,6 +1808,8 @@ export default function DriftApp() {
         setPlazaToast("💌 ダーリンちゃんから返信が届きました♡");
       }, 1200);
     } else if (target.id === "worm" || target.name.includes("芋虫")) {
+      void requestDmAiReply({ ...target, id: "worm" }, text.trim());
+      return;
       window.setTimeout(() => {
         const replyBody = WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)];
         const replyMsg: DirectMessage = {
@@ -1866,12 +1906,12 @@ export default function DriftApp() {
 
   // 🧭 「自分の活動」全体の直接通知バッジ数
   const totalActivityBadgeCount = useMemo(() => {
-    let count = unreadDmCount + unreadConsultationCount + unreadInquiryReplyCount;
+    let count = serverNotificationCount + unreadDmCount + unreadConsultationCount + unreadInquiryReplyCount;
     if (isAdminLoggedIn) {
       count += adminTotalPendingCount;
     }
     return count;
-  }, [unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount]);
+  }, [serverNotificationCount, unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount]);
 
   const dmThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
@@ -2060,8 +2100,9 @@ export default function DriftApp() {
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/bottles/${id}/reactions`, { method: "POST", headers: { "X-Guest-Key": getGuestKey() } }).catch(() => undefined); };
   const uploadToCloudinary = async (dataUrl?: string) => { const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; if (!dataUrl || !cloudName || !preset) return dataUrl; const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); if (!response.ok) throw new Error("Cloudinary upload failed"); const result = await response.json(); return result.secure_url as string; };
-  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; let serverBottle: any = null; const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (response.ok) serverBottle = (await response.json()).bottle; } const id = Number(serverBottle?.id || Date.now()); setBottles([{ id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" }, ...bottles]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch { setPlazaToast("ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
+  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; let serverBottle: any = null; const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (response.ok) serverBottle = (await response.json()).bottle; } const id = Number(serverBottle?.id || Date.now()); setBottles([{ id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" }, ...bottles]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch { setPlazaToast("ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
+  const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/question-prompts`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
   const readDraftImage = (file: File | undefined) => { if (!file) return; if (!file.type.startsWith("image/")) return; if (file.size > 5 * 1024 * 1024) { setPlazaToast("画像は5MB以内にしてください"); return; } const reader = new FileReader(); reader.onload = () => setDraftImage(String(reader.result)); reader.readAsDataURL(file); };
   const guestKey = () => { let key = localStorage.getItem("type-drift-guest-key"); if (!key) { key = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", key); } return key; };
   const sendReply = async () => {
@@ -2376,6 +2417,9 @@ export default function DriftApp() {
               <button className="v2-sea-flow-btn" type="button" onClick={() => setComposerOpen(true)}>
                 <Plus size={16} /> 秘密を流す
               </button>
+              <button className="question-box-sea-btn" type="button" onClick={() => setQuestionBoxOpen(true)}>
+                ❔ 質問箱
+              </button>
               <button className={`pick-button ${picked ? "is-picked" : ""}`} onClick={catchSomething}>
                 {picked ? "拾いました" : <><Anchor size={16} /> ボトルを拾う</>}
               </button>
@@ -2550,6 +2594,11 @@ export default function DriftApp() {
           >
             ◇<small>匿名の誰か</small>
           </div>
+          {plazaUsers.slice(0, 12).map((user, index) => (
+            <div key={user.sessionKey} className="plaza-avatar avatar-live" style={{ top: `${18 + (index * 19) % 62}%`, left: `${8 + (index * 23) % 82}%` }} title={user.nickname}>
+              {user.emoji || "◌"}<small>{user.nickname}</small>
+            </div>
+          ))}
         </div>
 
         {/* 獲れたてのブリ所持・プレゼントコーナー */}
@@ -2852,6 +2901,7 @@ export default function DriftApp() {
           externalMessage={externalPlazaMessage}
           onToast={setPlazaToast}
           onPresenceUpdate={setOnlineCount}
+          onPresenceUsers={setPlazaUsers}
           onUserMessageSent={handlePlazaUserMessage}
         />
 
@@ -4612,13 +4662,13 @@ export default function DriftApp() {
             <button type="button" className={postMode === "question" ? "active" : ""} onClick={() => setPostMode("question")}>質問を流す</button>
           </div>
 
-          <div className="bottle-prompt-drawer">
-            <div className="bottle-prompt-heading"><span>✦ 何を書けばいいかわからない時</span><small>問いをひとつ選ぶと下書きに入ります</small></div>
+          <details className="bottle-prompt-drawer">
+            <summary>✦ 何を書けばいいかわからない時 <small>問いをひとつ選ぶ</small></summary>
             <div className="bottle-prompt-list">
-              {BOTTLE_PROMPTS.map(prompt => <button type="button" key={prompt} onClick={() => choosePrompt(prompt)}>{prompt}</button>)}
+              {questionPrompts.map(prompt => <button type="button" key={prompt} onClick={() => choosePrompt(prompt)}>{prompt}</button>)}
             </div>
-            <button type="button" className="question-box-link" onClick={() => { setPostMode("question"); setDraft("【質問募集】\n\n"); }}>＋みんなに質問を募集する</button>
-          </div>
+            <button type="button" className="question-box-link" onClick={() => { setQuestionBoxOpen(true); }}>＋みんなに質問を募集する</button>
+          </details>
 
           {/* 設定した自認を反映させるチェックボタン */}
           <div className="saved-identity-sync-bar">
@@ -4703,6 +4753,18 @@ export default function DriftApp() {
             <span>{draft.length} / 500</span>
             <button className="primary-button" type="button" onClick={publish}><Send size={16} /> 流す</button>
           </div>
+        </div>
+      </div>
+    )}
+    {questionBoxOpen && (
+      <div className="modal-backdrop" onClick={() => setQuestionBoxOpen(false)}>
+        <div className="question-box-modal" onClick={event => event.stopPropagation()}>
+          <button className="modal-close" type="button" onClick={() => setQuestionBoxOpen(false)}><X size={18} /></button>
+          <p className="eyebrow">QUESTION BOX</p>
+          <h2>みんなへの質問</h2>
+          <p>誰かに聞いてみたい問いを置いていくと、次にボトルを書く人の問いの引き出しへ加わります。</p>
+          <textarea value={questionDraft} onChange={event => setQuestionDraft(event.target.value)} placeholder="例：自分と似ている人に聞いてみたいことは？" maxLength={500} autoFocus />
+          <div className="question-box-modal__foot"><small>{questionDraft.length} / 500</small><button className="primary-button" type="button" onClick={submitQuestion}>質問を流す</button></div>
         </div>
       </div>
     )}
