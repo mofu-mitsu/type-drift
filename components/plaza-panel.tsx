@@ -17,6 +17,7 @@ const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUB
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
 const NPC_COUNT = 2;
 const EMOTES = ['👋', '✦', '🌊', '💭', '🩷', '✨', '🍵'];
+const GUEST_MARKS = ['◌', '◇', '◒', '✦', '○', '△', '·'];
 const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か';
 
 export type PlazaPanelProps = {
@@ -63,6 +64,7 @@ export default function PlazaPanel({
   const [emoteIndex, setEmoteIndex] = useState(0);
   const [connected, setConnected] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiStatus, setAiStatus] = useState('未確認');
   const [localToast, setLocalToast] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -78,6 +80,7 @@ export default function PlazaPanel({
     let alive = true;
     const api = process.env.NEXT_PUBLIC_API_URL;
     sessionKeyRef.current = typeof crypto !== 'undefined' ? crypto.randomUUID() : `plaza-${Date.now()}`;
+    const guestMark = GUEST_MARKS[Math.floor(Math.random() * GUEST_MARKS.length)];
     let heartbeat: number | null = null;
     const presence = (path: string, payload: Record<string, unknown>) => {
       if (!api) return;
@@ -90,7 +93,7 @@ export default function PlazaPanel({
         wsRef.current = ws;
         ws.onopen = () => {
           setConnected(true);
-          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: '◌' }));
+          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark }));
           presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname) });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
@@ -188,21 +191,26 @@ export default function PlazaPanel({
   async function requestAi(humanText: string) {
     if (aiBusy) return;
     setAiBusy(true);
+    console.info('[Type Drift AI] request', { endpoint: aiUrl, text: humanText.slice(0, 80) });
     try {
       const response = await fetch(aiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: humanText, history: messages.slice(-12) }),
       });
-      if (!response.ok) throw new Error('ai failed');
+      if (!response.ok) throw new Error(`ai failed (${response.status})`);
       const data = await response.json();
-      for (const reply of Array.isArray(data.replies) ? data.replies.slice(0, 2) : []) {
+      setAiStatus(`${data.source === 'groq' ? 'Groq' : 'fallback'} · ${data.model || 'モデル未確認'}`);
+      console.info('[Type Drift AI] response', { source: data.source, reason: data.reason, model: data.model, replies: data.replies?.length || 0 });
+      for (const reply of Array.isArray(data.replies) ? data.replies.slice(0, 1) : []) {
         sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body });
       }
-    } catch {
+    } catch (error) {
+      setAiStatus('fallback · 接続失敗');
+      console.error('[Type Drift AI] failed', error);
       // フォールバック応答
-      sendRelay({ type: 'plaza_ai_message', character: 'ダーリンちゃん', body: 'ねぇ、聞いてるよ♡' });
-      sendRelay({ type: 'plaza_ai_message', character: 'LSI芋虫', body: '発言を記録しました。' });
+      const character = /ダーリンちゃん|ダーリン/.test(humanText) || Math.random() < 0.5 ? 'ダーリンちゃん' : 'LSI芋虫';
+      sendRelay({ type: 'plaza_ai_message', character, body: character === 'ダーリンちゃん' ? 'ねぇ、聞いてるよ♡' : '発言を記録しました。' });
     } finally {
       setAiBusy(false);
     }
@@ -255,7 +263,14 @@ export default function PlazaPanel({
       onToast?.(notice);
     }
     logActivity('plaza_emote', { emote: emoteValue, author });
-    if (Math.random() < 0.25) window.setTimeout(() => void requestAi(`${author}がエモート ${emoteValue} を送った。短く反応してください。`), 450);
+    if (Math.random() < 0.25) {
+      const reactions = [
+        { character: 'ダーリンちゃん', body: `${emoteValue}ね。ふふ、ちゃんと届いてるわ♡` },
+        { character: 'LSI芋虫', body: `${emoteValue}の入力を確認。反応としては妥当です。` },
+      ];
+      const reaction = reactions[Math.floor(Math.random() * reactions.length)];
+      window.setTimeout(() => sendRelay({ type: 'plaza_ai_message', character: reaction.character, body: reaction.body }), 450);
+    }
   };
 
   // 親コンポーネントからの外部エモート要求
@@ -297,6 +312,7 @@ export default function PlazaPanel({
         <span className={connected ? 'plaza-status is-connected' : 'plaza-status'}>
           {connected ? '● 接続中' : '○ 接続待機…'}
         </span>
+        <small className="plaza-ai-status">AI: {aiStatus}</small>
       </div>
 
       {/* スクロール性のチャットスレッド */}

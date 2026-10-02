@@ -1265,6 +1265,46 @@ export default function DriftApp() {
   }, []);
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) {
+      console.warn("[Type Drift] NEXT_PUBLIC_API_URL is not configured; bottles stay local to this device.");
+      return;
+    }
+    console.info("[Type Drift] loading bottles", api);
+    void fetch(`${api}/api/bottles`, { headers: { "X-Guest-Key": getGuestKey() } })
+      .then(async response => {
+        if (!response.ok) throw new Error(`bottles ${response.status}`);
+        return response.json();
+      })
+      .then(data => {
+        const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : Array.isArray(data?.bottles) ? data.bottles : [];
+        const remote: Bottle[] = rows.map((row: any) => {
+          const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
+          return {
+            id: Number(row.id),
+            author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`,
+            emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌",
+            type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`,
+            mbti: row.mbti || "未設定",
+            socionics: row.socionics || "未設定",
+            enneagram: row.enneagram || "未設定",
+            otherType: row.other_type || "",
+            text: String(row.body || ""),
+            imageUrl: row.image_url || undefined,
+            poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined,
+            reactions: 0,
+            replies: 0,
+            time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
+            mine: false,
+            color: "mint",
+          };
+        }).filter((item: Bottle) => Number.isFinite(item.id));
+        if (remote.length) setBottles(current => [...remote, ...current.filter(item => !remote.some(row => row.id === item.id && !item.mine))]);
+        console.info("[Type Drift] bottles loaded", remote.length);
+      })
+      .catch(error => console.error("[Type Drift] bottle loading failed", error));
+  }, []);
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
     void fetch(`${api}/api/question-prompts`).then(response => response.ok ? response.json() : null).then(data => {
       if (Array.isArray(data?.questions)) setQuestionPrompts([...data.questions.map((item: { body: string }) => item.body), ...BOTTLE_PROMPTS].filter((item, index, list) => list.indexOf(item) === index));
@@ -2595,7 +2635,18 @@ export default function DriftApp() {
             ◇<small>匿名の誰か</small>
           </div>
           {plazaUsers.slice(0, 12).map((user, index) => (
-            <div key={user.sessionKey} className="plaza-avatar avatar-live" style={{ top: `${18 + (index * 19) % 62}%`, left: `${8 + (index * 23) % 82}%` }} title={user.nickname}>
+            <div
+              key={user.sessionKey}
+              className="plaza-avatar avatar-live clickable"
+              style={{ top: `${18 + (index * 19) % 62}%`, left: `${8 + (index * 23) % 82}%` }}
+              title={`${user.nickname}（タップでプロフ確認）`}
+              onClick={() => setInspectProfile({
+                id: user.sessionKey,
+                name: user.nickname || "匿名の誰か",
+                emoji: user.emoji || "◌",
+                overview: "いま、この広場に接続している匿名の住人。プロフィールの自認は、本人が公開した範囲だけ表示されます。",
+              })}
+            >
               {user.emoji || "◌"}<small>{user.nickname}</small>
             </div>
           ))}
@@ -4690,7 +4741,7 @@ export default function DriftApp() {
                   }
                 }}
               />
-              <span>設定した自認を反映させる</span>
+              <span>自認と合わせる</span>
             </label>
             {useSavedIdentity && (profileIdentity.mbti || profileIdentity.socionics || profileIdentity.enneagram) ? (
               <span className="saved-identity-hint">

@@ -11,6 +11,7 @@ const playerSockets = new Map();
 const sockets = new Set();
 const plazaSockets = new Set();
 const plazaUsers = new Map();
+const plazaSessions = new Map();
 const plazaMessages = [];
 const plazaAiState = new Map();
 
@@ -39,7 +40,7 @@ function broadcastWorld() {
   for (const ws of sockets) if (ws.readyState === WebSocket.OPEN) ws.send(payload);
 }
 function plazaPayload() {
-  return JSON.stringify({ type: 'plaza_presence', count: plazaSockets.size, users: [...plazaUsers.values()], messages: plazaMessages.slice(-PLAZA_HISTORY_MAX), sentAt: Date.now() });
+  return JSON.stringify({ type: 'plaza_presence', count: plazaSessions.size, users: [...plazaUsers.values()], messages: plazaMessages.slice(-PLAZA_HISTORY_MAX), sentAt: Date.now() });
 }
 function broadcastPlazaPresence() {
   const payload = plazaPayload();
@@ -78,7 +79,12 @@ async function plazaAI(body, history = []) {
     { character: 'ダーリンちゃん', emoji: '🥺', body: `ねぇ、${body ? '今の話' : '今日は'}ちょっと気になる♡` },
     { character: 'LSI芋虫', emoji: '🐛', body: body ? '内容を確認しました。観測を継続します。' : '広場への入場を確認しました。' },
   ];
-  if (!process.env.GROQ_API_KEY) return fallback;
+  const fallbackReply = (reason) => ({ replies: [fallback[Math.random() < 0.5 ? 0 : 1]], source: 'fallback', reason });
+  if (!process.env.GROQ_API_KEY) {
+    console.warn('[plaza-ai] GROQ_API_KEY is missing; using fallback', { model: GROQ_MODEL });
+    return fallbackReply('missing_api_key');
+  }
+  console.info('[plaza-ai] request', { model: GROQ_MODEL, bodyLength: body.length, hasKey: true });
   const mentionedDarling = /ダーリンちゃん|ダーリン/.test(body);
   const mentionedWorm = /LSI芋虫|芋虫|虫/.test(body);
   const preferredCharacter = mentionedDarling ? 'ダーリンちゃん' : mentionedWorm ? 'LSI芋虫' : null;
@@ -123,15 +129,20 @@ async function plazaAI(body, history = []) {
         }
       })
     });
-    if (!response.ok) return fallback;
+    if (!response.ok) {
+      const detail = await response.text();
+      console.warn('[plaza-ai] Groq response failed', { status: response.status, detail: detail.slice(0, 300), model: GROQ_MODEL });
+      return fallbackReply(`groq_${response.status}`);
+    }
     const data = await response.json();
     const parsed = JSON.parse(data.choices?.[0]?.message?.content || '{}');
     let replies = Array.isArray(parsed.replies) ? parsed.replies.slice(0, 2) : [];
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
-    return replies.length ? replies.map(item => ({ character: item.character, emoji: item.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: String(item.body).slice(0, 120) })) : fallback;
+    const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
+    return chosen ? { replies: [{ character: chosen.character, emoji: chosen.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: String(chosen.body).slice(0, 120) }], source: 'groq', reason: 'ok' } : fallbackReply('empty_response');
   } catch (error) {
-    console.error('plaza AI failed', error.message);
-    return fallback;
+    console.error('[plaza-ai] request failed', error);
+    return fallbackReply('request_error');
   }
 }
 
@@ -142,7 +153,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ ok: true, npcs: 0, players: players.size, clients: sockets.size, plaza: plazaSockets.size, ai: Boolean(process.env.GROQ_API_KEY), model: GROQ_MODEL }));
+    return res.end(JSON.stringify({ ok: true, npcs: 0, players: players.size, clients: sockets.size, plaza: plazaSessions.size, ai: Boolean(process.env.GROQ_API_KEY), model: GROQ_MODEL }));
   }
   if (req.url === '/api/plaza/ai' && req.method === 'POST') {
     let body = '';
@@ -150,9 +161,9 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body || '{}');
-        const replies = await plazaAI(String(data.body || '').slice(0, 120), Array.isArray(data.history) ? data.history : []);
+        const result = await plazaAI(String(data.body || '').slice(0, 120), Array.isArray(data.history) ? data.history : []);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ replies, model: GROQ_MODEL, ai: Boolean(process.env.GROQ_API_KEY) }));
+        res.end(JSON.stringify({ ...result, model: GROQ_MODEL, ai: Boolean(process.env.GROQ_API_KEY) }));
       } catch {
         res.writeHead(400);
         res.end('bad request');
@@ -181,15 +192,25 @@ wss.on('connection', ws => {
       const message = JSON.parse(raw.toString());
       if (message.type === 'player') { storePlayer(message, ws); return; }
       if (message.type === 'plaza_join') {
+        const sessionKey = String(message.sessionKey || `session-${Date.now()}-${Math.random()}`).slice(0, 120);
+        const previous = plazaSessions.get(sessionKey);
+        if (previous && previous !== ws) {
+          plazaSockets.delete(previous); plazaUsers.delete(previous); plazaAiState.delete(previous);
+          try { previous.close(4000, 'duplicate session'); } catch {}
+        }
         plazaSockets.add(ws);
-        plazaUsers.set(ws, { sessionKey: String(message.sessionKey || `session-${Date.now()}-${Math.random()}`).slice(0, 120), nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4) });
+        plazaSessions.set(sessionKey, ws);
+        ws._plazaSessionKey = sessionKey;
+        plazaUsers.set(ws, { sessionKey, nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4) });
         plazaAiState.set(ws, { waitingForHuman: false });
         ws.send(plazaPayload());
         broadcastPlazaPresence();
         return;
       }
       if (message.type === 'plaza_leave') {
-        plazaSockets.delete(ws); plazaUsers.delete(ws); plazaAiState.delete(ws); broadcastPlazaPresence(); return;
+        plazaSockets.delete(ws); plazaUsers.delete(ws); plazaAiState.delete(ws);
+        if (plazaSessions.get(ws._plazaSessionKey) === ws) plazaSessions.delete(ws._plazaSessionKey);
+        broadcastPlazaPresence(); return;
       }
       if (message.type === 'plaza_message') {
         if (!plazaSockets.has(ws)) return;
@@ -222,6 +243,7 @@ wss.on('connection', ws => {
   });
   ws.on('close', () => {
     sockets.delete(ws); plazaSockets.delete(ws); plazaUsers.delete(ws); plazaAiState.delete(ws);
+    if (plazaSessions.get(ws._plazaSessionKey) === ws) plazaSessions.delete(ws._plazaSessionKey);
     for (const [clientId, owner] of playerSockets) if (owner === ws) { playerSockets.delete(clientId); players.delete(clientId); }
     broadcastPlazaPresence();
   });
