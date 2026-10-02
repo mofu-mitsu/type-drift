@@ -4764,7 +4764,7 @@ export default function DriftApp() {
           <h2>みんなへの質問</h2>
           <p>誰かに聞いてみたい問いを置いていくと、次にボトルを書く人の問いの引き出しへ加わります。</p>
           <textarea value={questionDraft} onChange={event => setQuestionDraft(event.target.value)} placeholder="例：自分と似ている人に聞いてみたいことは？" maxLength={500} autoFocus />
-          <div className="question-box-modal__foot"><small>{questionDraft.length} / 500</small><button className="primary-button" type="button" onClick={submitQuestion}>質問を流す</button></div>
+          <div className="question-box-modal__foot"><small>{questionDraft.length} / 500</small><div className="question-box-modal__actions"><button className="secondary-button" type="button" onClick={() => setQuestionBoxOpen(false)}>閉じる</button><button className="primary-button" type="button" onClick={submitQuestion}>質問を流す</button></div></div>
         </div>
       </div>
     )}
