@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Users, 
   FileText, 
@@ -76,12 +76,16 @@ interface ConsultationRoomProps {
   onUpdatePost: (post: ConsultationPost) => void;
   onDeletePost: (postId: string) => void;
   onAddComment: (postId: string, comment: ConsultationComment) => void;
+  onUpdateComment?: (postId: string, comment: ConsultationComment) => void;
+  onDeleteComment?: (postId: string, commentId: string) => void;
+  onReactComment?: (postId: string, commentId: string) => void;
   onAddFollowUp?: (postId: string, message: string) => void;
   userNickname: string;
   userTypeString: string;
   gasUrl: string;
   onToast: (message: string) => void;
   onExit: () => void;
+  sharedPostId?: string | null;
 }
 
 export default function ConsultationRoom({
@@ -90,12 +94,16 @@ export default function ConsultationRoom({
   onUpdatePost,
   onDeletePost,
   onAddComment,
+  onUpdateComment,
+  onDeleteComment,
+  onReactComment,
   onAddFollowUp,
   userNickname,
   userTypeString,
   gasUrl,
   onToast,
   onExit,
+  sharedPostId = null,
 }: ConsultationRoomProps) {
   const activeGasUrl = gasUrl || DEFAULT_GAS_URL;
 
@@ -106,6 +114,9 @@ export default function ConsultationRoom({
   const [isPosting, setIsPosting] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  useEffect(() => {
+    if (sharedPostId) setExpandedPostId(sharedPostId);
+  }, [sharedPostId]);
 
   // フォーム入力State
   const [authorName, setAuthorName] = useState(userNickname || "");
@@ -128,6 +139,7 @@ export default function ConsultationRoom({
 
   // 長文コメント入力State (投稿IDごと)
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [editingComment, setEditingComment] = useState<{ postId: string; comment: ConsultationComment } | null>(null);
   
   // 診断結果への追加質問・意見State (依頼IDごと)
   const [followUpInputs, setFollowUpInputs] = useState<Record<string, string>>({});
@@ -355,7 +367,8 @@ export default function ConsultationRoom({
         day: "2-digit",
         hour: "2-digit",
         minute: "2-digit"
-      })
+      }),
+      reaction: 0
     };
 
     onAddComment(postId, newComment);
@@ -363,6 +376,18 @@ export default function ConsultationRoom({
     logConsultation({ externalId: newComment.id, parentExternalId: postId, entryType: "reply", body: text, payload: newComment as unknown as Record<string, unknown> });
     setCommentInputs(prev => ({ ...prev, [postId]: "" }));
     onToast("考察コメントを投稿しました");
+  };
+
+  const shareConsultation = async (post: ConsultationPost) => {
+    const url = `${window.location.origin}/?page=consult&thread=${encodeURIComponent(post.id)}`;
+    const text = `自認相談室「${post.authorType || "自認模索中"}」の相談を読む · Type Drift`;
+    try {
+      if (navigator.share) await navigator.share({ title: text, text: post.freeText.slice(0, 120), url });
+      else await navigator.clipboard.writeText(url);
+      onToast("相談室へのリンクを共有しました");
+    } catch {
+      // share dialog cancellation is not an error worth showing
+    }
   };
 
   // 診断結果への追加質問・意見送信 (request)
@@ -771,6 +796,10 @@ export default function ConsultationRoom({
                       </div>
 
                       {/* 自分の投稿なら編集・削除ボタン */}
+                      <div className="consult-card-actions">
+                        <button type="button" className="consult-action-icon-btn" title="この相談へのリンクを共有" onClick={() => void shareConsultation(post)}>
+                          <Share2 size={14} /> 共有
+                        </button>
                       {mine && (
                         <div className="consult-card-actions">
                           {confirmingDeleteId === post.id ? (
@@ -813,6 +842,7 @@ export default function ConsultationRoom({
                           )}
                         </div>
                       )}
+                      </div>
                     </div>
 
                     {/* 相談の本文 */}
@@ -893,7 +923,24 @@ export default function ConsultationRoom({
                                 </span>
                                 <time className="comment-date">{c.createdAt}</time>
                               </div>
-                              <p className="comment-body" style={{ whiteSpace: "pre-wrap" }}>{c.body}</p>
+                              {editingComment?.comment.id === c.id ? (
+                                <div className="consult-comment-edit-row">
+                                  <textarea value={editingComment.comment.body} onChange={e => setEditingComment({ ...editingComment, comment: { ...editingComment.comment, body: e.target.value } })} />
+                                  <button type="button" onClick={() => { onUpdateComment?.(post.id, editingComment.comment); logConsultation({ externalId: editingComment.comment.id, parentExternalId: post.id, entryType: "reply", body: editingComment.comment.body, payload: { ...editingComment.comment, edited: true } }); setEditingComment(null); }}>保存</button>
+                                  <button type="button" onClick={() => setEditingComment(null)}>取消</button>
+                                </div>
+                              ) : (
+                                <>
+                                  <p className="comment-body" style={{ whiteSpace: "pre-wrap" }}>{c.body}</p>
+                                  <div className="consult-comment-tools">
+                                    <button type="button" onClick={() => { onReactComment?.(post.id, c.id); logConsultation({ externalId: `reaction-${c.id}-${Date.now()}`, parentExternalId: post.id, entryType: "reply", body: "reaction", payload: { commentId: c.id, kind: "reaction" } }); }}>♡ {c.reaction ? `+${c.reaction}` : "反応"}</button>
+                                    {c.userKey === guestKey && <>
+                                      <button type="button" onClick={() => setEditingComment({ postId: post.id, comment: c })}>編集</button>
+                                      <button type="button" onClick={() => onDeleteComment?.(post.id, c.id)}>削除</button>
+                                    </>}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>

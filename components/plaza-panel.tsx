@@ -12,6 +12,7 @@ export type PlazaMessage = {
   createdAt: number;
 };
 export type PlazaUser = { sessionKey: string; nickname: string; emoji: string };
+export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
 const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
@@ -28,6 +29,7 @@ export type PlazaPanelProps = {
   onPresenceUpdate?: (count: number) => void;
   onPresenceUsers?: (users: PlazaUser[]) => void;
   onUserMessageSent?: (text: string, author?: string) => void;
+  onDirectMessageReceived?: (message: PlazaDirectMessage) => void;
 };
 
 const defaultInitialMessages: PlazaMessage[] = [
@@ -57,6 +59,7 @@ export default function PlazaPanel({
   onPresenceUpdate,
   onPresenceUsers,
   onUserMessageSent,
+  onDirectMessageReceived,
 }: PlazaPanelProps) {
   const [messages, setMessages] = useState<PlazaMessage[]>(defaultInitialMessages);
   const [presence, setPresence] = useState(0);
@@ -123,6 +126,11 @@ export default function PlazaPanel({
                 setLocalToast(notice);
                 onToast?.(notice);
               }
+            } else if (data.type === 'plaza_dm' && data.message) {
+              onDirectMessageReceived?.(data.message as PlazaDirectMessage);
+              window.dispatchEvent(new CustomEvent('type-drift:dm-received', { detail: data.message }));
+              setLocalToast(`💌 ${data.message.senderName || '匿名の誰か'}からメッセージが届きました`);
+              onToast?.(`💌 ${data.message.senderName || '匿名の誰か'}からメッセージが届きました`);
             }
           } catch {
             // relay message parse error
@@ -187,6 +195,16 @@ export default function PlazaPanel({
     return true;
   };
 
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<{ targetSessionKey?: string; body?: string }>).detail;
+      if (!detail?.targetSessionKey || !detail.body) return;
+      sendRelay({ type: 'plaza_dm', targetSessionKey: detail.targetSessionKey, body: detail.body, senderName: displayName(nickname), senderEmoji: '◌' });
+    };
+    window.addEventListener('type-drift:dm-send', receive);
+    return () => window.removeEventListener('type-drift:dm-send', receive);
+  }, [nickname]);
+
   // AIへの返答リクエスト
   async function requestAi(humanText: string) {
     if (aiBusy) return;
@@ -202,6 +220,12 @@ export default function PlazaPanel({
       const data = await response.json();
       setAiStatus(`${data.source === 'groq' ? 'Groq' : 'fallback'} · ${data.model || 'モデル未確認'}`);
       console.info('[Type Drift AI] response', { source: data.source, reason: data.reason, model: data.model, replies: data.replies?.length || 0 });
+      if (data.source !== 'groq') {
+        const reason = data.reason || 'unknown';
+        const notice = `AIは代替応答です（${reason}）。気になる場合は意見箱へ送れます。`;
+        setLocalToast(notice);
+        onToast?.(notice);
+      }
       for (const reply of Array.isArray(data.replies) ? data.replies.slice(0, 1) : []) {
         sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body });
       }
@@ -210,6 +234,9 @@ export default function PlazaPanel({
       console.error('[Type Drift AI] failed', error);
       // フォールバック応答
       const character = /ダーリンちゃん|ダーリン/.test(humanText) || Math.random() < 0.5 ? 'ダーリンちゃん' : 'LSI芋虫';
+      const notice = 'AI接続エラーで代替応答になりました。気になる場合は意見箱へ送れます。';
+      setLocalToast(notice);
+      onToast?.(notice);
       sendRelay({ type: 'plaza_ai_message', character, body: character === 'ダーリンちゃん' ? 'ねぇ、聞いてるよ♡' : '発言を記録しました。' });
     } finally {
       setAiBusy(false);
@@ -312,7 +339,6 @@ export default function PlazaPanel({
         <span className={connected ? 'plaza-status is-connected' : 'plaza-status'}>
           {connected ? '● 接続中' : '○ 接続待機…'}
         </span>
-        <small className="plaza-ai-status">AI: {aiStatus}</small>
       </div>
 
       {/* スクロール性のチャットスレッド */}

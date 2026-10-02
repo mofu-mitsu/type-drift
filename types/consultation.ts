@@ -5,6 +5,7 @@ export interface ConsultationComment {
   userKey?: string;
   body: string;
   createdAt: string;
+  reaction?: number;
 }
 
 export interface DiagnosisResult {

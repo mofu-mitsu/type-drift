@@ -225,6 +225,16 @@ wss.on('connection', ws => {
         }
         return;
       }
+      if (message.type === 'plaza_dm') {
+        if (!plazaSockets.has(ws)) return;
+        const targetSessionKey = String(message.targetSessionKey || '').slice(0, 120);
+        const target = plazaSessions.get(targetSessionKey);
+        const body = String(message.body || '').trim().slice(0, 1000);
+        if (!target || target.readyState !== WebSocket.OPEN || !body) return;
+        const sender = plazaUsers.get(ws) || { sessionKey: ws._plazaSessionKey, nickname: '匿名の誰か', emoji: '◌' };
+        target.send(JSON.stringify({ type: 'plaza_dm', message: { id: `dm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, senderSessionKey: sender.sessionKey, senderName: sender.nickname, senderEmoji: sender.emoji, body, createdAt: Date.now() } }));
+        return;
+      }
       if (message.type === 'plaza_ai_message') {
         if (!plazaSockets.has(ws)) return;
         const body = String(message.body || '').trim().slice(0, 120);

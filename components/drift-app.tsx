@@ -1254,6 +1254,7 @@ export default function DriftApp() {
   const [questionBoxOpen, setQuestionBoxOpen] = useState(false);
   const [questionDraft, setQuestionDraft] = useState("");
   const [questionPrompts, setQuestionPrompts] = useState<string[]>(BOTTLE_PROMPTS);
+  const [sharedConsultId, setSharedConsultId] = useState<string | null>(null);
   const filters = ["すべて", "AIの漂着"];
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
@@ -1262,6 +1263,13 @@ export default function DriftApp() {
     void refresh();
     const timer = window.setInterval(refresh, 20000);
     return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("page") === "consult") {
+      setActivePage("consult");
+      setSharedConsultId(params.get("thread"));
+    }
   }, []);
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
@@ -1871,34 +1879,38 @@ export default function DriftApp() {
         });
         setPlazaToast("💌 LSI芋虫から暗号パケットを受信しました");
       }, 1200);
-    } else if (target.id.startsWith("bottle-") || target.id === "guest" || target.name.includes("ゲスト") || target.name.includes("匿名") || target.name.includes("ボトル")) {
-      window.setTimeout(() => {
-        const replyBody = GUEST_DM_REPLIES[Math.floor(Math.random() * GUEST_DM_REPLIES.length)];
-        const replyMsg: DirectMessage = {
-          id: `dm-${Date.now()}`,
-          threadId: target.id,
-          sender: target.name,
-          recipient: myDisplayName,
-          targetEmoji: target.emoji || "🌊",
-          targetType: target.type,
-          body: replyBody,
-          createdAt: Date.now(),
-          read: false,
-          isMine: false,
-          bottleId: target.bottleInfo?.id,
-          bottleSnippet: target.bottleInfo?.text,
-          bottleAuthor: target.bottleInfo?.author,
-          bottleType: target.bottleInfo?.type,
-        };
-        setDirectMessages(prev => {
-          const updated = [...prev, replyMsg];
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-        setPlazaToast(`💌 ${target.name}からメッセージが届きました`);
-      }, 1500);
+    } else if (target.id !== "guest" && !target.id.startsWith("bottle-")) {
+      window.dispatchEvent(new CustomEvent("type-drift:dm-send", { detail: { targetSessionKey: target.id, body: text.trim() } }));
     }
   };
+
+  useEffect(() => {
+    const handleIncoming = (event: Event) => {
+      const message = (event as CustomEvent<{ id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number }>).detail;
+      if (!message?.body) return;
+      const incoming: DirectMessage = {
+        id: message.id,
+        threadId: message.senderSessionKey,
+        sender: message.senderName || "匿名の誰か",
+        recipient: nickname || "あなた",
+        targetEmoji: message.senderEmoji || "◌",
+        targetType: "広場の住人",
+        body: message.body,
+        createdAt: message.createdAt || Date.now(),
+        read: false,
+        isMine: false,
+      };
+      setDirectMessages(prev => {
+        if (prev.some(item => item.id === incoming.id)) return prev;
+        const updated = [...prev, incoming];
+        try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+      setPlazaToast(`💌 ${incoming.sender}からメッセージが届きました`);
+    };
+    window.addEventListener("type-drift:dm-received", handleIncoming);
+    return () => window.removeEventListener("type-drift:dm-received", handleIncoming);
+  }, [nickname]);
 
   const unreadDmCount = useMemo(() => {
     return directMessages.filter(m => !m.isMine && !m.read).length;
@@ -2616,24 +2628,6 @@ export default function DriftApp() {
           >
             🐛<small>LSI芋虫</small>
           </div>
-          <div
-            className="plaza-avatar avatar-guest clickable"
-            title="匿名の誰か（タップでプロフ確認・ブリを渡す）"
-            onClick={() => {
-              setInspectProfile({
-                id: "guest",
-                name: "匿名の誰か",
-                emoji: "◇",
-                mbti: "INFP",
-                socionics: "EII",
-                enneagram: "4w5",
-                psycho: "Psychosophy: ELVF",
-                overview: "広場の隅っこで静かに海を眺めている観測者。人と話したいけれど自分から話しかける勇気がなく、誰かがブリを投げてくれるのを待っているかもしれない。"
-              });
-            }}
-          >
-            ◇<small>匿名の誰か</small>
-          </div>
           {plazaUsers.slice(0, 12).map((user, index) => (
             <div
               key={user.sessionKey}
@@ -3041,6 +3035,7 @@ export default function DriftApp() {
     {activePage === "consult" && (
       <ConsultationRoom
         posts={consultationPosts}
+        sharedPostId={sharedConsultId}
         onAddPost={(newPost) => {
           setConsultationPosts(prev => [newPost, ...prev]);
         }}
@@ -3061,6 +3056,9 @@ export default function DriftApp() {
             return post;
           }));
         }}
+        onUpdateComment={(postId, comment) => setConsultationPosts(prev => prev.map(post => post.id === postId ? { ...post, comments: (post.comments || []).map(item => item.id === comment.id ? comment : item) } : post))}
+        onDeleteComment={(postId, commentId) => setConsultationPosts(prev => prev.map(post => post.id === postId ? { ...post, comments: (post.comments || []).filter(item => item.id !== commentId) } : post))}
+        onReactComment={(postId, commentId) => setConsultationPosts(prev => prev.map(post => post.id === postId ? { ...post, comments: (post.comments || []).map(item => item.id === commentId ? { ...item, reaction: (item.reaction || 0) + 1 } : item) } : post))}
         onAddFollowUp={(postId, message) => {
           const newFollowUp = {
             id: `fu-${Date.now()}`,
