@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\BottleController;
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\ConsultationController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -32,3 +34,9 @@ Route::match(['put', 'patch'], '/api/profile', [BottleController::class, 'profil
 Route::get('/api/plaza/messages', [BottleController::class, 'plazaMessages']);
 Route::post('/api/plaza/messages', [BottleController::class, 'plazaMessage']);
 Route::post('/api/feedback', [BottleController::class, 'feedback']);
+Route::post('/api/activity-events', [ActivityController::class, 'event']);
+Route::post('/api/presence/join', [ActivityController::class, 'join']);
+Route::post('/api/presence/heartbeat', [ActivityController::class, 'heartbeat']);
+Route::post('/api/presence/leave', [ActivityController::class, 'leave']);
+Route::get('/api/presence/online', [ActivityController::class, 'online']);
+Route::post('/api/consultations/events', [ConsultationController::class, 'store']);

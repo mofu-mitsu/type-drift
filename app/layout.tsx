@@ -1,6 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./interaction-overrides.css";
+import "./plaza-overrides.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://type-drift.vercel.app"),
@@ -10,8 +18,20 @@ export const metadata: Metadata = {
   applicationName: "Type Drift",
   category: "community",
   alternates: { canonical: "/" },
-  openGraph: { type: "website", locale: "ja_JP", siteName: "Type Drift", title: "類型の秘密メモ｜Type Drift", description: "診断のあとに立ち寄れる海。思考を匿名のボトルに入れて流そう。", images: [{ url: "/ogp.svg", width: 1200, height: 630, alt: "Type Drift — 類型の秘密メモ" }] },
-  twitter: { card: "summary_large_image", title: "類型の秘密メモ｜Type Drift", description: "診断のあとに立ち寄れる海。思考を匿名のボトルに入れて流そう。", images: ["/ogp.svg"] },
+  openGraph: {
+    type: "website",
+    locale: "ja_JP",
+    siteName: "Type Drift",
+    title: "類型の秘密メモ｜Type Drift",
+    description: "診断のあとに立ち寄れる海。思考を匿名のボトルに入れて流そう。",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Type Drift — 類型の秘密メモ", type: "image/png" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "類型の秘密メモ｜Type Drift",
+    description: "診断のあとに立ち寄れる海。思考を匿名のボトルに入れて流そう。",
+    images: ["/opengraph-image"],
+  },
   robots: { index: true, follow: true },
 };
 

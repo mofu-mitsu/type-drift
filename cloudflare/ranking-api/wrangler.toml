@@ -1,0 +1,6 @@
+name = "type-drift-ranking-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-19"
+
+[vars]
+# Set NEON_DATABASE_URL as a secret in Cloudflare.

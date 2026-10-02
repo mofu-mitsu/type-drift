@@ -1,56 +1,461 @@
-Type Drift / Render keep-alive 設定
+/**
+ * =========================================================================
+ *  TYPE DRIFT - 自認診断・意見箱・お知らせ連携 Google Apps Script (GAS)
+ * =========================================================================
+ * 
+ * 【主な機能】
+ * 1. 自認診断依頼の受付 (doPost: action="diagnosis_request")
+ *    ユーザーから送信された診断依頼シートを「自認診断依頼」シートへ自動記録。
+ * 
+ * 2. 診断者からの診断結果返却 (doPost: action="reply_diagnosis")
+ *    担当者・開発者から返送された診断結果（1位/2位/3位、考察、アドバイス）を
+ *    「自認診断依頼」シートのステータス更新 & 「自認診断回答」シートへ記録。
+ * 
+ * 3. 診断結果に対するユーザーからの追加質問・意見 (doPost: action="add_followup")
+ *    診断結果を受け取ったユーザーからの追加メッセージを記録。
+ * 
+ * 4. 投稿・依頼の編集・修正 (doPost: action="edit_consultation")
+ *    ユーザーが送信済みの相談または診断依頼を修正した場合、シート側の内容を更新。
+ * 
+ * 5. 投稿・依頼の削除・取り下げ (doPost: action="delete_consultation")
+ *    ユーザーが投稿を削除した場合、シート側のステータスを「削除済み」に更新。
+ * 
+ * 6. 意見箱の受信 & 返信 (doPost: action="feedback" / action="reply")
+ * 7. お知らせ配信 & 取得 (doPost: action="announcement" / doGet: action="notices")
+ * 8. 診断結果や返信の取得 (doGet: action="my_diagnoses" / action="replies")
+ * 
+ * 【設定手順】
+ * 1. Google スプレッドシートの「拡張機能」 > 「Apps Script」を開きます。
+ * 2. このコードをすべて貼り付けて保存（Ctrl+S / Cmd+S）します。
+ * 3. 右上の「デプロイ」 > 「新しいデプロイ」をクリックします。
+ *    - 種類の選択（歯車マーク）: 「ウェブアプリ」
+ *    - 説明: Type Drift API v3
+ *    - 次のユーザーとして実行: 自分
+ *    - アクセスできるユーザー: 「全員」(Anyone) ※必ず「全員」にしてください
+ * 4. 発行された「ウェブアプリのURL」をコピーして利用します。
+ * =========================================================================
+ */
 
-目的
-Render無料Web Serviceは一定時間アクセスがないと休止するため、10分ごとにLaravel APIのヘルスチェックへアクセスします。
-これは「完全な常時稼働」の保証ではなく、コールドスタートを減らすための補助です。
-
-1. Render側
-
-RenderでLaravel APIをデプロイ後、サービスURLを確認します。
-例:
-https://type-drift-api.onrender.com
-
-確認するURL:
-https://type-drift-api.onrender.com/api/health
-
-2. Google Apps Script
-
-script.google.com で新しいプロジェクトを作り、次のコードを貼り付けます。
-
-const RENDER_HEALTH_URL = 'https://YOUR-SERVICE.onrender.com/api/health';
-
-function wakeUpRender() {
+// POSTリクエスト処理
+function doPost(e) {
   try {
-    const response = UrlFetchApp.fetch(RENDER_HEALTH_URL, {
-      method: 'get',
-      muteHttpExceptions: true,
-      followRedirects: true,
-    });
-    console.log('Render health: ' + response.getResponseCode());
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var data = {};
+    if (e.postData && e.postData.contents) {
+      try {
+        data = JSON.parse(e.postData.contents);
+      } catch (err) {
+        data = e.parameter || {};
+      }
+    } else if (e.parameter) {
+      data = e.parameter;
+    }
+
+    var action = data.action || "feedback";
+    var now = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+
+    // ----------------------------------------------------
+    // 1. 自認診断依頼の受付
+    // ----------------------------------------------------
+    if (action === "diagnosis_request") {
+      var diagSheet = ss.getSheetByName("自認診断依頼");
+      if (!diagSheet) {
+        diagSheet = ss.insertSheet("自認診断依頼");
+        diagSheet.appendRow([
+          "受付日時",
+          "依頼ID",
+          "ニックネーム",
+          "ユーザーキー",
+          "現在の自認",
+          "公開設定",
+          "希望診断項目",
+          "15二分法の記述",
+          "クアドラ観",
+          "関係性観",
+          "モデルA/K観",
+          "自由記述・自己分析",
+          "ステータス",
+          "最終更新日時"
+        ]);
+        diagSheet.setFrozenRows(1);
+      }
+
+      var diagId = data.id || ("diag-" + new Date().getTime());
+      var diagNickname = data.nickname || "匿名";
+      var diagUserKey = data.userKey || "";
+      var diagCurrentIdentity = data.currentIdentity || "";
+      var diagVisibility = data.visibility || "全体公開";
+      var diagRequestItems = Array.isArray(data.requestItems) ? data.requestItems.join(", ") : (data.requestItems || "");
+      var diagDichotomies = data.dichotomies || "";
+      var diagQuadra = data.quadra || "";
+      var diagRelationship = data.relationship || "";
+      var diagModel = data.model || "";
+      var diagNotes = data.notes || "";
+      var diagStatus = "受付中（未回答）";
+
+      diagSheet.appendRow([
+        now,
+        diagId,
+        diagNickname,
+        diagUserKey,
+        diagCurrentIdentity,
+        diagVisibility,
+        diagRequestItems,
+        diagDichotomies,
+        diagQuadra,
+        diagRelationship,
+        diagModel,
+        diagNotes,
+        diagStatus,
+        now
+      ]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "自認診断依頼を受付台帳に記録しました",
+        diagnosisId: diagId,
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 2. 診断者からの診断結果返却
+    // ----------------------------------------------------
+    if (action === "reply_diagnosis") {
+      var resultSheet = ss.getSheetByName("自認診断回答");
+      if (!resultSheet) {
+        resultSheet = ss.insertSheet("自認診断回答");
+        resultSheet.appendRow([
+          "回答日時",
+          "依頼ID",
+          "回答者",
+          "1位判定",
+          "2位判定",
+          "3位判定",
+          "考察・根拠・メッセージ"
+        ]);
+        resultSheet.setFrozenRows(1);
+      }
+
+      var targetDiagId = data.id || "";
+      var diagnosedBy = data.diagnosedBy || "診断担当者";
+      var rank1 = data.rank1 || "";
+      var rank2 = data.rank2 || "";
+      var rank3 = data.rank3 || "";
+      var reasoning = data.reasoning || data.body || "";
+
+      resultSheet.appendRow([
+        now,
+        targetDiagId,
+        diagnosedBy,
+        rank1,
+        rank2,
+        rank3,
+        reasoning
+      ]);
+
+      // 「自認診断依頼」シートのステータスを「診断完了」に更新
+      var dSheet = ss.getSheetByName("自認診断依頼");
+      if (dSheet && targetDiagId) {
+        var dData = dSheet.getDataRange().getValues();
+        for (var i = 1; i < dData.length; i++) {
+          if (String(dData[i][1]) === String(targetDiagId)) {
+            dSheet.getRange(i + 1, 13).setValue("診断完了 (1位: " + rank1 + ")");
+            dSheet.getRange(i + 1, 14).setValue(now);
+            break;
+          }
+        }
+      }
+
+      return createJsonResponse({
+        status: "success",
+        message: "診断結果を記録しステータスを更新しました",
+        id: targetDiagId,
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 3. 診断結果に対する追加の質問・意見 (follow-up)
+    // ----------------------------------------------------
+    if (action === "add_followup") {
+      var fuSheet = ss.getSheetByName("自認診断追加質問");
+      if (!fuSheet) {
+        fuSheet = ss.insertSheet("自認診断追加質問");
+        fuSheet.appendRow(["日時", "依頼ID", "送信者", "メッセージ本文"]);
+        fuSheet.setFrozenRows(1);
+      }
+
+      fuSheet.appendRow([
+        now,
+        data.id || "",
+        data.author || "依頼者",
+        data.body || ""
+      ]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "追加の質問・意見を記録しました",
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 4. 依頼・投稿の編集・修正
+    // ----------------------------------------------------
+    if (action === "edit_consultation") {
+      var editSheet = ss.getSheetByName("自認診断依頼");
+      var editId = data.id || "";
+      if (editSheet && editId) {
+        var eData = editSheet.getDataRange().getValues();
+        for (var k = 1; k < eData.length; k++) {
+          if (String(eData[k][1]) === String(editId)) {
+            if (data.notes !== undefined) editSheet.getRange(k + 1, 12).setValue(data.notes);
+            if (data.dichotomies !== undefined) editSheet.getRange(k + 1, 8).setValue(data.dichotomies);
+            editSheet.getRange(k + 1, 14).setValue(now + " (修正済み)");
+            break;
+          }
+        }
+      }
+      return createJsonResponse({ status: "success", message: "投稿を修正しました" });
+    }
+
+    // ----------------------------------------------------
+    // 5. 依頼・投稿の削除・取り下げ
+    // ----------------------------------------------------
+    if (action === "delete_consultation") {
+      var delSheet = ss.getSheetByName("自認診断依頼");
+      var delId = data.id || "";
+      if (delSheet && delId) {
+        var dData2 = delSheet.getDataRange().getValues();
+        for (var m = 1; m < dData2.length; m++) {
+          if (String(dData2[m][1]) === String(delId)) {
+            delSheet.getRange(m + 1, 13).setValue("削除・取り下げ済み");
+            delSheet.getRange(m + 1, 14).setValue(now);
+            break;
+          }
+        }
+      }
+      return createJsonResponse({ status: "success", message: "取り下げを記録しました" });
+    }
+
+    // ----------------------------------------------------
+    // 6. 意見箱の受信
+    // ----------------------------------------------------
+    if (action === "feedback") {
+      var fbSheet = ss.getSheetByName("意見箱");
+      if (!fbSheet) {
+        fbSheet = ss.insertSheet("意見箱");
+        fbSheet.appendRow([
+          "受信日時",
+          "送信者ニックネーム",
+          "ユーザー自認タイプ",
+          "メッセージ本文",
+          "種類",
+          "返信希望",
+          "ユーザーキー",
+          "意見ID"
+        ]);
+        fbSheet.setFrozenRows(1);
+      }
+
+      var author = data.nickname || "匿名の思索者";
+      var type = data.type || "未設定";
+      var body = data.body || "";
+      var kind = data.kind || "感想・提案";
+      var wantReply = data.wantReply ? "希望する" : "希望しない";
+      var userKey = data.userKey || "";
+      var id = data.id || ("fb-" + new Date().getTime());
+
+      fbSheet.appendRow([now, author, type, body, kind, wantReply, userKey, id]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "メッセージを受け付けました",
+        id: id,
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 7. お知らせの直接配信
+    // ----------------------------------------------------
+    if (action === "announcement") {
+      var noticeSheet = ss.getSheetByName("お知らせ");
+      if (!noticeSheet) {
+        noticeSheet = ss.insertSheet("お知らせ");
+        noticeSheet.appendRow(["ID", "日付", "タイトル", "本文", "バッジ", "重要度"]);
+        noticeSheet.setFrozenRows(1);
+      }
+
+      var noticeId = data.id || ("notice-" + new Date().getTime());
+      var noticeDate = data.date || Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd");
+      var title = data.title || "お知らせ";
+      var nBody = data.body || "";
+      var badge = data.badge || "info";
+      var important = data.important ? "important" : "normal";
+
+      noticeSheet.appendRow([noticeId, noticeDate, title, nBody, badge, important]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "お知らせを配信しました",
+        noticeId: noticeId,
+        timestamp: now
+      });
+    }
+
+    // ----------------------------------------------------
+    // 8. 意見への返信送信
+    // ----------------------------------------------------
+    if (action === "reply") {
+      var replySheet = ss.getSheetByName("問い合わせ返信");
+      if (!replySheet) {
+        replySheet = ss.insertSheet("問い合わせ返信");
+        replySheet.appendRow(["返信ID", "意見ID", "ユーザーキー", "返信日時", "返信者", "返信本文"]);
+        replySheet.setFrozenRows(1);
+      }
+
+      var replyId = data.replyId || ("rep-" + new Date().getTime());
+      var targetFeedbackId = data.feedbackId || "";
+      var targetUserKey = data.userKey || "";
+      var adminName = data.adminName || "運営チーム";
+      var replyBody = data.replyBody || data.body || "";
+
+      replySheet.appendRow([replyId, targetFeedbackId, targetUserKey, now, adminName, replyBody]);
+
+      return createJsonResponse({
+        status: "success",
+        message: "返信を記録しました",
+        replyId: replyId,
+        timestamp: now
+      });
+    }
+
+    return createJsonResponse({ status: "ignored", message: "不明なアクションです" });
+
   } catch (error) {
-    console.error('Render health failed: ' + error.message);
+    return createJsonResponse({
+      status: "error",
+      message: error.toString()
+    });
   }
 }
 
-3. トリガー
+// GETリクエスト処理
+function doGet(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var params = e.parameter || {};
+    var action = params.action || "notices";
 
-左側の「トリガー」→「トリガーを追加」から、次の設定にします。
+    // 1. お知らせ一覧の取得
+    if (action === "notices") {
+      var sheet = ss.getSheetByName("お知らせ");
+      if (!sheet) {
+        sheet = ss.insertSheet("お知らせ");
+        sheet.appendRow(["ID", "日付", "タイトル", "本文", "バッジ", "重要度"]);
+        sheet.appendRow([
+          "notice-1",
+          Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd"),
+          "Type Driftへようこそ！",
+          "思考を海へ流したり、広場での自認相談やミニゲームをお楽しみいただけます。ご意見・自認相談はいつでもお寄せください。",
+          "new",
+          "important"
+        ]);
+        sheet.setFrozenRows(1);
+      }
 
-- 実行する関数: wakeUpRender
-- イベントのソース: 時間主導型
-- 時間ベースのトリガー: 分ベースのタイマー
-- 間隔: 10分おき
+      var data = sheet.getDataRange().getValues();
+      var notices = [];
 
-初回実行時にUrlFetchAppの権限確認が出たら、内容を確認して許可します。
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        if (!row[1] && !row[2]) continue;
 
-4. UptimeRobot
+        notices.push({
+          id: String(row[0] || ("notice-" + i)),
+          date: row[1] instanceof Date ? Utilities.formatDate(row[1], "Asia/Tokyo", "yyyy/MM/dd") : String(row[1] || ""),
+          title: String(row[2] || ""),
+          body: String(row[3] || ""),
+          badge: String(row[4] || "info"),
+          important: String(row[5] || "").toLowerCase() === "important"
+        });
+      }
 
-監視URLは同じ /api/health にします。
-Laravel側はGETでJSONを返すため、通常のHTTP(s)監視で利用できます。
-キーワード監視を使う場合は `status` または `database` を指定します。
+      notices.reverse();
 
-注意
+      return createJsonResponse({
+        status: "success",
+        notices: notices,
+        updatedAt: Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss")
+      });
+    }
 
-- GASはRenderのスリープを必ず防ぐものではありません。
-- 無料プランの制限や仕様変更があるため、重要な本番運用では有料インスタンスを検討します。
-- Neonの接続障害も検知したい場合は、healthレスポンスのdatabase値を監視します。
+    // 2. ユーザー宛ての問い合わせ返信取得
+    if (action === "replies") {
+      var targetUserKey = params.userKey || "";
+      var replySheet = ss.getSheetByName("問い合わせ返信");
+      var replies = [];
+
+      if (replySheet && targetUserKey) {
+        var rData = replySheet.getDataRange().getValues();
+        for (var j = 1; j < rData.length; j++) {
+          var rRow = rData[j];
+          if (String(rRow[2]) === String(targetUserKey)) {
+            replies.push({
+              replyId: String(rRow[0]),
+              feedbackId: String(rRow[1]),
+              userKey: String(rRow[2]),
+              date: rRow[3] instanceof Date ? Utilities.formatDate(rRow[3], "Asia/Tokyo", "yyyy/MM/dd HH:mm") : String(rRow[3] || ""),
+              sender: String(rRow[4] || "運営チーム"),
+              body: String(rRow[5] || "")
+            });
+          }
+        }
+      }
+
+      return createJsonResponse({
+        status: "success",
+        replies: replies
+      });
+    }
+
+    // 3. 診断結果の取得（ユーザー自身または全件）
+    if (action === "diagnoses") {
+      var ansSheet = ss.getSheetByName("自認診断回答");
+      var answers = [];
+      if (ansSheet) {
+        var aData = ansSheet.getDataRange().getValues();
+        for (var a = 1; a < aData.length; a++) {
+          var aRow = aData[a];
+          answers.push({
+            diagnosedAt: aRow[0] instanceof Date ? Utilities.formatDate(aRow[0], "Asia/Tokyo", "yyyy/MM/dd HH:mm") : String(aRow[0] || ""),
+            id: String(aRow[1] || ""),
+            diagnosedBy: String(aRow[2] || ""),
+            rank1: String(aRow[3] || ""),
+            rank2: String(aRow[4] || ""),
+            rank3: String(aRow[5] || ""),
+            reasoning: String(aRow[6] || "")
+          });
+        }
+      }
+      return createJsonResponse({ status: "success", diagnoses: answers });
+    }
+
+    return createJsonResponse({ status: "ignored" });
+
+  } catch (error) {
+    return createJsonResponse({
+      status: "error",
+      message: error.toString(),
+      notices: []
+    });
+  }
+}
+
+function createJsonResponse(data) {
+  var output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}
