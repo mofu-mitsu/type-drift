@@ -135,7 +135,7 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
     if (!chosen || !String(chosen.body || '').trim()) {
-      return { ...fallbackReply('empty_response'), providerMessage: `no_valid_reply content_length=${rawContent.length} finish_reason=${data.choices?.[0]?.finish_reason || 'unknown'}` };
+      return { ...fallbackReply('empty_response'), providerMessage: `no_valid_reply content_length=${rawContent.length} finish_reason=${data.choices?.[0]?.finish_reason || 'unknown'} raw=${rawContent.slice(0, 180)}` };
     }
     return { replies: [{ character: chosen.character, emoji: chosen.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: String(chosen.body).slice(0, 120) }], source: 'groq', reason: 'ok' };
   } catch (error) {
