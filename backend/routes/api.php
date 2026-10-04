@@ -21,6 +21,7 @@ Route::get('/health', function () {
 
 Route::get('/bottles', [BottleController::class, 'index']);
 Route::post('/bottles', [BottleController::class, 'store']);
+Route::delete('/bottles/{bottle}', [BottleController::class, 'destroy']);
 Route::post('/bottles/{bottle}/reactions', [BottleController::class, 'react']);
 Route::post('/bottles/{bottle}/replies', [BottleController::class, 'reply']);
 Route::get('/bottles/{bottle}/replies', [BottleController::class, 'replies']);

@@ -47,6 +47,8 @@ class BottleController extends Controller
             'other_type' => ['nullable', 'string', 'max:120'],
             'poll_options' => ['nullable', 'array', 'min:2'],
             'poll_options.*' => ['string', 'max:100'],
+            'is_ai' => ['nullable', 'boolean'],
+            'ai_character' => ['nullable', 'string', 'max:60'],
         ]);
         $data['user_id'] = $request->user()?->id;
         $data['guest_key'] = $request->user() ? null : $request->header('X-Guest-Key');
@@ -63,7 +65,7 @@ class BottleController extends Controller
         if ($reaction) $reaction->increment('level');
         else $reaction = Reaction::create(['bottle_id' => $bottle->id, 'user_id' => $userId, 'guest_key' => $guestKey, 'level' => 1]);
         $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reaction', (string) $bottle->id, 'あなたのボトルに新しい反応が届きました。', $userId, $guestKey);
-        broadcast(new BottleActivityUpdated($bottle->id, 'reaction'));
+        $this->broadcastSafely(new BottleActivityUpdated($bottle->id, 'reaction'));
         return response()->json(['level' => $reaction->fresh()->level]);
     }
 
@@ -73,7 +75,7 @@ class BottleController extends Controller
         if (!empty($data['parent_reply_id'])) {
             abort_unless(Reply::query()->whereKey($data['parent_reply_id'])->where('bottle_id', $bottle->id)->exists(), 422, 'The parent reply must belong to this bottle.');
         }
-        broadcast(new BottleActivityUpdated($bottle->id, 'reply'));
+        $this->broadcastSafely(new BottleActivityUpdated($bottle->id, 'reply'));
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey]);
@@ -83,6 +85,15 @@ class BottleController extends Controller
             $this->notifyOwner($parent?->user_id, $parent?->guest_key, 'reply_reply', (string) $reply->id, 'あなたの返信に、さらに返事が届きました。', $userId, $guestKey);
         }
         return response()->json(['reply' => $reply], 201);
+    }
+
+    public function destroy(Request $request, Bottle $bottle)
+    {
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        abort_unless(($userId && $bottle->user_id === $userId) || (!$userId && $guestKey && $bottle->guest_key === $guestKey), 403);
+        $bottle->delete();
+        return response()->json(['ok' => true]);
     }
 
     public function replies(Bottle $bottle)
@@ -99,7 +110,7 @@ class BottleController extends Controller
         if ($reaction) $reaction->increment('level');
         else $reaction = ReplyReaction::create(['reply_id' => $reply->id, 'user_id' => $userId, 'guest_key' => $guestKey, 'level' => 1]);
         $this->notifyOwner($reply->user_id, $reply->guest_key, 'reply_reaction', (string) $reply->id, 'あなたの返信に新しい反応が届きました。', $userId, $guestKey);
-        broadcast(new BottleActivityUpdated($reply->bottle_id, 'reply_reaction'));
+        $this->broadcastSafely(new BottleActivityUpdated($reply->bottle_id, 'reply_reaction'));
         return response()->json(['level' => $reaction->fresh()->level]);
     }
 
@@ -151,5 +162,14 @@ class BottleController extends Controller
         if (!$ownerId && !$ownerGuestKey) return;
         if (($ownerId && $actorId && $ownerId === $actorId) || (!$ownerId && $ownerGuestKey && $ownerGuestKey === $actorGuestKey)) return;
         Notification::create(['user_id' => $ownerId, 'guest_key' => $ownerId ? null : $ownerGuestKey, 'type' => $type, 'entity_id' => $entityId, 'message' => $message]);
+    }
+
+    private function broadcastSafely(BottleActivityUpdated $event): void
+    {
+        try {
+            broadcast($event);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 }

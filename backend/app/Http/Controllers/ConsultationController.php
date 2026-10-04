@@ -34,7 +34,11 @@ class ConsultationController extends Controller
                 Notification::create(['user_id' => $parent->user_id, 'guest_key' => $parent->guest_key, 'type' => 'consultation_reply', 'entity_id' => $parent->external_id, 'message' => '自認相談室に新しい返信が届きました。']);
             }
         }
-        broadcast(new ConsultationUpdated($entry->external_id, $entry->entry_type));
+        try {
+            broadcast(new ConsultationUpdated($entry->external_id, $entry->entry_type));
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
         return response()->json(['ok' => true, 'entry' => $entry], 201);
     }
 }

@@ -1265,6 +1265,26 @@ export default function DriftApp() {
     const timer = window.setInterval(refresh, 20000);
     return () => window.clearInterval(timer);
   }, []);
+  // AIボトルは海にいる時だけ、低頻度で一件だけ漂着させる。広場の会話AIとは別経路。
+  useEffect(() => {
+    if (activePage !== "sea" || typeof window === "undefined") return;
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    const world = process.env.NEXT_PUBLIC_WORM_WORLD_URL || "https://type-drift-worm-world.onrender.com";
+    if (!api || sessionStorage.getItem("type-drift-ai-bottle-window") === new Date().toISOString().slice(0, 13)) return;
+    const timer = window.setTimeout(async () => {
+      if (Math.random() > 0.18) return;
+      sessionStorage.setItem("type-drift-ai-bottle-window", new Date().toISOString().slice(0, 13));
+      try {
+        const response = await fetch(`${world}/api/plaza/ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: "類型の海に漂着する、短い秘密メモを一つ書いてください。相談ではなく、観測や違和感の一文にしてください。", character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", history: [] }) });
+        const data = response.ok ? await response.json() : null;
+        const reply = Array.isArray(data?.replies) ? data.replies[0] : null;
+        if (data?.source !== "groq" || !reply?.body) return;
+        await fetch(`${api}/api/bottles`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body: reply.body, mbti: reply.character === "LSI芋虫" ? "INTJ" : "INTP", socionics: reply.character === "LSI芋虫" ? "LSI" : "ILI", enneagram: reply.character === "LSI芋虫" ? "5w6" : "5w4", is_ai: true, ai_character: reply.character }) });
+        window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+      } catch (error) { console.warn("[Type Drift] AI bottle drift failed", error); }
+    }, 6000);
+    return () => window.clearTimeout(timer);
+  }, [activePage]);
   // 海の一覧はWebSocketを常時開かず、短い間隔でNeonの差分を取り込む。
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
@@ -1852,9 +1872,9 @@ export default function DriftApp() {
   const requestDmAiReply = async (target: { id: string; name: string; emoji: string; type?: string }, userText: string) => {
     const world = process.env.NEXT_PUBLIC_WORM_WORLD_URL || "https://type-drift-worm-world.onrender.com";
     try {
-      const response = await fetch(`${world}/api/plaza/ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, history: [{ author: target.name, body: userText }] }) });
-      const data = response.ok ? await response.json() : null;
       const preferred = target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
+      const response = await fetch(`${world}/api/plaza/ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [{ author: target.name, character: preferred, body: userText }] }) });
+      const data = response.ok ? await response.json() : null;
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const replyBody = String(reply?.body || (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)]));
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false };
@@ -2243,6 +2263,17 @@ export default function DriftApp() {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (api) await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }).catch(() => undefined);
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
+  };
+  const deleteBottle = async (bottle: Bottle) => {
+    if (!bottle.mine) return;
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (api) {
+      const response = await fetch(`${api}/api/bottles/${bottle.id}`, { method: "DELETE", headers: { "X-Guest-Key": getGuestKey() } });
+      if (!response.ok) { setPlazaToast("この端末の投稿として確認できないため削除できません"); return; }
+    }
+    setBottles(items => items.filter(item => item.id !== bottle.id));
+    setSelected(null);
+    setPlazaToast("ボトルを海から回収しました");
   };
   const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/replies/${replyId}/reactions`, { method: "POST", headers: { "X-Guest-Key": guestKey() } }).catch(() => undefined); logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
   const catchSomething = () => {
@@ -3041,6 +3072,18 @@ export default function DriftApp() {
               </button>
             </div>
 
+            <div className="game-card facility-card facility-card--chain">
+              <div className="game-icon">🌊📝</div>
+              <div className="facility-content">
+                <p className="eyebrow">COLLECTIVE DRIFT</p>
+                <h3>ことばのよせ波</h3>
+                <p>前の人の文章に一語・一節だけ続きを足し、広場全体でひとつの作品を作ります。<br />詳しいルールと入力欄は、広場のライブスレッド内にあります。</p>
+              </div>
+              <button type="button" className="facility-btn" onClick={() => document.getElementById("plaza-chain-card")?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+                よせ波へ →
+              </button>
+            </div>
+
             <div className="game-card facility-card facility-card--feedback">
               <div className="game-icon">📮✉️</div>
               <div className="facility-content">
@@ -3455,7 +3498,7 @@ export default function DriftApp() {
             >
               <div className="v2-circle-icon v2-icon-dm" style={{ position: "relative" }}>
                 <IconV2LetterHeart size={28} />
-                {unreadDmCount > 0 && <span className="tab-pill-badge" style={{ position: "absolute", top: "-4px", right: "-4px" }}>{unreadDmCount}</span>}
+                {(unreadDmCount + serverNotificationCount) > 0 && <span className="tab-pill-badge" style={{ position: "absolute", top: "-4px", right: "-4px" }}>{unreadDmCount + serverNotificationCount}</span>}
               </div>
               <span className="v2-nav-label">個別メッセージ</span>
               <span className="v2-nav-arrow">→</span>
@@ -4906,6 +4949,7 @@ export default function DriftApp() {
           </button>
           <span className="detail-label">あなたが拾った秘密</span>
           <BottleCard bottle={selected} onReact={react} onOpen={() => {}} />
+          {selected.mine && <button type="button" className="bottle-delete-btn" onClick={() => void deleteBottle(selected)}>このボトルを回収する</button>}
 
           <ReplyThread replies={replyItems[selected.id] || []} onReact={replyId => reactToReply(selected.id, replyId)} onReply={replyId => setReplyParentId(replyId)} />
           <div className="reply-box">

@@ -75,12 +75,12 @@ function storePlayer(data, socket = null) {
   if (socket) playerSockets.set(clientId, socket);
 }
 
-async function plazaAI(body, history = []) {
+async function plazaAI(body, history = [], requestedCharacter = null) {
   const fallback = [
     { character: 'ダーリンちゃん', emoji: '🥺', body: `ねぇ、${body ? '今の話' : '今日は'}ちょっと気になる♡` },
     { character: 'LSI芋虫', emoji: '🐛', body: body ? '内容を確認しました。観測を継続します。' : '広場への入場を確認しました。' },
   ];
-  const fallbackReply = (reason) => ({ replies: [fallback[Math.random() < 0.5 ? 0 : 1]], source: 'fallback', reason });
+  const fallbackReply = (reason) => ({ replies: [requestedCharacter ? fallback.find(item => item.character === requestedCharacter) || fallback[0] : fallback[Math.random() < 0.5 ? 0 : 1]], source: 'fallback', reason });
   if (!process.env.GROQ_API_KEY) {
     console.warn('[plaza-ai] GROQ_API_KEY is missing; using fallback', { model: GROQ_MODEL });
     return fallbackReply('missing_api_key');
@@ -88,7 +88,7 @@ async function plazaAI(body, history = []) {
   console.info('[plaza-ai] request', { model: GROQ_MODEL, bodyLength: body.length, hasKey: true });
   const mentionedDarling = /ダーリンちゃん|ダーリン/.test(body);
   const mentionedWorm = /LSI芋虫|芋虫|虫/.test(body);
-  const preferredCharacter = mentionedDarling ? 'ダーリンちゃん' : mentionedWorm ? 'LSI芋虫' : null;
+  const preferredCharacter = requestedCharacter || (mentionedDarling ? 'ダーリンちゃん' : mentionedWorm ? 'LSI芋虫' : null);
   const recent = history.slice(-12).map(m => `${m.character || m.author}: ${m.body}`).join('\n');
   const prompt = `あなたは「類型広場」にいる2人のAIキャラクターの会話担当です。\nダーリンちゃん=🥺。甘めで親しげ、短く、少しハートを混ぜる。\nLSI芋虫=🐛。観測・分類・構造を好むが、堅すぎない短文。\n人間の発言には反応してよいが、2人とも毎回長々と話さない。各キャラ1〜2文、合計40〜90文字程度。質問攻めにしない。\n人間が話した後だけ返答する。AI同士だけで会話を続けない。\n直前の会話:\n${recent || 'まだ会話はありません。'}\n今回の人間の発言:\n${body || '新しい人が広場に来ました。挨拶してください。'}\n${preferredCharacter ? `名前が呼ばれているため、今回は必ず${preferredCharacter}を主役にして返答してください。` : '名前が呼ばれていない場合は、どちらか一人を中心に自然に返答してください。'}\nJSONだけで返してください。`;
   try {
@@ -162,7 +162,8 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body || '{}');
-        const result = await plazaAI(String(data.body || '').slice(0, 120), Array.isArray(data.history) ? data.history : []);
+        const requestedCharacter = data.character === 'ダーリンちゃん' || data.character === 'LSI芋虫' ? data.character : null;
+        const result = await plazaAI(String(data.body || '').slice(0, 120), Array.isArray(data.history) ? data.history : [], requestedCharacter);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ...result, model: GROQ_MODEL, ai: Boolean(process.env.GROQ_API_KEY) }));
       } catch {

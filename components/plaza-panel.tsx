@@ -187,15 +187,6 @@ export default function PlazaPanel({
     void requestAi('新しい人が広場に来ました。短く自然に歓迎してください。');
   }, [connected]);
 
-  // 常時投稿ではなく、広場に滞在している時だけ低頻度でNPCが呟く。
-  useEffect(() => {
-    if (!connected) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible' || Math.random() > 0.35) return;
-      void requestAi('広場にいる人へ、短く自然な一言を置いてください。定型文の繰り返しは避けてください。');
-    }, 240000);
-    return () => window.clearInterval(timer);
-  }, [connected]);
 
   // 送信ヘルパー
   const sendRelay = (payload: unknown) => {
@@ -480,7 +471,7 @@ export default function PlazaPanel({
         {localToast && <div className="plaza-chat-toast">{localToast}</div>}
       </div>
 
-      <section className="plaza-chain-card" aria-label="みんなで続ける文章">
+      <section id="plaza-chain-card" className="plaza-chain-card" aria-label="みんなで続ける文章">
         <div className="plaza-chain-head">
           <div><p className="eyebrow">COLLECTIVE DRIFT</p><h4>ことばのよせ波</h4></div>
           <span>一語・一節を足す</span>
