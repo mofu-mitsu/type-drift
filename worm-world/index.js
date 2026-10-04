@@ -123,7 +123,15 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     try { parsed = JSON.parse(jsonText || '{}'); } catch {
       parsed = { replies: [{ character: preferredCharacter || 'ダーリンちゃん', body: rawContent }] };
     }
-    let replies = Array.isArray(parsed.replies) ? parsed.replies.slice(0, 2) : [];
+    const normalizedReplies = Array.isArray(parsed.replies)
+      ? parsed.replies
+      : (parsed.character || parsed.body || parsed.text)
+        ? [parsed]
+        : (parsed.reply && typeof parsed.reply === 'object' ? [parsed.reply] : []);
+    let replies = normalizedReplies.slice(0, 2).map(item => ({
+      character: item.character || item.name || preferredCharacter || 'ダーリンちゃん',
+      body: item.body || item.text || item.content || '',
+    }));
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
     if (!chosen || !String(chosen.body || '').trim()) {
