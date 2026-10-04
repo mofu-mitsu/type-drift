@@ -7,6 +7,7 @@ import WormGame from "./worm-game";
 import PlazaPanel, { type PlazaUser } from "./plaza-panel";
 import CognitiveConstellation from "./cognitive-constellation";
 import ConsultationRoom from "./consultation-room";
+import ChainPage from "./chain-page";
 import { INITIAL_CONSULTATION_POSTS, type ConsultationPost, type ConsultationComment, type DiagnosisResult } from "@/types/consultation";
 import { getGuestKey, logActivity } from "@/lib/activity-log";
 import {
@@ -106,7 +107,7 @@ function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id:
     <p className="bottle-text">{bottle.text}</p>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
-    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>+{bottle.userReaction}</small> : null}</button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button><button type="button" className="more" aria-label="その他">•••</button></div>
+    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button>{bottle.mine && bottle.reactions > 0 && <span className="received-reaction-count">届いた反応 {bottle.reactions}</span>}<button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button><button type="button" className="more" aria-label="その他">•••</button></div>
   </article>;
 }
 
@@ -250,7 +251,7 @@ function ReplyThread({ replies, onReact, onReply }: { replies: ReplyItem[]; onRe
 export default function DriftApp() {
   const [bottles, setBottles] = useState(initialBottles);
   const [selected, setSelected] = useState<Bottle | null>(null);
-  const [activePage, setActivePage] = useState<"home" | "sea" | "plaza" | "games" | "stars" | "consult" | "activity" | "about">("home");
+  const [activePage, setActivePage] = useState<"home" | "sea" | "plaza" | "chain" | "games" | "stars" | "consult" | "activity" | "about">("home");
   const [activityTab, setActivityTab] = useState<"mine" | "liked" | "replied" | "messages" | "inquiries" | "admin">("mine");
   const [composerOpen, setComposerOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -1294,8 +1295,8 @@ export default function DriftApp() {
       if (!rows.length) return;
       setBottles(current => {
         const remoteIds = new Set(rows.map((row: any) => Number(row.id)));
-        const remote = rows.map((row: any) => ({ id: Number(row.id), author: `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_count || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: current.some(item => item.id === Number(row.id) && item.mine), color: "mint" } as Bottle));
-        return [...remote, ...current.filter(item => !remoteIds.has(item.id))];
+        const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_count || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine) || current.some(item => item.id === Number(row.id) && item.mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
+        return [...remote, ...current.filter(item => !item.mine || remoteIds.has(item.id))];
       });
     }).catch(() => undefined);
     const timer = window.setInterval(refresh, 15000);
@@ -1342,6 +1343,7 @@ export default function DriftApp() {
       setActivePage("consult");
       setSharedConsultId(params.get("thread"));
     }
+    if (params.get("page") === "plaza" && params.get("chain") === "1") setActivePage("chain");
     if (params.get("page") === "profile") {
       setActivePage("activity");
       setInspectProfile({
@@ -1389,7 +1391,7 @@ export default function DriftApp() {
             replies: Number(row.replies_count || 0),
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
-            mine: false,
+            mine: Boolean(row.is_mine),
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
@@ -2242,7 +2244,7 @@ export default function DriftApp() {
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); } };
-  const uploadToCloudinary = async (dataUrl?: string) => { const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; if (!dataUrl) return undefined; if (!cloudName || !preset) throw new Error("Cloudinary is not configured: NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME / NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET"); const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
+  const uploadToCloudinary = async (dataUrl?: string) => { const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; if (!dataUrl) return undefined; if (!cloudName || !preset) { setPlazaToast("画像保存は未設定ですが、本文だけ投稿できます。Cloudinary設定後に画像を保存できます"); return undefined; } const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
   const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; let serverBottle: any = null; const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); serverBottle = (await response.json()).bottle; } const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
   const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/question-prompts`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
@@ -3103,7 +3105,7 @@ export default function DriftApp() {
                 <h3>ことばのよせ波</h3>
                 <p>前の人の文章に一語・一節だけ続きを足し、広場全体でひとつの作品を作ります。<br />詳しいルールと入力欄は、広場のライブスレッド内にあります。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => document.getElementById("plaza-chain-card")?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+              <button type="button" className="facility-btn" onClick={() => setActivePage("chain")}>
                 よせ波へ →
               </button>
             </div>
@@ -3136,6 +3138,7 @@ export default function DriftApp() {
         </div>
       </section>
     )}
+    {activePage === "chain" && <ChainPage onBack={() => setActivePage("plaza")} onToast={setPlazaToast} />}
     {activePage === "games" && <WormGame nickname={nickname || (profileIdentity.mbti || profileIdentity.socionics ? `匿名の${profileIdentity.mbti || profileIdentity.socionics}` : "匿名")} onExit={() => setActivePage("plaza")} />}
     {activePage === "stars" && (
       <CognitiveConstellation

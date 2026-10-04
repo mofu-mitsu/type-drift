@@ -27,6 +27,8 @@ class BottleController extends Controller
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         $page->getCollection()->transform(function (Bottle $bottle) use ($userId, $guestKey) {
+            $bottle->is_mine = ($userId && $bottle->user_id === $userId)
+                || (!$userId && $guestKey && $bottle->guest_key === $guestKey);
             $bottle->reaction_level = Reaction::query()
                 ->where('bottle_id', $bottle->id)
                 ->when($userId, fn ($query) => $query->where('user_id', $userId), fn ($query) => $query->where('guest_key', $guestKey))

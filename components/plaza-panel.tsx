@@ -80,6 +80,15 @@ export default function PlazaPanel({
   const sessionKeyRef = useRef<string>('');
   const aiUrl = useMemo(() => `${WORLD}/api/plaza/ai`, []);
 
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    void fetch(`${api}/api/plaza/chain`, { credentials: 'include', headers: { 'X-Guest-Key': getGuestKey() } })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (data?.chain?.body) setChainText(data.chain.body); })
+      .catch(() => undefined);
+  }, []);
+
   // WebSocket 接続
   useEffect(() => {
     let alive = true;
@@ -89,7 +98,7 @@ export default function PlazaPanel({
     let heartbeat: number | null = null;
     const presence = (path: string, payload: Record<string, unknown>) => {
       if (!api) return;
-      void fetch(`${api}/api/presence/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify(payload), keepalive: path === 'leave' }).catch(() => undefined);
+      void fetch(`${api}/api/presence/${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify(payload), keepalive: path === 'leave' }).catch(() => undefined);
     };
     const connect = () => {
       if (!alive) return;
@@ -281,6 +290,11 @@ export default function PlazaPanel({
     const body = chainInput.trim().replace(/\s+/g, ' ').slice(0, 48);
     if (!body) return;
     if (sendRelay({ type: 'plaza_chain_append', body })) setChainInput('');
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (api) void fetch(`${api}/api/plaza/chain`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ body }) })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (data?.chain?.body) setChainText(data.chain.body); })
+      .catch(() => undefined);
   };
 
   const shareChain = async () => {

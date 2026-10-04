@@ -13,8 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // JSON endpoints live in routes/api.php; session-backed OAuth remains
-        // in routes/web.php and keeps normal browser CSRF protection.
+        // OAuthのセッションCookieを、Next.jsから呼ぶAPIでも解決できるようにする。
+        $middleware->appendToGroup('api', [
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

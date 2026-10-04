@@ -13,6 +13,7 @@ export function logActivity(eventType: string, payload: Record<string, unknown> 
   if (!api || typeof window === 'undefined') return;
   void fetch(`${api}/api/activity-events`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() },
     body: JSON.stringify({ event_type: eventType, entity_type: entity?.type, entity_id: entity?.id == null ? undefined : String(entity.id), payload }),
     keepalive: true,
@@ -24,6 +25,7 @@ export function logConsultation(entry: { externalId: string; parentExternalId?: 
   if (!api || typeof window === 'undefined') return;
   void fetch(`${api}/api/consultations/events`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() },
     body: JSON.stringify({ external_id: entry.externalId, parent_external_id: entry.parentExternalId, entry_type: entry.entryType, category: entry.category, body: entry.body, payload: entry.payload }),
     keepalive: true,

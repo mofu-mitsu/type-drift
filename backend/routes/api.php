@@ -8,6 +8,7 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ConsultationController;
 use App\Http\Controllers\QuestionPromptController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PlazaChainController;
 use Illuminate\Support\Facades\DB;
 
 Route::get('/health', function () {
@@ -30,6 +31,8 @@ Route::post('/bottles/{bottle}/votes', [BottleController::class, 'vote']);
 Route::match(['put', 'patch'], '/profile', [BottleController::class, 'profile']);
 Route::get('/plaza/messages', [BottleController::class, 'plazaMessages']);
 Route::post('/plaza/messages', [BottleController::class, 'plazaMessage']);
+Route::get('/plaza/chain', [PlazaChainController::class, 'show']);
+Route::post('/plaza/chain', [PlazaChainController::class, 'append']);
 Route::post('/feedback', [BottleController::class, 'feedback']);
 Route::post('/activity-events', [ActivityController::class, 'event']);
 Route::post('/presence/join', [ActivityController::class, 'join']);
