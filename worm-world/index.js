@@ -100,7 +100,7 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
         top_p: 0.8,
-        max_tokens: 220,
+        max_completion_tokens: 500,
       })
     });
     if (!response.ok) {
@@ -110,7 +110,12 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
       return { ...fallbackReply(`groq_${response.status}`), providerMessage };
     }
     const data = await response.json();
-    const rawContent = String(data.choices?.[0]?.message?.content || '').trim();
+    const message = data.choices?.[0]?.message || {};
+    const rawContent = String(message.content || '').trim();
+    if (!rawContent) {
+      const finishReason = data.choices?.[0]?.finish_reason || 'unknown';
+      console.warn(`[plaza-ai] Groq returned empty content model=${GROQ_MODEL} finish_reason=${finishReason} message_keys=${Object.keys(message).join(',')}`);
+    }
     const jsonText = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
     let parsed;
     try { parsed = JSON.parse(jsonText || '{}'); } catch {
