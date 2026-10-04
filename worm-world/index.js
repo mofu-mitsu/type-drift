@@ -111,7 +111,7 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     }
     const data = await response.json();
     const message = data.choices?.[0]?.message || {};
-    const rawContent = String(message.content || '').trim();
+    const rawContent = String(message.content || message.reasoning_content || message.reasoning || '').trim();
     if (!rawContent) {
       const finishReason = data.choices?.[0]?.finish_reason || 'unknown';
       const providerMessage = `empty_content finish_reason=${finishReason} message_keys=${Object.keys(message).join(',')}`;
@@ -126,7 +126,10 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     let replies = Array.isArray(parsed.replies) ? parsed.replies.slice(0, 2) : [];
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
-    return chosen ? { replies: [{ character: chosen.character, emoji: chosen.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: String(chosen.body).slice(0, 120) }], source: 'groq', reason: 'ok' } : fallbackReply('empty_response');
+    if (!chosen || !String(chosen.body || '').trim()) {
+      return { ...fallbackReply('empty_response'), providerMessage: `no_valid_reply content_length=${rawContent.length} finish_reason=${data.choices?.[0]?.finish_reason || 'unknown'}` };
+    }
+    return { replies: [{ character: chosen.character, emoji: chosen.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: String(chosen.body).slice(0, 120) }], source: 'groq', reason: 'ok' };
   } catch (error) {
     console.error('[plaza-ai] request failed', error);
     return fallbackReply('request_error');
