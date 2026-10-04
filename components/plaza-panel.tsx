@@ -228,11 +228,13 @@ export default function PlazaPanel({
       console.info('[Type Drift AI] response', { source: data.source, reason: data.reason, model: data.model, replies: data.replies?.length || 0 });
       if (data.source !== 'groq') {
         const reason = data.reason || 'unknown';
-        const notice = `AIは代替応答です（${reason}）。気になる場合は意見箱へ送れます。`;
+        const providerMessage = data.providerMessage ? `\n詳細: ${String(data.providerMessage).slice(0, 220)}` : '';
+        const notice = `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${reason}」${providerMessage}\n気になる場合は意見箱へ送ってね。`;
         setLocalToast(notice);
         onToast?.(notice);
+        sendRelay({ type: 'plaza_ai_message', character: /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん', body: notice });
       }
-      for (const reply of Array.isArray(data.replies) ? data.replies.slice(0, 1) : []) {
+      for (const reply of data.source === 'groq' && Array.isArray(data.replies) ? data.replies.slice(0, 1) : []) {
         sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body });
       }
     } catch (error) {
@@ -240,10 +242,11 @@ export default function PlazaPanel({
       console.error('[Type Drift AI] failed', error);
       // フォールバック応答
       const character = /ダーリンちゃん|ダーリン/.test(humanText) || Math.random() < 0.5 ? 'ダーリンちゃん' : 'LSI芋虫';
-      const notice = 'AI接続エラーで代替応答になりました。気になる場合は意見箱へ送れます。';
+      const reason = error instanceof Error ? error.message : 'request_error';
+      const notice = `待っていたわよ♡\nAI接続でエラーが起きたみたい。\nエラー内容「${reason}」\n気になる場合は意見箱へ送ってね。`;
       setLocalToast(notice);
       onToast?.(notice);
-      sendRelay({ type: 'plaza_ai_message', character, body: character === 'ダーリンちゃん' ? 'ねぇ、聞いてるよ♡' : '発言を記録しました。' });
+      sendRelay({ type: 'plaza_ai_message', character, body: notice });
     } finally {
       setAiBusy(false);
     }

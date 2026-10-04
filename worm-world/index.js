@@ -98,45 +98,24 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        reasoning_effort: 'none',
         temperature: 0.7,
         top_p: 0.8,
-        max_completion_tokens: 220,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'plaza_replies',
-            strict: true,
-            schema: {
-              type: 'object',
-              properties: {
-                replies: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      character: { type: 'string', enum: ['ダーリンちゃん', 'LSI芋虫'] },
-                      body: { type: 'string' }
-                    },
-                    required: ['character', 'body'],
-                    additionalProperties: false
-                  }
-                }
-              },
-              required: ['replies'],
-              additionalProperties: false
-            }
-          }
-        }
+        max_tokens: 220,
       })
     });
     if (!response.ok) {
       const detail = await response.text();
-      console.warn('[plaza-ai] Groq response failed', { status: response.status, detail: detail.slice(0, 300), model: GROQ_MODEL });
-      return fallbackReply(`groq_${response.status}`);
+      const providerMessage = detail.slice(0, 500);
+      console.warn(`[plaza-ai] Groq response failed status=${response.status} model=${GROQ_MODEL} detail=${JSON.stringify(providerMessage)}`);
+      return { ...fallbackReply(`groq_${response.status}`), providerMessage };
     }
     const data = await response.json();
-    const parsed = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+    const rawContent = String(data.choices?.[0]?.message?.content || '').trim();
+    const jsonText = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(jsonText || '{}'); } catch {
+      parsed = { replies: [{ character: preferredCharacter || 'ダーリンちゃん', body: rawContent }] };
+    }
     let replies = Array.isArray(parsed.replies) ? parsed.replies.slice(0, 2) : [];
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
