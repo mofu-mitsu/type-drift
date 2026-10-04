@@ -68,6 +68,8 @@ export default function PlazaPanel({
   const [connected, setConnected] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiStatus, setAiStatus] = useState('未確認');
+  const [chainText, setChainText] = useState('海辺で、最初に見つけたのは');
+  const [chainInput, setChainInput] = useState('');
   const [localToast, setLocalToast] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -109,8 +111,11 @@ export default function PlazaPanel({
               onPresenceUpdate?.(count + NPC_COUNT);
               onPresenceUsers?.(Array.isArray(data.users) ? data.users : []);
               if (Array.isArray(data.messages) && data.messages.length > 0) {
-                setMessages(data.messages);
+              setMessages(data.messages);
               }
+              if (typeof data.chain === 'string') setChainText(data.chain);
+            } else if (data.type === 'plaza_chain' && typeof data.text === 'string') {
+              setChainText(data.text);
             } else if (data.type === 'plaza_message' && data.message) {
               const msg: PlazaMessage = data.message;
               setMessages(current => {
@@ -268,6 +273,12 @@ export default function PlazaPanel({
     window.setTimeout(() => void requestAi(body), 350);
   };
 
+  const appendChain = () => {
+    const body = chainInput.trim().replace(/\s+/g, ' ').slice(0, 48);
+    if (!body) return;
+    if (sendRelay({ type: 'plaza_chain_append', body })) setChainInput('');
+  };
+
   // エモート送信
   const sendEmote = (emoteValue: string) => {
     const author = displayName(nickname);
@@ -419,6 +430,18 @@ export default function PlazaPanel({
         </p>
         {localToast && <div className="plaza-chat-toast">{localToast}</div>}
       </div>
+
+      <section className="plaza-chain-card" aria-label="みんなで続ける文章">
+        <div className="plaza-chain-head">
+          <div><p className="eyebrow">COLLECTIVE DRIFT</p><h4>ことばのよせ波</h4></div>
+          <span>一語・一節を足す</span>
+        </div>
+        <p className="plaza-chain-text">{chainText}</p>
+        <div className="plaza-chain-compose">
+          <input value={chainInput} onChange={event => setChainInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') appendChain(); }} maxLength={48} placeholder="続きをひとつだけ…" />
+          <button type="button" onClick={appendChain}>続ける</button>
+        </div>
+      </section>
     </div>
   );
 }

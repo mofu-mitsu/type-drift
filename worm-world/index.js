@@ -13,6 +13,7 @@ const plazaSockets = new Set();
 const plazaUsers = new Map();
 const plazaSessions = new Map();
 const plazaMessages = [];
+let plazaChain = '海辺で、最初に見つけたのは';
 const plazaAiState = new Map();
 
 function publicPlayer(player) {
@@ -40,7 +41,7 @@ function broadcastWorld() {
   for (const ws of sockets) if (ws.readyState === WebSocket.OPEN) ws.send(payload);
 }
 function plazaPayload() {
-  return JSON.stringify({ type: 'plaza_presence', count: plazaSessions.size, users: [...plazaUsers.values()], messages: plazaMessages.slice(-PLAZA_HISTORY_MAX), sentAt: Date.now() });
+  return JSON.stringify({ type: 'plaza_presence', count: plazaSessions.size, users: [...plazaUsers.values()], messages: plazaMessages.slice(-PLAZA_HISTORY_MAX), chain: plazaChain, sentAt: Date.now() });
 }
 function broadcastPlazaPresence() {
   const payload = plazaPayload();
@@ -223,6 +224,15 @@ wss.on('connection', ws => {
           state.waitingForHuman = true;
           plazaAiState.set(socket, state);
         }
+        return;
+      }
+      if (message.type === 'plaza_chain_append') {
+        if (!plazaSockets.has(ws)) return;
+        const addition = String(message.body || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+        if (!addition) return;
+        plazaChain = `${plazaChain} ${addition}`.slice(-520);
+        const payload = JSON.stringify({ type: 'plaza_chain', text: plazaChain, author: plazaUsers.get(ws)?.nickname || '匿名の誰か', sentAt: Date.now() });
+        for (const socket of plazaSockets) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
         return;
       }
       if (message.type === 'plaza_dm') {

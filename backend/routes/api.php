@@ -36,6 +36,7 @@ Route::post('/presence/heartbeat', [ActivityController::class, 'heartbeat']);
 Route::post('/presence/leave', [ActivityController::class, 'leave']);
 Route::get('/presence/online', [ActivityController::class, 'online']);
 Route::post('/consultations/events', [ConsultationController::class, 'store']);
+Route::get('/consultations', [ConsultationController::class, 'index']);
 Route::get('/question-prompts', [QuestionPromptController::class, 'index']);
 Route::post('/question-prompts', [QuestionPromptController::class, 'store']);
 Route::get('/notifications/unread', [NotificationController::class, 'unread']);

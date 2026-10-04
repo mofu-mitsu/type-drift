@@ -8,6 +8,11 @@ use Illuminate\Http\Request;
 
 class ConsultationController extends Controller
 {
+    public function index()
+    {
+        return response()->json(['entries' => ConsultationEntry::query()->where('entry_type', 'thread')->latest()->limit(100)->get()]);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([

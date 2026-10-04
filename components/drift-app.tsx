@@ -1248,6 +1248,7 @@ export default function DriftApp() {
   const [profileIdentity, setProfileIdentity] = useState({ mbti: "", socionics: "", enneagram: "", otherType: "" });
   const [profileBio, setProfileBio] = useState("");
   const [profileLinks, setProfileLinks] = useState<ProfileLink[]>([]);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [profileExpanded, setProfileExpanded] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
@@ -1264,11 +1265,52 @@ export default function DriftApp() {
     const timer = window.setInterval(refresh, 20000);
     return () => window.clearInterval(timer);
   }, []);
+  // 海の一覧はWebSocketを常時開かず、短い間隔でNeonの差分を取り込む。
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    const refresh = () => void fetch(`${api}/api/bottles`, { headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
+      const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
+      if (!rows.length) return;
+      setBottles(current => {
+        const remoteIds = new Set(rows.map((row: any) => Number(row.id)));
+        const remote = rows.map((row: any) => ({ id: Number(row.id), author: `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: 0, replies: 0, time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: false, color: "mint" } as Bottle));
+        return [...remote, ...current.filter(item => !remoteIds.has(item.id) || item.mine)];
+      });
+    }).catch(() => undefined);
+    const timer = window.setInterval(refresh, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+  // 相談室はイベント保存されたスレッドを読み直し、別端末の投稿も反映する。
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    const refresh = () => void fetch(`${api}/api/consultations`).then(response => response.ok ? response.json() : null).then(data => {
+      const entries = Array.isArray(data?.entries) ? data.entries : [];
+      const remote = entries.map((entry: any) => ({ ...(entry.payload || {}), id: entry.external_id, category: entry.category || entry.payload?.category || "forum", freeText: entry.body || entry.payload?.freeText || "", comments: entry.payload?.comments || [] } as ConsultationPost));
+      if (remote.length) setConsultationPosts(current => [...remote, ...current.filter(item => !remote.some((row: ConsultationPost) => row.id === item.id))]);
+    }).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, 20000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("page") === "consult") {
       setActivePage("consult");
       setSharedConsultId(params.get("thread"));
+    }
+    if (params.get("page") === "profile") {
+      setInspectProfile({
+        id: "shared-profile",
+        name: params.get("name") || "匿名の誰か",
+        emoji: "◌",
+        mbti: params.get("mbti") || "未設定",
+        socionics: params.get("socionics") || "未設定",
+        enneagram: params.get("enneagram") || "未設定",
+        psycho: params.get("otherType") || "",
+        overview: params.get("bio") || "このプロフィールは共有された自認カードです。",
+      });
     }
   }, []);
   useEffect(() => {
@@ -1331,6 +1373,7 @@ export default function DriftApp() {
         if (state.profileIdentity) setProfileIdentity({ ...profileIdentity, ...state.profileIdentity });
         if (typeof state.profileBio === "string") setProfileBio(state.profileBio);
         if (Array.isArray(state.profileLinks)) setProfileLinks(state.profileLinks);
+        if (typeof state.profileImage === "string") setProfileImage(state.profileImage);
       }
       // DMメッセージの復元
       const savedDm = localStorage.getItem("type-drift-direct-messages");
@@ -2121,9 +2164,10 @@ export default function DriftApp() {
       buriCount,
       profileIdentity,
       profileBio,
-      profileLinks
+      profileLinks,
+      profileImage
     }));
-  }, [storageReady, bottles, likedBottleIds, repliedBottleIds, nickname, buriCount, profileIdentity, profileBio, profileLinks]);
+  }, [storageReady, bottles, likedBottleIds, repliedBottleIds, nickname, buriCount, profileIdentity, profileBio, profileLinks, profileImage]);
 
   useEffect(() => {
     if (!storageReady) return;
@@ -2572,26 +2616,6 @@ export default function DriftApp() {
 
           <div className="plaza-tree">🌳</div>
           <div className="plaza-bench">🪑</div>
-          <div
-            className="plaza-avatar avatar-you clickable"
-            title={`${nickname || "匿名のあなた"}（タップでプロフ確認）`}
-            onClick={() => {
-              setInspectProfile({
-                id: "you",
-                name: nickname || "匿名のあなた",
-                emoji: "◌",
-                mbti: profileIdentity.mbti || "未設定",
-                socionics: profileIdentity.socionics || "未設定",
-                enneagram: profileIdentity.enneagram || "未設定",
-                psycho: profileIdentity.otherType || "未設定",
-                overview: profileBio || "まだ伝えたいことは設定されていません。「あなたの活動」から自由に自認やメッセージ、リンクを設定できます。",
-                isSelf: true
-              });
-            }}
-          >
-            ◌<small>{nickname || "匿名のあなた"}</small>
-            {avatarEmote && <b className="floating-emote">{avatarEmote}</b>}
-          </div>
           <div
             className="plaza-avatar avatar-darling clickable"
             title="ダーリンちゃん（タップでプロフ確認・ブリを渡す）"
@@ -3171,6 +3195,17 @@ export default function DriftApp() {
             >
               {profileExpanded ? "▲ たたむ" : "▼ 編集する"}
             </button>
+            <button
+              type="button"
+              className="v2-identity-share-btn"
+              onClick={async () => {
+                const params = new URLSearchParams({ page: "profile", name: nickname || "匿名の誰か", mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType, bio: profileBio });
+                const url = `${window.location.origin}/?${params.toString()}`;
+                try { if (navigator.share) await navigator.share({ title: "Type Drift 自認プロフィール", text: "この自認プロフィールを共有します", url }); else await navigator.clipboard.writeText(url); setPlazaToast("プロフィール共有リンクを作りました"); } catch {}
+              }}
+            >
+              共有
+            </button>
           </div>
 
           {/* 自認設定フォーム（アコーディオン展開時） */}
@@ -3179,6 +3214,14 @@ export default function DriftApp() {
               <p className="profile-hint">
                 ここで設定した名前や自認は広場やAIキャラクターとの会話で使われます。海に流すボトルは匿名性を保ったままです。
               </p>
+
+              <div className="profile-field-group">
+                <label className="profile-label">プロフィール画像（任意）</label>
+                <div className="profile-image-field">
+                  {profileImage && <img src={profileImage} alt="プロフィール画像" />}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (!file || file.size > 5 * 1024 * 1024) return; const reader = new FileReader(); reader.onload = () => setProfileImage(String(reader.result)); reader.readAsDataURL(file); }} />
+                </div>
+              </div>
 
               <div className="profile-field-group">
                 <label className="profile-label">ニックネーム</label>
