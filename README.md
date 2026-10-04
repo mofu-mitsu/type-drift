@@ -12,7 +12,7 @@
 - ボトルへの返信導線
 - リアクションを重ねると赤→水色→黄色→オレンジ→緑→紫…と色が変化
 - 投稿時の自認入力（MBTI / ソシオニクス / エニアグラム / その他自由入力）
-- 任意の画像添付（現在はブラウザ内プレビュー。公開保存は次段階）
+- 任意の画像添付（Cloudinaryへ保存。未設定時は送信を止めて案内）
 - 広場、ひとこと、エモート、ダーリンちゃん、LSI芋虫
 - 芋虫浜（クリック・タップ・矢印キーで移動、葉っぱ接触で自動成長）
 - 認知機能の星座、自認相談室
@@ -22,7 +22,8 @@
 
 - `Next.js`：Vercel。海のUI、アニメーション、ゲーム画面
 - `Laravel 13 API`：Render。認証、コンテンツ、OAuth、永続化API、芋虫位置のブロードキャスト
-- `Laravel Reverb`：Render WebSocket。芋虫浜のリアルタイム位置同期
+- `Laravel Reverb`：Render WebSocket。ボトル・相談室の更新通知と芋虫浜の位置同期
+- `type-drift-worm-world`：Render上のNode WebSocket relay。広場、DM、AI、ことばのよせ波を担当
 - `Neon PostgreSQL`：ユーザーとコンテンツの永続化。リアルタイム座標そのものはDBへ毎フレーム保存しない
 - `Qwen / Groq`：AIキャラクター用。自認相談室には接続しない方針
 - `Cloudinary`：ボトル / アンケート画像のアップロード先
@@ -57,7 +58,7 @@ ReverbはRender上で別Web Serviceとして `php artisan reverb:start --host=0.
 
 ## 現在の重要な制限
 
-既存の画面はローカル状態でも動きますが、Laravel側に本番保存用のmigrationとAPIを追加しました。ユーザー・ボトル・返信・リアクション・投票・プロフィール・広場メッセージ用のテーブルはNeonへ作成済みです。フロントからAPIへ切り替える接続は次の段階です。
+ボトル、返信、返信への返信、リアクション、投票、プロフィール、通知、相談室イベント、広場メッセージ、Presence、活動ログはLaravel API経由でNeonへ保存します。匿名投稿にはゲストキーも保存し、別端末同期用の通知先を作れるようにしています。
 
 画像はRenderのローカルディスクへ保存しません。Cloudinaryへの直接アップロード処理を追加済みです。Vercelに`NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`と`NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`を設定すると、画像URLをボトルへ添付できます。公開版ではLaravel APIにも画像URLを渡して保存します。
 
@@ -90,6 +91,8 @@ APP_URL=https://type-drift-api.onrender.com
 
 OAuthとAIを使う場合は、`FRONTEND_URL`、`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REDIRECT_URI`、`X_CLIENT_ID`、`X_CLIENT_SECRET`、`X_REDIRECT_URI`、`GROQ_API_KEY`もRenderへ設定します。
 
+AIは現在、広場とDMが`type-drift-worm-world`の`/api/plaza/ai`を呼びます。`GROQ_API_KEY`はLaravel APIだけでなく、AIを実行する`type-drift-worm-world`サービスにも登録が必要です。Render停止時にCloudflareへ自動切替する仕組みはまだ未実装で、Vercelへキーを置くだけではworm-worldのキー不足は解決しません。
+
 `APP_KEY`はランダム文字列ではなく、必ず`base64:`で始まるLaravel形式にします。Renderの現在の500エラーは、この鍵が不正なためCookie暗号化で発生しています。「Cannot modify header information」は二次的なエラーです。
 
 ## GAS / UptimeRobot
@@ -117,5 +120,5 @@ npm run dev
 2. Next.jsをLaravelのボトル / 返信 / リアクション / 投票APIへ接続
 3. Cloudinary等の外部ストレージへ画像アップロードAPIを追加
 4. OAuthの本番コールバックを確認
-5. Laravel Reverb等で広場をリアルタイム化（メッセージ保存APIと10秒ポーリングは実装済み。Presenceとbroadcastingが次段階）
+5. Cloudflare側のAI/Realtime fallbackを別サービスとして用意し、Render停止時だけ切り替えるルーティングを追加
 6. 芋虫浜の他プレイヤー、NPC、ランキングを永続化

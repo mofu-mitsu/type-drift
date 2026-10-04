@@ -10,6 +10,8 @@ use App\Models\Reaction;
 use App\Models\Reply;
 use App\Models\ReplyReaction;
 use App\Models\Feedback;
+use App\Models\Notification;
+use App\Events\BottleActivityUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -17,11 +19,21 @@ class BottleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Bottle::query()->latest();
+        $query = Bottle::query()->withCount(['reactions', 'replies'])->latest();
         if ($request->filled('mbti')) $query->whereRaw('LOWER(mbti) = ?', [strtolower($request->string('mbti')->toString())]);
         if ($request->filled('socionics')) $query->whereRaw('LOWER(socionics) = ?', [strtolower($request->string('socionics')->toString())]);
         if ($request->filled('q')) $query->where('body', 'ilike', '%'.$request->string('q')->toString().'%');
-        return response()->json(['bottles' => $query->paginate(20)]);
+        $page = $query->paginate(20);
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        $page->getCollection()->transform(function (Bottle $bottle) use ($userId, $guestKey) {
+            $bottle->reaction_level = Reaction::query()
+                ->where('bottle_id', $bottle->id)
+                ->when($userId, fn ($query) => $query->where('user_id', $userId), fn ($query) => $query->where('guest_key', $guestKey))
+                ->value('level') ?? 0;
+            return $bottle;
+        });
+        return response()->json(['bottles' => $page]);
     }
 
     public function store(Request $request)
@@ -37,6 +49,7 @@ class BottleController extends Controller
             'poll_options.*' => ['string', 'max:100'],
         ]);
         $data['user_id'] = $request->user()?->id;
+        $data['guest_key'] = $request->user() ? null : $request->header('X-Guest-Key');
         $bottle = Bottle::create($data);
         return response()->json(['bottle' => $bottle], 201);
     }
@@ -49,6 +62,8 @@ class BottleController extends Controller
         $reaction = Reaction::query()->where('bottle_id', $bottle->id)->when($userId, fn ($q) => $q->where('user_id', $userId), fn ($q) => $q->where('guest_key', $guestKey))->first();
         if ($reaction) $reaction->increment('level');
         else $reaction = Reaction::create(['bottle_id' => $bottle->id, 'user_id' => $userId, 'guest_key' => $guestKey, 'level' => 1]);
+        $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reaction', (string) $bottle->id, 'あなたのボトルに新しい反応が届きました。', $userId, $guestKey);
+        broadcast(new BottleActivityUpdated($bottle->id, 'reaction'));
         return response()->json(['level' => $reaction->fresh()->level]);
     }
 
@@ -58,13 +73,21 @@ class BottleController extends Controller
         if (!empty($data['parent_reply_id'])) {
             abort_unless(Reply::query()->whereKey($data['parent_reply_id'])->where('bottle_id', $bottle->id)->exists(), 422, 'The parent reply must belong to this bottle.');
         }
-        $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $request->user()?->id]);
+        broadcast(new BottleActivityUpdated($bottle->id, 'reply'));
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey]);
+        $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reply', (string) $bottle->id, 'あなたのボトルに返信が届きました。', $userId, $guestKey);
+        if (!empty($data['parent_reply_id'])) {
+            $parent = Reply::find($data['parent_reply_id']);
+            $this->notifyOwner($parent?->user_id, $parent?->guest_key, 'reply_reply', (string) $reply->id, 'あなたの返信に、さらに返事が届きました。', $userId, $guestKey);
+        }
         return response()->json(['reply' => $reply], 201);
     }
 
     public function replies(Bottle $bottle)
     {
-        return response()->json(['replies' => $bottle->replies()->with(['children' => fn ($query) => $query->latest(), 'children.reactions'])->latest()->get()]);
+        return response()->json(['replies' => $bottle->replies()->with(['reactions', 'children' => fn ($query) => $query->latest(), 'children.reactions'])->latest()->get()]);
     }
 
     public function reactToReply(Request $request, Reply $reply)
@@ -75,6 +98,8 @@ class BottleController extends Controller
         $reaction = ReplyReaction::query()->where('reply_id', $reply->id)->when($userId, fn ($q) => $q->where('user_id', $userId), fn ($q) => $q->where('guest_key', $guestKey))->first();
         if ($reaction) $reaction->increment('level');
         else $reaction = ReplyReaction::create(['reply_id' => $reply->id, 'user_id' => $userId, 'guest_key' => $guestKey, 'level' => 1]);
+        $this->notifyOwner($reply->user_id, $reply->guest_key, 'reply_reaction', (string) $reply->id, 'あなたの返信に新しい反応が届きました。', $userId, $guestKey);
+        broadcast(new BottleActivityUpdated($reply->bottle_id, 'reply_reaction'));
         return response()->json(['level' => $reaction->fresh()->level]);
     }
 
@@ -99,7 +124,7 @@ class BottleController extends Controller
     public function profile(Request $request)
     {
         abort_unless($request->user(), 401);
-        $data = $request->validate(['nickname' => ['nullable', 'string', 'max:80'], 'mbti' => ['nullable', 'string', 'max:8'], 'socionics' => ['nullable', 'string', 'max:12'], 'enneagram' => ['nullable', 'string', 'max:20'], 'other_type' => ['nullable', 'string', 'max:120']]);
+        $data = $request->validate(['nickname' => ['nullable', 'string', 'max:80'], 'mbti' => ['nullable', 'string', 'max:8'], 'socionics' => ['nullable', 'string', 'max:12'], 'enneagram' => ['nullable', 'string', 'max:20'], 'other_type' => ['nullable', 'string', 'max:300'], 'bio' => ['nullable', 'string', 'max:1000'], 'links' => ['nullable', 'array'], 'profile_image_url' => ['nullable', 'url', 'max:2048']]);
         $profile = Profile::updateOrCreate(['user_id' => $request->user()->id], $data);
         return response()->json(['profile' => $profile]);
     }
@@ -119,5 +144,12 @@ class BottleController extends Controller
             'guest_key' => $request->user() ? null : $request->header('X-Guest-Key'),
         ]);
         return response()->json(['message' => $message], 201);
+    }
+
+    private function notifyOwner(?int $ownerId, ?string $ownerGuestKey, string $type, string $entityId, string $message, ?int $actorId, ?string $actorGuestKey): void
+    {
+        if (!$ownerId && !$ownerGuestKey) return;
+        if (($ownerId && $actorId && $ownerId === $actorId) || (!$ownerId && $ownerGuestKey && $ownerGuestKey === $actorGuestKey)) return;
+        Notification::create(['user_id' => $ownerId, 'guest_key' => $ownerId ? null : $ownerGuestKey, 'type' => $type, 'entity_id' => $entityId, 'message' => $message]);
     }
 }

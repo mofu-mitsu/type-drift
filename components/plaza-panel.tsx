@@ -187,6 +187,16 @@ export default function PlazaPanel({
     void requestAi('新しい人が広場に来ました。短く自然に歓迎してください。');
   }, [connected]);
 
+  // 常時投稿ではなく、広場に滞在している時だけ低頻度でNPCが呟く。
+  useEffect(() => {
+    if (!connected) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible' || Math.random() > 0.35) return;
+      void requestAi('広場にいる人へ、短く自然な一言を置いてください。定型文の繰り返しは避けてください。');
+    }, 240000);
+    return () => window.clearInterval(timer);
+  }, [connected]);
+
   // 送信ヘルパー
   const sendRelay = (payload: unknown) => {
     const ws = wsRef.current;
@@ -277,6 +287,45 @@ export default function PlazaPanel({
     const body = chainInput.trim().replace(/\s+/g, ' ').slice(0, 48);
     if (!body) return;
     if (sendRelay({ type: 'plaza_chain_append', body })) setChainInput('');
+  };
+
+  const shareChain = async () => {
+    const url = `${window.location.origin}/?page=plaza&chain=1`;
+    const textToShare = `🌊 みんなで続ける「ことばのよせ波」\n${chainText}\n#typedrift`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'ことばのよせ波 | Type Drift', text: textToShare, url });
+      else await navigator.clipboard.writeText(`${textToShare}\n${url}`);
+      onToast?.('ことばのよせ波の共有リンクを作りました');
+    } catch {}
+  };
+
+  const saveChainImage = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 630;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.fillStyle = '#f6f1e7';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#75bdb8';
+    context.beginPath();
+    context.arc(1020, 110, 58, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#31565d';
+    context.font = '28px sans-serif';
+    context.fillText('ことばのよせ波', 80, 92);
+    context.fillStyle = '#22383e';
+    context.font = '42px serif';
+    const words = chainText.match(/.{1,22}/gu) || [chainText];
+    words.slice(0, 8).forEach((line, index) => context.fillText(line, 90, 220 + index * 56));
+    context.fillStyle = '#719092';
+    context.font = '22px sans-serif';
+    context.fillText('#typedrift  ·  Type Drift', 90, 570);
+    const link = document.createElement('a');
+    link.download = 'type-drift-kotoba-yosenami.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    onToast?.('ことばのよせ波を画像として保存しました');
   };
 
   // エモート送信
@@ -436,10 +485,15 @@ export default function PlazaPanel({
           <div><p className="eyebrow">COLLECTIVE DRIFT</p><h4>ことばのよせ波</h4></div>
           <span>一語・一節を足す</span>
         </div>
+        <p className="plaza-chain-rules">類型のお題から始まり、前の文章を消さずに一語・一節だけ続きを足します。誰かの続きを受け取り、最後に広場全体の作品になる遊びです。</p>
         <p className="plaza-chain-text">{chainText}</p>
         <div className="plaza-chain-compose">
           <input value={chainInput} onChange={event => setChainInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') appendChain(); }} maxLength={48} placeholder="続きをひとつだけ…" />
           <button type="button" onClick={appendChain}>続ける</button>
+        </div>
+        <div className="plaza-chain-actions">
+          <button type="button" onClick={() => void shareChain()}>共有 #typedrift</button>
+          <button type="button" onClick={saveChainImage}>画像として保存</button>
         </div>
       </section>
     </div>

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Reply extends Model
 {
     use SoftDeletes;
-    protected $fillable = ['bottle_id', 'user_id', 'parent_reply_id', 'body'];
+    protected $fillable = ['bottle_id', 'user_id', 'guest_key', 'parent_reply_id', 'body'];
 
     public function parent()
     {
