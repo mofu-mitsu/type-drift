@@ -123,14 +123,17 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     try { parsed = JSON.parse(jsonText || '{}'); } catch {
       parsed = { replies: [{ character: preferredCharacter || 'ダーリンちゃん', body: rawContent }] };
     }
-    const normalizedReplies = Array.isArray(parsed.replies)
-      ? parsed.replies
-      : (parsed.character || parsed.body || parsed.text)
-        ? [parsed]
-        : (parsed.reply && typeof parsed.reply === 'object' ? [parsed.reply] : []);
+    // Qwen/Groq can return either a replies array, one character object, or a
+    // compact shape such as {"character":"...","reply":"..."}.
+    const singleObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    const normalizedReplies = Array.isArray(singleObject.replies)
+      ? singleObject.replies
+      : (singleObject.character || singleObject.name || singleObject.body || singleObject.text || singleObject.reply || singleObject.message || singleObject.content)
+        ? [singleObject]
+        : (singleObject.reply && typeof singleObject.reply === 'object' ? [singleObject.reply] : []);
     let replies = normalizedReplies.slice(0, 2).map(item => ({
-      character: item.character || item.name || preferredCharacter || 'ダーリンちゃん',
-      body: item.body || item.text || item.content || '',
+      character: item.character || item.name || item.speaker || preferredCharacter || 'ダーリンちゃん',
+      body: item.body || item.text || item.content || (typeof item.reply === 'string' ? item.reply : '') || item.message || '',
     }));
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
