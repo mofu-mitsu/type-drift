@@ -77,10 +77,11 @@ class BottleController extends Controller
         if (!empty($data['parent_reply_id'])) {
             abort_unless(Reply::query()->whereKey($data['parent_reply_id'])->where('bottle_id', $bottle->id)->exists(), 422, 'The parent reply must belong to this bottle.');
         }
-        $this->broadcastSafely(new BottleActivityUpdated($bottle->id, 'reply'));
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey]);
+        // Broadcast only after the reply is committed so refreshes can retrieve it.
+        $this->broadcastSafely(new BottleActivityUpdated($bottle->id, 'reply'));
         $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reply', (string) $bottle->id, 'あなたのボトルに返信が届きました。', $userId, $guestKey);
         if (!empty($data['parent_reply_id'])) {
             $parent = Reply::find($data['parent_reply_id']);
