@@ -294,6 +294,7 @@ export default function DriftApp() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
+  const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string; message: string; created_at: string }>>([]);
 
   // ダーリンちゃんのミニゲーム・心理テスト用State
   const [darlingTargetNumber, setDarlingTargetNumber] = useState<number | null>(null);
@@ -1261,7 +1262,10 @@ export default function DriftApp() {
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    const refresh = () => fetch(`${api}/api/notifications/unread`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => setServerNotificationCount(Number(data?.count || 0))).catch(() => undefined);
+    const refresh = () => fetch(`${api}/api/notifications/unread`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
+      setServerNotificationCount(Number(data?.count || 0));
+      setServerNotifications(Array.isArray(data?.notifications) ? data.notifications : []);
+    }).catch(() => undefined);
     void refresh();
     const timer = window.setInterval(refresh, 20000);
     return () => window.clearInterval(timer);
@@ -3651,6 +3655,33 @@ export default function DriftApp() {
               {/* 1. スレッド未選択時：トークルーム一覧 (LINE風) */}
               {!activeDmThreadId ? (
                 <div className="dm-v2-thread-list">
+                  {serverNotifications.length > 0 && (
+                    <section aria-label="ボトルへの反応と返信" style={{ padding: "16px 20px", borderBottom: "1px solid #e5efeb", background: "linear-gradient(135deg,#f4fbf7,#fff8f5)" }}>
+                      <strong style={{ display: "block", marginBottom: 10, color: "#527b79", fontSize: 13 }}>🌊 ボトルへの反応・返信</strong>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {serverNotifications.map(notification => (
+                          <button key={notification.id} type="button" onClick={async () => {
+                            const api = process.env.NEXT_PUBLIC_API_URL;
+                            if (api) {
+                              try {
+                                await fetch(`${api}/api/notifications/${notification.id}/read`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
+                              } catch {}
+                            }
+                            setServerNotifications(items => items.filter(item => item.id !== notification.id));
+                            setServerNotificationCount(count => Math.max(0, count - 1));
+                            if (notification.type.includes("reply")) {
+                              setPlazaToast("返信が届いています。海のボトル一覧から該当の会話を確認できます。");
+                            } else {
+                              setPlazaToast("ボトルにリアクションが届きました！");
+                            }
+                          }} style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(71,145,143,.15)", background: "#fff", color: "#52716f", cursor: "pointer" }}>
+                            <span style={{ display: "block", fontSize: 12 }}>{notification.message}</span>
+                            <small style={{ display: "block", marginTop: 4, color: "#91a5a3", fontSize: 10 }}>{new Date(notification.created_at).toLocaleString("ja-JP")} · タップして既読</small>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
                   <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span style={{ fontSize: "18px" }}>💬</span>
