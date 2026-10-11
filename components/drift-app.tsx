@@ -1300,7 +1300,10 @@ export default function DriftApp() {
       setBottles(current => {
         const remoteIds = new Set(rows.map((row: any) => Number(row.id)));
         const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_count || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine) || current.some(item => item.id === Number(row.id) && item.mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
-        return [...remote, ...current.filter(item => !item.mine || remoteIds.has(item.id))];
+        // Neonの投稿を正本にし、同じIDのローカル仮データ／キャッシュを重複表示しない。
+        const remoteById = new Map(remote.map(item => [item.id, item]));
+        const localOnly = current.filter(item => !remoteIds.has(item.id) && item.id > 1000000000000);
+        return [...remoteById.values(), ...localOnly];
       });
     }).catch(() => undefined);
     const timer = window.setInterval(refresh, 15000);
@@ -1399,7 +1402,11 @@ export default function DriftApp() {
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
-        if (remote.length) setBottles(current => [...remote.map(item => ({ ...item, mine: current.some(existing => existing.id === item.id && existing.mine) })), ...current.filter(item => !remote.some(row => row.id === item.id))]);
+        if (remote.length) setBottles(current => {
+          const remoteIds = new Set(remote.map(item => item.id));
+          const localOnly = current.filter(item => !remoteIds.has(item.id) && item.id > 1000000000000);
+          return [...remote.map(item => ({ ...item, mine: item.mine || current.some(existing => existing.id === item.id && existing.mine) })), ...localOnly];
+        });
         console.info("[Type Drift] bottles loaded", remote.length);
       })
       .catch(error => console.error("[Type Drift] bottle loading failed", error));
@@ -3529,7 +3536,7 @@ export default function DriftApp() {
             >
               <div className="v2-circle-icon v2-icon-dm" style={{ position: "relative" }}>
                 <IconV2LetterHeart size={28} />
-                {(unreadDmCount + serverNotificationCount) > 0 && <span className="tab-pill-badge" style={{ position: "absolute", top: "-4px", right: "-4px" }}>{unreadDmCount + serverNotificationCount}</span>}
+                {unreadDmCount > 0 && <span className="tab-pill-badge" style={{ position: "absolute", top: "-4px", right: "-4px" }}>{unreadDmCount}</span>}
               </div>
               <span className="v2-nav-label">個別メッセージ</span>
               <span className="v2-nav-arrow">→</span>
