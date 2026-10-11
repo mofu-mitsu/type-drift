@@ -248,27 +248,39 @@ export default function PlazaPanel({
       const data = await response.json();
       setAiStatus(`${data.source === 'groq' ? 'Groq' : 'fallback'} · ${data.model || 'モデル未確認'}`);
       console.info('[Type Drift AI] response', { source: data.source, reason: data.reason, model: data.model, replies: data.replies?.length || 0 });
-      if (data.source !== 'groq') {
-        const reason = data.reason || 'unknown';
-        const providerMessage = data.providerMessage ? `\n詳細: ${String(data.providerMessage).slice(0, 220)}` : '';
-        const notice = `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${reason}」${providerMessage}\n気になる場合は意見箱へ送ってね。`;
-        setLocalToast(notice);
-        onToast?.(notice);
-        sendRelay({ type: 'plaza_ai_message', character: /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん', body: notice });
-      }
-      for (const reply of data.source === 'groq' && Array.isArray(data.replies) ? data.replies.slice(0, 1) : []) {
-        sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body });
+      const replies = Array.isArray(data.replies)
+        ? data.replies.filter((reply: { character?: unknown; body?: unknown }) =>
+            typeof reply?.character === 'string' && typeof reply?.body === 'string' && reply.body.trim().length > 0
+          ).slice(0, 1)
+        : [];
+      // source が fallback でも、サーバーが返した有効なキャラ応答を表示する。
+      // 技術エラー文をキャラクターの発言として広場へ流さない。
+      if (replies.length > 0) {
+        for (const reply of replies) {
+          sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body.trim() });
+        }
+        if (data.source !== 'groq') {
+          console.warn('[Type Drift AI] fallback reply used', { reason: data.reason || 'unknown' });
+        }
+      } else {
+        const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
+        const body = character === 'LSI芋虫'
+          ? '応答を組み立て直しています。入力は受け取ったので、少し待ってください。'
+          : 'あら、今ちょっと返事を組み立て直しているところなの。もう一度話しかけてちょうだい、ダーリン♡';
+        sendRelay({ type: 'plaza_ai_message', character, body });
+        setLocalToast('返事を組み立て直しています。もう一度話しかけても大丈夫です。');
       }
     } catch (error) {
       setAiStatus('fallback · 接続失敗');
       console.error('[Type Drift AI] failed', error);
       // フォールバック応答
       const character = /ダーリンちゃん|ダーリン/.test(humanText) || Math.random() < 0.5 ? 'ダーリンちゃん' : 'LSI芋虫';
-      const reason = error instanceof Error ? error.message : 'request_error';
-      const notice = `待っていたわよ♡\nAI接続でエラーが起きたみたい。\nエラー内容「${reason}」\n気になる場合は意見箱へ送ってね。`;
-      setLocalToast(notice);
-      onToast?.(notice);
-      sendRelay({ type: 'plaza_ai_message', character, body: notice });
+      const body = character === 'LSI芋虫'
+        ? '応答処理が一時停止しました。入力は受け取っています。少し時間をおいて再度話しかけてください。'
+        : 'あら、今ちょっと通信が不安定みたい。あなたの言葉は受け取っているわ。また話しかけてちょうだい、ダーリン♡';
+      setLocalToast('AIの返事を取得できませんでした。少し時間をおいて再度お試しください。');
+      onToast?.('AIの返事を取得できませんでした。少し時間をおいて再度お試しください。');
+      sendRelay({ type: 'plaza_ai_message', character, body });
     } finally {
       setAiBusy(false);
     }
