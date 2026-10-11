@@ -1896,7 +1896,7 @@ export default function DriftApp() {
       const data = response.ok ? await response.json() : null;
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const replyBody = data?.source !== "groq"
-        ? `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || "unknown"}」\n気になる場合は意見箱へ送ってね。`
+        ? (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)])
         : String(reply?.body || (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)]));
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
@@ -2356,7 +2356,23 @@ export default function DriftApp() {
     setReplyParentId(undefined);
     setPlazaToast("返信の言葉を海へ放ちました");
     const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api && !selected.isSample) { const response = await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); }
+    if (api && !selected.isSample) {
+      const response = await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) });
+      if (!response.ok) {
+        setPlazaToast(`返信を保存できませんでした（${response.status}）`);
+      } else {
+        // Also deliver the actual reply to the bottle owner's persistent DM inbox.
+        try {
+          const dmResponse = await fetch(`${api}/api/dm/messages`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() },
+            body: JSON.stringify({ bottle_id: selected.id, body, sender_name: nickname || "匿名の誰か", sender_emoji: "◌" }),
+          });
+          if (dmResponse.ok) window.dispatchEvent(new Event("type-drift:dm-refresh"));
+          else console.warn("[Type Drift] reply saved but DM delivery failed", dmResponse.status);
+        } catch (error) { console.warn("[Type Drift] reply saved but DM delivery failed", error); }
+      }
+    }
     if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
