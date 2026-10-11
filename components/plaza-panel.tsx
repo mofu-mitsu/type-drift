@@ -11,7 +11,7 @@ export type PlazaMessage = {
   emoji?: string;
   createdAt: number;
 };
-export type PlazaUser = { sessionKey: string; nickname: string; emoji: string };
+export type PlazaUser = { sessionKey: string; nickname: string; emoji: string; dmHandle?: string };
 export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
 const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
@@ -95,6 +95,7 @@ export default function PlazaPanel({
     const api = process.env.NEXT_PUBLIC_API_URL;
     sessionKeyRef.current = typeof crypto !== 'undefined' ? crypto.randomUUID() : `plaza-${Date.now()}`;
     const guestMark = GUEST_MARKS[Math.floor(Math.random() * GUEST_MARKS.length)];
+    let dmHandle = '';
     let heartbeat: number | null = null;
     const presence = (path: string, payload: Record<string, unknown>) => {
       if (!api) return;
@@ -107,7 +108,7 @@ export default function PlazaPanel({
         wsRef.current = ws;
         ws.onopen = () => {
           setConnected(true);
-          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark }));
+          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, dmHandle }));
           presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname) });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
@@ -160,7 +161,19 @@ export default function PlazaPanel({
         if (alive) reconnectRef.current = window.setTimeout(connect, 3000);
       }
     };
-    connect();
+    const connectAfterIdentity = async () => {
+      if (api) {
+        try {
+          const response = await fetch(`${api}/api/dm/identity`, { credentials: 'include', headers: { 'X-Guest-Key': getGuestKey() } });
+          if (response.ok) {
+            const data = await response.json();
+            if (typeof data?.handle === 'string') dmHandle = data.handle;
+          }
+        } catch { /* Keep the existing ephemeral relay as a fallback. */ }
+      }
+      if (alive) connect();
+    };
+    void connectAfterIdentity();
 
     return () => {
       alive = false;
