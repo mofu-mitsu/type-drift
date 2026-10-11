@@ -3862,11 +3862,7 @@ export default function DriftApp() {
                           </div>
                         </div>
                         <div style={{ width: "80px", textAlign: "right" }}>
-                          {isBottleThread && (
-                            <span style={{ fontSize: "10px", color: "#0d9488", background: "#ccfbf1", padding: "3px 8px", borderRadius: "10px", fontWeight: 700 }}>
-                              自認共有中
-                            </span>
-                          )}
+                          {/* 「自認共有中」ラベルは意味が薄いため非表示 */}
                         </div>
                       </div>
 
@@ -3940,6 +3936,8 @@ export default function DriftApp() {
                                 name: currentThread.name,
                                 emoji: currentThread.emoji,
                                 type: currentThread.type,
+                                persistentDm: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentThread.targetId),
+                                bottleId: relatedBottle?.id,
                                 bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                               },
                               dmReplyText
@@ -3964,6 +3962,8 @@ export default function DriftApp() {
                                       name: currentThread.name,
                                       emoji: currentThread.emoji,
                                       type: currentThread.type,
+                                      persistentDm: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentThread.targetId),
+                                      bottleId: relatedBottle?.id,
                                       bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                                     },
                                     dmReplyText
