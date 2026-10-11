@@ -98,7 +98,7 @@ const constellationQuestions = [
   { text: "迷ったとき、いちばん信頼するものは？", options: ["一貫した原理", "予感と長期的な見通し", "自分の過去の実感", "場にいる人の温度"] },
 ];
 
-function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void }) {
+function BottleCard({ bottle, onReact, onOpen, onMessage }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onMessage?: (bottle: Bottle) => void }) {
   const [poll, setPoll] = useState(bottle.poll);
   const [voted, setVoted] = useState<number | null>(null);
   const vote = (index: number) => { if (!poll || voted !== null) return; setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); };
@@ -108,7 +108,7 @@ function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id:
     <p className="bottle-text">{bottle.text}</p>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
-    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button><button type="button" className="more" aria-label="その他">•••</button></div>
+    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button>{onMessage && !bottle.isSample && !bottle.ai && !bottle.mine && <button type="button" onClick={() => onMessage(bottle)} className="reaction" aria-label="投稿者へ個別メッセージ"><IconV2LetterHeart size={16} /></button>}<button type="button" className="more" aria-label="その他">•••</button></div>
   </article>;
 }
 
@@ -336,7 +336,7 @@ export default function DriftApp() {
   ]);
   const [activeDmThreadId, setActiveDmThreadId] = useState<string | null>(null);
   const [revealedIdentityThreads, setRevealedIdentityThreads] = useState<string[]>([]);
-  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
+  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleId?: number; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
   const [dmModalText, setDmModalText] = useState("");
   const [dmReplyText, setDmReplyText] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1902,7 +1902,7 @@ export default function DriftApp() {
   };
 
   const sendDirectMessage = (
-    target: { id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleInfo?: { id: number; text: string; author: string; type: string } },
+    target: { id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleId?: number; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
   ) => {
     if (!text.trim()) return;
@@ -1914,12 +1914,14 @@ export default function DriftApp() {
           const response = await fetch(`${api}/api/dm/messages`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
-            body: JSON.stringify({ recipient_handle: target.id, body: text.trim(), sender_name: nickname || "匿名の誰か", recipient_name: target.name, sender_emoji: "◌", recipient_emoji: target.emoji }),
+            body: JSON.stringify({ recipient_handle: target.bottleId ? undefined : target.id, bottle_id: target.bottleId, body: text.trim(), sender_name: nickname || "匿名の誰か", recipient_name: target.name, sender_emoji: "◌", recipient_emoji: target.emoji }),
           });
           if (!response.ok) {
             const detail = await response.text();
             throw new Error(`DM保存に失敗しました（${response.status}）${detail ? `: ${detail.slice(0, 120)}` : ""}`);
           }
+          const result = await response.json();
+          if (target.bottleId && result?.message?.thread_id) setActiveDmThreadId(String(result.message.thread_id));
           window.dispatchEvent(new Event("type-drift:dm-refresh"));
           setPlazaToast(`💌 ${target.name}へメッセージを保存しました`);
           logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
@@ -2745,7 +2747,7 @@ export default function DriftApp() {
         </div>
         <p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p>
         <div className="bottle-grid">
-          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} />)}
+          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onMessage={item => { setDmModalTarget({ id: `bottle-${item.id}`, name: item.author, emoji: item.emoji, type: item.type, persistentDm: true, bottleId: item.id, bottleInfo: { id: item.id, text: item.text, author: item.author, type: item.type } }); setDmModalText(""); }} />)}
         </div>
       </section>
     )}
