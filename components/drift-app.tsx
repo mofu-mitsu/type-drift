@@ -107,7 +107,7 @@ function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id:
     <p className="bottle-text">{bottle.text}</p>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
-    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button>{bottle.mine && bottle.reactions > 0 && <span className="received-reaction-count">届いた反応 {bottle.reactions}</span>}<button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button><button type="button" className="more" aria-label="その他">•••</button></div>
+    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button><button type="button" className="more" aria-label="その他">•••</button></div>
   </article>;
 }
 
@@ -1296,15 +1296,10 @@ export default function DriftApp() {
     if (!api) return;
     const refresh = () => void fetch(`${api}/api/bottles`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
       const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
-      if (!rows.length) return;
-      setBottles(current => {
-        const remoteIds = new Set(rows.map((row: any) => Number(row.id)));
-        const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_count || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine) || current.some(item => item.id === Number(row.id) && item.mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
-        // Neonの投稿を正本にし、同じIDのローカル仮データ／キャッシュを重複表示しない。
-        const remoteById = new Map(remote.map(item => [item.id, item]));
-        const localOnly = current.filter(item => !remoteIds.has(item.id) && item.id > 1000000000000);
-        return [...remoteById.values(), ...localOnly];
-      });
+      const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_count || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
+      const unique = new Map<number, Bottle>();
+      for (const item of remote) unique.set(item.id, item);
+      setBottles([...unique.values()]);
     }).catch(() => undefined);
     const timer = window.setInterval(refresh, 15000);
     const immediateRefresh = () => refresh();
@@ -1402,11 +1397,9 @@ export default function DriftApp() {
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
-        if (remote.length) setBottles(current => {
-          const remoteIds = new Set(remote.map(item => item.id));
-          const localOnly = current.filter(item => !remoteIds.has(item.id) && item.id > 1000000000000);
-          return [...remote.map(item => ({ ...item, mine: item.mine || current.some(existing => existing.id === item.id && existing.mine) })), ...localOnly];
-        });
+        const unique = new Map<number, Bottle>();
+        for (const item of remote) unique.set(item.id, item);
+        setBottles([...unique.values()]);
         console.info("[Type Drift] bottles loaded", remote.length);
       })
       .catch(error => console.error("[Type Drift] bottle loading failed", error));
@@ -1423,7 +1416,12 @@ export default function DriftApp() {
       const saved = localStorage.getItem("type-drift-state");
       if (saved) {
         const state = JSON.parse(saved);
-        if (Array.isArray(state.bottles)) setBottles(state.bottles);
+        // Neon APIがある場合は、古いlocalStorageのボトルを復元しない。
+        if (!process.env.NEXT_PUBLIC_API_URL && Array.isArray(state.bottles)) {
+          const unique = new Map<number, Bottle>();
+          for (const item of state.bottles as Bottle[]) unique.set(Number(item.id), item);
+          setBottles([...unique.values()]);
+        }
         if (Array.isArray(state.likedBottleIds)) setLikedBottleIds(state.likedBottleIds);
         if (Array.isArray(state.repliedBottleIds)) setRepliedBottleIds(state.repliedBottleIds);
         if (typeof state.nickname === "string") setNickname(state.nickname);
@@ -3662,33 +3660,7 @@ export default function DriftApp() {
               {/* 1. スレッド未選択時：トークルーム一覧 (LINE風) */}
               {!activeDmThreadId ? (
                 <div className="dm-v2-thread-list">
-                  {serverNotifications.length > 0 && (
-                    <section aria-label="ボトルへの反応と返信" style={{ padding: "16px 20px", borderBottom: "1px solid #e5efeb", background: "linear-gradient(135deg,#f4fbf7,#fff8f5)" }}>
-                      <strong style={{ display: "block", marginBottom: 10, color: "#527b79", fontSize: 13 }}>🌊 ボトルへの反応・返信</strong>
-                      <div style={{ display: "grid", gap: 8 }}>
-                        {serverNotifications.map(notification => (
-                          <button key={notification.id} type="button" onClick={async () => {
-                            const api = process.env.NEXT_PUBLIC_API_URL;
-                            if (api) {
-                              try {
-                                await fetch(`${api}/api/notifications/${notification.id}/read`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
-                              } catch {}
-                            }
-                            setServerNotifications(items => items.filter(item => item.id !== notification.id));
-                            setServerNotificationCount(count => Math.max(0, count - 1));
-                            if (notification.type.includes("reply")) {
-                              setPlazaToast("返信が届いています。海のボトル一覧から該当の会話を確認できます。");
-                            } else {
-                              setPlazaToast("ボトルにリアクションが届きました！");
-                            }
-                          }} style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(71,145,143,.15)", background: "#fff", color: "#52716f", cursor: "pointer" }}>
-                            <span style={{ display: "block", fontSize: 12 }}>{notification.message}</span>
-                            <small style={{ display: "block", marginTop: 4, color: "#91a5a3", fontSize: 10 }}>{new Date(notification.created_at).toLocaleString("ja-JP")} · タップして既読</small>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                  )}
+
                   <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span style={{ fontSize: "18px" }}>💬</span>
