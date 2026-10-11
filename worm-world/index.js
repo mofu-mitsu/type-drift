@@ -138,9 +138,23 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
     if (!chosen || !String(chosen.body || '').trim()) {
-      return { ...fallbackReply('empty_response'), providerMessage: `no_valid_reply content_length=${rawContent.length} finish_reason=${data.choices?.[0]?.finish_reason || 'unknown'} raw=${rawContent.slice(0, 180)}` };
+      // Providers sometimes return valid JSON with an unexpected shape. Never
+      // surface provider internals to the UI; use a character-safe reply instead.
+      console.warn('[plaza-ai] unrecognized reply shape; using fallback', {
+        model: GROQ_MODEL,
+        contentLength: rawContent.length,
+        finishReason: data.choices?.[0]?.finish_reason || 'unknown',
+        keys: Object.keys(singleObject || {}),
+      });
+      const safe = fallbackReply('invalid_reply_shape');
+      return { ...safe, source: 'fallback', reason: 'invalid_reply_shape' };
     }
-    return { replies: [{ character: chosen.character, emoji: chosen.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: String(chosen.body).slice(0, 120) }], source: 'groq', reason: 'ok' };
+    const safeBody = String(chosen.body).replace(/<[^>]*>/g, '').trim().slice(0, 120);
+    if (!safeBody) {
+      const safe = fallbackReply('blank_reply');
+      return { ...safe, source: 'fallback', reason: 'blank_reply' };
+    }
+    return { replies: [{ character: chosen.character, emoji: chosen.character === 'ダーリンちゃん' ? '🥺' : '🐛', body: safeBody }], source: 'groq', reason: 'ok' };
   } catch (error) {
     console.error('[plaza-ai] request failed', error);
     return fallbackReply('request_error');
