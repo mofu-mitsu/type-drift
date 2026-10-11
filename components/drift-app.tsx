@@ -288,7 +288,7 @@ export default function DriftApp() {
   const [consultationPosts, setConsultationPosts] = useState<ConsultationPost[]>(INITIAL_CONSULTATION_POSTS);
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
-  const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean } | null>(null);
+  const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean; persistentDm?: boolean } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(false);
   const [onlineCount, setOnlineCount] = useState(4);
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
@@ -336,7 +336,7 @@ export default function DriftApp() {
   ]);
   const [activeDmThreadId, setActiveDmThreadId] = useState<string | null>(null);
   const [revealedIdentityThreads, setRevealedIdentityThreads] = useState<string[]>([]);
-  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
+  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
   const [dmModalText, setDmModalText] = useState("");
   const [dmReplyText, setDmReplyText] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1902,10 +1902,33 @@ export default function DriftApp() {
   };
 
   const sendDirectMessage = (
-    target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
+    target: { id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
   ) => {
     if (!text.trim()) return;
+    if (target.persistentDm) {
+      const api = process.env.NEXT_PUBLIC_API_URL;
+      if (!api) { setPlazaToast("DMサーバーに接続できませんでした"); return; }
+      void (async () => {
+        try {
+          const response = await fetch(`${api}/api/dm/messages`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+            body: JSON.stringify({ recipient_handle: target.id, body: text.trim(), sender_name: nickname || "匿名の誰か", recipient_name: target.name, sender_emoji: "◌", recipient_emoji: target.emoji }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(`DM保存に失敗しました（${response.status}）${detail ? `: ${detail.slice(0, 120)}` : ""}`);
+          }
+          window.dispatchEvent(new Event("type-drift:dm-refresh"));
+          setPlazaToast(`💌 ${target.name}へメッセージを保存しました`);
+          logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
+        } catch (error) {
+          setPlazaToast(error instanceof Error ? error.message : "DMを送信できませんでした");
+        }
+      })();
+      return;
+    }
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
     const myDisplayName = isProfileRevealed ? (nickname || "匿名のあなた") : "匿名のあなた";
 
@@ -2016,6 +2039,50 @@ export default function DriftApp() {
     return () => window.removeEventListener("type-drift:dm-received", handleIncoming);
   }, [nickname]);
 
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch(`${api}/api/dm/messages`, {
+          credentials: "include",
+          headers: { "X-Guest-Key": getGuestKey() },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!active || !Array.isArray(data?.messages)) return;
+        const remote: DirectMessage[] = data.messages.map((row: any) => ({
+          id: `server-dm-${row.id}`,
+          threadId: String(row.thread_id || ""),
+          sender: String(row.sender || "匿名の誰か"),
+          recipient: String(row.recipient || "匿名の誰か"),
+          targetEmoji: String(row.target_emoji || "◌"),
+          targetType: String(row.target_type || "広場の住人"),
+          body: String(row.body || ""),
+          createdAt: Number(row.created_at) || Date.now(),
+          read: Boolean(row.read),
+          isMine: Boolean(row.is_mine),
+          bottleId: row.bottle_id ? Number(row.bottle_id) : undefined,
+        }));
+        setDirectMessages(previous => [
+          ...previous.filter(message => !message.id.startsWith("server-dm-")),
+          ...remote,
+        ]);
+      } catch {
+        // Keep locally stored NPC/demo conversations available if the API is temporarily offline.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    window.addEventListener("type-drift:dm-refresh", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("type-drift:dm-refresh", refresh);
+    };
+  }, []);
+
   const unreadDmCount = useMemo(() => {
     return directMessages.filter(m => !m.isMine && !m.read).length;
   }, [directMessages]);
@@ -2097,6 +2164,11 @@ export default function DriftApp() {
   }, [directMessages]);
 
   const markThreadAsRead = (threadId: string) => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (api && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(threadId)) {
+      void fetch(`${api}/api/dm/threads/${threadId}/read`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } })
+        .then(() => window.dispatchEvent(new Event("type-drift:dm-refresh"))).catch(() => undefined);
+    }
     setDirectMessages(prev => {
       const updated = prev.map(m => {
         const mThread = m.threadId || (m.isMine ? m.recipient : m.sender);
@@ -2752,9 +2824,10 @@ export default function DriftApp() {
               style={{ top: `${18 + (index * 19) % 62}%`, left: `${8 + (index * 23) % 82}%` }}
               title={`${user.nickname}（タップでプロフ確認）`}
               onClick={() => setInspectProfile({
-                id: user.sessionKey,
+                id: user.dmHandle || user.sessionKey,
                 name: user.nickname || "匿名の誰か",
                 emoji: user.emoji || "◌",
+                persistentDm: Boolean(user.dmHandle),
                 overview: "いま、この広場に接続している匿名の住人。プロフィールの自認は、本人が公開した範囲だけ表示されます。",
               })}
             >
@@ -2973,6 +3046,7 @@ export default function DriftApp() {
                         id: inspectProfile.id,
                         name: inspectProfile.name,
                         emoji: inspectProfile.emoji,
+                        persistentDm: inspectProfile.persistentDm,
                         type: [inspectProfile.mbti, inspectProfile.socionics, inspectProfile.enneagram].filter(Boolean).join(" · ") || undefined,
                       };
                       setInspectProfile(null);
