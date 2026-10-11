@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Notification;
+use App\Models\DirectMessage;
+use App\Models\DmRecipient;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
