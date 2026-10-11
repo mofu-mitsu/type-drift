@@ -203,7 +203,7 @@ wss.on('connection', ws => {
         plazaSockets.add(ws);
         plazaSessions.set(sessionKey, ws);
         ws._plazaSessionKey = sessionKey;
-        plazaUsers.set(ws, { sessionKey, nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4) });
+        plazaUsers.set(ws, { sessionKey, nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4), dmHandle: String(message.dmHandle || '').slice(0, 80) });
         plazaAiState.set(ws, { waitingForHuman: false });
         ws.send(plazaPayload());
         broadcastPlazaPresence();
