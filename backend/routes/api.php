@@ -9,6 +9,7 @@ use App\Http\Controllers\ConsultationController;
 use App\Http\Controllers\QuestionPromptController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PlazaChainController;
+use App\Http\Controllers\DirectMessageController;
 use Illuminate\Support\Facades\DB;
 
 Route::get('/health', function () {
@@ -44,6 +45,10 @@ Route::get('/consultations', [ConsultationController::class, 'index']);
 Route::get('/question-prompts', [QuestionPromptController::class, 'index']);
 Route::post('/question-prompts', [QuestionPromptController::class, 'store']);
 Route::get('/notifications/unread', [NotificationController::class, 'unread']);
+Route::get('/dm/identity', [DirectMessageController::class, 'identity']);
+Route::get('/dm/messages', [DirectMessageController::class, 'index']);
+Route::post('/dm/messages', [DirectMessageController::class, 'store'])->middleware('throttle:60,1');
+Route::post('/dm/threads/{handle}/read', [DirectMessageController::class, 'markThreadRead'])->middleware('throttle:120,1');
 Route::post('/notifications/{notification}/read', [NotificationController::class, 'read']);
 
 Route::post('/worm/position', [WormController::class, 'position'])

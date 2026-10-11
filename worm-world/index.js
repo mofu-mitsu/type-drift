@@ -92,26 +92,35 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
   const recent = history.slice(-12).map(m => `${m.character || m.author}: ${m.body}`).join('\n');
   const prompt = `あなたは「類型広場」にいる2人のAIキャラクターの会話担当です。\nダーリンちゃん=🥺。甘めで親しげ、短く、少しハートを混ぜる。\nLSI芋虫=🐛。観測・分類・構造を好むが、堅すぎない短文。\n人間の発言には反応してよいが、2人とも毎回長々と話さない。各キャラ1〜2文、合計40〜90文字程度。質問攻めにしない。\n人間が話した後だけ返答する。AI同士だけで会話を続けない。\n直前の会話:\n${recent || 'まだ会話はありません。'}\n今回の人間の発言:\n${body || '新しい人が広場に来ました。挨拶してください。'}\n${preferredCharacter ? `名前が呼ばれているため、今回は必ず${preferredCharacter}を主役にして返答してください。` : '名前が呼ばれていない場合は、どちらか一人を中心に自然に返答してください。'}\nJSONだけで返してください。`;
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        top_p: 0.8,
-        max_completion_tokens: 900,
-      })
-    });
+    let response;
+    let data;
+    let rawContent = '';
+    // Qwen may finish with stop but return a partial/empty object; retry once with a compact prompt.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [{ role: 'user', content: attempt === 0 ? prompt : `次の発言に対して${preferredCharacter || 'ダーリンちゃん'}として自然な日本語の返答を1〜2文で返してください。JSONや説明は不要です。\n発言：${body}` }],
+          temperature: attempt === 0 ? 0.7 : 0.5,
+          top_p: 0.8,
+          max_completion_tokens: 900,
+        })
+      });
+      if (!response.ok) break;
+      data = await response.json();
+      const message = data.choices?.[0]?.message || {};
+      rawContent = String(message.content || message.reasoning_content || message.reasoning || '').trim();
+      if (rawContent) break;
+    }
     if (!response.ok) {
       const detail = await response.text();
       const providerMessage = detail.slice(0, 500);
       console.warn(`[plaza-ai] Groq response failed status=${response.status} model=${GROQ_MODEL} detail=${JSON.stringify(providerMessage)}`);
       return { ...fallbackReply(`groq_${response.status}`), providerMessage };
     }
-    const data = await response.json();
-    const message = data.choices?.[0]?.message || {};
-    const rawContent = String(message.content || message.reasoning_content || message.reasoning || '').trim();
+    const message = data?.choices?.[0]?.message || {};
     if (!rawContent) {
       const finishReason = data.choices?.[0]?.finish_reason || 'unknown';
       const providerMessage = `empty_content finish_reason=${finishReason} message_keys=${Object.keys(message).join(',')}`;
@@ -217,7 +226,7 @@ wss.on('connection', ws => {
         plazaSockets.add(ws);
         plazaSessions.set(sessionKey, ws);
         ws._plazaSessionKey = sessionKey;
-        plazaUsers.set(ws, { sessionKey, nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4) });
+        plazaUsers.set(ws, { sessionKey, nickname: String(message.nickname || '匿名の誰か').slice(0, 24), emoji: String(message.emoji || '◌').slice(0, 4), dmHandle: String(message.dmHandle || '').slice(0, 80) });
         plazaAiState.set(ws, { waitingForHuman: false });
         ws.send(plazaPayload());
         broadcastPlazaPresence();

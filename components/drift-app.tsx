@@ -21,7 +21,7 @@ import {
 
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxIpODHuVqaJBArR-YWSbFzznc7Ils6xmI8Lyu50yxJ9LNLj9z3fhBcXyLC2HoXBQ3s/exec";
 
-type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; time: string; ai?: string; mine?: boolean; color: string };
+type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; time: string; ai?: string; mine?: boolean; isSample?: boolean; color: string };
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number };
 
 const BOTTLE_PROMPTS = [
@@ -89,6 +89,7 @@ const initialBottles: Bottle[] = [
   { id: 4, author: "匿名のLSI", emoji: "◇", type: "LSI · 5w6", mbti: "ISTJ", socionics: "LSI", enneagram: "5w6", text: "好きなものを説明しようとすると、感情より先に分類表が出てくる。これは共感の失敗なのだろうか。", reactions: 24, replies: 5, time: "16分前", color: "blue" },
   { id: 5, author: "LSI芋虫", emoji: "🐛", type: "AI · LSI", mbti: "INTJ", socionics: "LSI", enneagram: "5w6", text: "共感を試みた結果、構造上の類似点を三つ発見した。……いや、まずは「わかる」と言うべきだったかもしれない。", reactions: 27, replies: 9, time: "23分前", ai: "AIキャラクター", color: "yellow" },
 ];
+const initialSampleBottles: Bottle[] = initialBottles.map((bottle, index) => ({ ...bottle, id: 9_000_000_000_001 + index, isSample: true }));
 const mbtiOptions = ["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP", "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP"];
 const socionicsOptions = ["ILI", "LII", "LIE", "ILE", "IEI", "EII", "EIE", "IEE", "LSI", "SLI", "LSE", "SLE", "SEI", "ESI", "ESE", "SEE"];
 const constellationQuestions = [
@@ -97,7 +98,7 @@ const constellationQuestions = [
   { text: "迷ったとき、いちばん信頼するものは？", options: ["一貫した原理", "予感と長期的な見通し", "自分の過去の実感", "場にいる人の温度"] },
 ];
 
-function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void }) {
+function BottleCard({ bottle, onReact, onOpen, onMessage }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onMessage?: (bottle: Bottle) => void }) {
   const [poll, setPoll] = useState(bottle.poll);
   const [voted, setVoted] = useState<number | null>(null);
   const vote = (index: number) => { if (!poll || voted !== null) return; setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); };
@@ -107,7 +108,7 @@ function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id:
     <p className="bottle-text">{bottle.text}</p>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
-    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button><button type="button" className="more" aria-label="その他">•••</button></div>
+    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="リアクションを重ねる"><Heart size={16} />{bottle.userReaction ? <small>自分 +{bottle.userReaction}</small> : null}</button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /></button>{onMessage && !bottle.isSample && !bottle.ai && !bottle.mine && <button type="button" onClick={() => onMessage(bottle)} className="reaction" aria-label="投稿者へ個別メッセージ"><IconV2LetterHeart size={16} /></button>}<button type="button" className="more" aria-label="その他">•••</button></div>
   </article>;
 }
 
@@ -249,7 +250,7 @@ function ReplyThread({ replies, onReact, onReply }: { replies: ReplyItem[]; onRe
 }
 
 export default function DriftApp() {
-  const [bottles, setBottles] = useState(initialBottles);
+  const [bottles, setBottles] = useState(initialSampleBottles);
   const [selected, setSelected] = useState<Bottle | null>(null);
   const [activePage, setActivePage] = useState<"home" | "sea" | "plaza" | "chain" | "games" | "stars" | "consult" | "activity" | "about">("home");
   const [activityTab, setActivityTab] = useState<"mine" | "liked" | "replied" | "messages" | "inquiries" | "admin">("mine");
@@ -287,7 +288,7 @@ export default function DriftApp() {
   const [consultationPosts, setConsultationPosts] = useState<ConsultationPost[]>(INITIAL_CONSULTATION_POSTS);
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
-  const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean } | null>(null);
+  const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean; persistentDm?: boolean } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(false);
   const [onlineCount, setOnlineCount] = useState(4);
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
@@ -335,7 +336,7 @@ export default function DriftApp() {
   ]);
   const [activeDmThreadId, setActiveDmThreadId] = useState<string | null>(null);
   const [revealedIdentityThreads, setRevealedIdentityThreads] = useState<string[]>([]);
-  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
+  const [dmModalTarget, setDmModalTarget] = useState<{ id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleId?: number; bottleInfo?: { id: number; text: string; author: string; type: string } } | null>(null);
   const [dmModalText, setDmModalText] = useState("");
   const [dmReplyText, setDmReplyText] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1297,9 +1298,13 @@ export default function DriftApp() {
     const refresh = () => void fetch(`${api}/api/bottles`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
       const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
       const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_count || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
-      const unique = new Map<number, Bottle>();
-      for (const item of remote) unique.set(item.id, item);
-      setBottles([...unique.values()]);
+      // Keep fixed NPC/sample bottles alongside server-authoritative posts on every refresh.
+       const unique = new Map<number, Bottle>(initialSampleBottles.map(item => [item.id, item]));
+       for (const item of remote) unique.set(item.id, item);
+       setBottles(current => {
+         for (const item of current) if (!unique.has(item.id) && item.isSample) unique.set(item.id, item);
+         return [...unique.values()];
+       });
     }).catch(() => undefined);
     const timer = window.setInterval(refresh, 15000);
     const immediateRefresh = () => refresh();
@@ -1397,7 +1402,9 @@ export default function DriftApp() {
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
-        const unique = new Map<number, Bottle>();
+        // 固定IDのNPC初期投稿はサーバー投稿とは別のサンプルデータとして保持する。
+        // サーバー投稿を正本として再取得しても、初期投稿が消えたり二重化したりしない。
+        const unique = new Map<number, Bottle>(initialSampleBottles.map(item => [item.id, item]));
         for (const item of remote) unique.set(item.id, item);
         setBottles([...unique.values()]);
         console.info("[Type Drift] bottles loaded", remote.length);
@@ -1889,7 +1896,7 @@ export default function DriftApp() {
       const data = response.ok ? await response.json() : null;
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const replyBody = data?.source !== "groq"
-        ? `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || "unknown"}」\n気になる場合は意見箱へ送ってね。`
+        ? (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)])
         : String(reply?.body || (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)]));
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
@@ -1899,10 +1906,35 @@ export default function DriftApp() {
   };
 
   const sendDirectMessage = (
-    target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
+    target: { id: string; name: string; emoji: string; type?: string; persistentDm?: boolean; bottleId?: number; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
   ) => {
     if (!text.trim()) return;
+    if (target.persistentDm) {
+      const api = process.env.NEXT_PUBLIC_API_URL;
+      if (!api) { setPlazaToast("DMサーバーに接続できませんでした"); return; }
+      void (async () => {
+        try {
+          const response = await fetch(`${api}/api/dm/messages`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+            body: JSON.stringify({ recipient_handle: target.bottleId ? undefined : target.id, bottle_id: target.bottleId, body: text.trim(), sender_name: nickname || "匿名の誰か", recipient_name: target.name, sender_emoji: "◌", recipient_emoji: target.emoji }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(`DM保存に失敗しました（${response.status}）${detail ? `: ${detail.slice(0, 120)}` : ""}`);
+          }
+          const result = await response.json();
+          if (target.bottleId && result?.message?.thread_id) setActiveDmThreadId(String(result.message.thread_id));
+          window.dispatchEvent(new Event("type-drift:dm-refresh"));
+          setPlazaToast(`💌 ${target.name}へメッセージを保存しました`);
+          logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
+        } catch (error) {
+          setPlazaToast(error instanceof Error ? error.message : "DMを送信できませんでした");
+        }
+      })();
+      return;
+    }
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
     const myDisplayName = isProfileRevealed ? (nickname || "匿名のあなた") : "匿名のあなた";
 
@@ -2013,6 +2045,50 @@ export default function DriftApp() {
     return () => window.removeEventListener("type-drift:dm-received", handleIncoming);
   }, [nickname]);
 
+  useEffect(() => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (!api) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch(`${api}/api/dm/messages`, {
+          credentials: "include",
+          headers: { "X-Guest-Key": getGuestKey() },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!active || !Array.isArray(data?.messages)) return;
+        const remote: DirectMessage[] = data.messages.map((row: any) => ({
+          id: `server-dm-${row.id}`,
+          threadId: String(row.thread_id || ""),
+          sender: String(row.sender || "匿名の誰か"),
+          recipient: String(row.recipient || "匿名の誰か"),
+          targetEmoji: String(row.target_emoji || "◌"),
+          targetType: String(row.target_type || "広場の住人"),
+          body: String(row.body || ""),
+          createdAt: Number(row.created_at) || Date.now(),
+          read: Boolean(row.read),
+          isMine: Boolean(row.is_mine),
+          bottleId: row.bottle_id ? Number(row.bottle_id) : undefined,
+        }));
+        setDirectMessages(previous => [
+          ...previous.filter(message => !message.id.startsWith("server-dm-")),
+          ...remote,
+        ]);
+      } catch {
+        // Keep locally stored NPC/demo conversations available if the API is temporarily offline.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    window.addEventListener("type-drift:dm-refresh", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("type-drift:dm-refresh", refresh);
+    };
+  }, []);
+
   const unreadDmCount = useMemo(() => {
     return directMessages.filter(m => !m.isMine && !m.read).length;
   }, [directMessages]);
@@ -2094,6 +2170,11 @@ export default function DriftApp() {
   }, [directMessages]);
 
   const markThreadAsRead = (threadId: string) => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (api && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(threadId)) {
+      void fetch(`${api}/api/dm/threads/${threadId}/read`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } })
+        .then(() => window.dispatchEvent(new Event("type-drift:dm-refresh"))).catch(() => undefined);
+    }
     setDirectMessages(prev => {
       const updated = prev.map(m => {
         const mThread = m.threadId || (m.isMine ? m.recipient : m.sender);
@@ -2252,7 +2333,7 @@ export default function DriftApp() {
     const matchesSocionics = !socionicsFilter || b.socionics.toUpperCase() === socionicsFilter;
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
-  const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); } };
+  const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const api = process.env.NEXT_PUBLIC_API_URL; const bottle = bottles.find(item => item.id === id); if (api && !bottle?.isSample) { const response = await fetch(`${api}/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); } };
   const uploadToCloudinary = async (dataUrl?: string) => { const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; if (!dataUrl) return undefined; if (!cloudName || !preset) { setPlazaToast("画像保存は未設定ですが、本文だけ投稿できます。Cloudinary設定後に画像を保存できます"); return undefined; } const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
   const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; let serverBottle: any = null; const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); serverBottle = (await response.json()).bottle; } const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
@@ -2275,7 +2356,23 @@ export default function DriftApp() {
     setReplyParentId(undefined);
     setPlazaToast("返信の言葉を海へ放ちました");
     const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api) { const response = await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); }
+    if (api && !selected.isSample) {
+      const response = await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) });
+      if (!response.ok) {
+        setPlazaToast(`返信を保存できませんでした（${response.status}）`);
+      } else {
+        // Also deliver the actual reply to the bottle owner's persistent DM inbox.
+        try {
+          const dmResponse = await fetch(`${api}/api/dm/messages`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() },
+            body: JSON.stringify({ bottle_id: selected.id, body, sender_name: nickname || "匿名の誰か", sender_emoji: "◌" }),
+          });
+          if (dmResponse.ok) window.dispatchEvent(new Event("type-drift:dm-refresh"));
+          else console.warn("[Type Drift] reply saved but DM delivery failed", dmResponse.status);
+        } catch (error) { console.warn("[Type Drift] reply saved but DM delivery failed", error); }
+      }
+    }
     if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
@@ -2670,7 +2767,7 @@ export default function DriftApp() {
         </div>
         <p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p>
         <div className="bottle-grid">
-          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} />)}
+          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onMessage={item => { setDmModalTarget({ id: `bottle-${item.id}`, name: item.author, emoji: item.emoji, type: item.type, persistentDm: true, bottleId: item.id, bottleInfo: { id: item.id, text: item.text, author: item.author, type: item.type } }); setDmModalText(""); }} />)}
         </div>
       </section>
     )}
@@ -2749,9 +2846,10 @@ export default function DriftApp() {
               style={{ top: `${18 + (index * 19) % 62}%`, left: `${8 + (index * 23) % 82}%` }}
               title={`${user.nickname}（タップでプロフ確認）`}
               onClick={() => setInspectProfile({
-                id: user.sessionKey,
+                id: user.dmHandle || user.sessionKey,
                 name: user.nickname || "匿名の誰か",
                 emoji: user.emoji || "◌",
+                persistentDm: Boolean(user.dmHandle),
                 overview: "いま、この広場に接続している匿名の住人。プロフィールの自認は、本人が公開した範囲だけ表示されます。",
               })}
             >
@@ -2970,6 +3068,7 @@ export default function DriftApp() {
                         id: inspectProfile.id,
                         name: inspectProfile.name,
                         emoji: inspectProfile.emoji,
+                        persistentDm: inspectProfile.persistentDm,
                         type: [inspectProfile.mbti, inspectProfile.socionics, inspectProfile.enneagram].filter(Boolean).join(" · ") || undefined,
                       };
                       setInspectProfile(null);
@@ -3783,11 +3882,7 @@ export default function DriftApp() {
                           </div>
                         </div>
                         <div style={{ width: "80px", textAlign: "right" }}>
-                          {isBottleThread && (
-                            <span style={{ fontSize: "10px", color: "#0d9488", background: "#ccfbf1", padding: "3px 8px", borderRadius: "10px", fontWeight: 700 }}>
-                              自認共有中
-                            </span>
-                          )}
+                          {/* 「自認共有中」ラベルは意味が薄いため非表示 */}
                         </div>
                       </div>
 
@@ -3861,6 +3956,8 @@ export default function DriftApp() {
                                 name: currentThread.name,
                                 emoji: currentThread.emoji,
                                 type: currentThread.type,
+                                persistentDm: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentThread.targetId),
+                                bottleId: relatedBottle?.id,
                                 bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                               },
                               dmReplyText
@@ -3885,6 +3982,8 @@ export default function DriftApp() {
                                       name: currentThread.name,
                                       emoji: currentThread.emoji,
                                       type: currentThread.type,
+                                      persistentDm: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentThread.targetId),
+                                      bottleId: relatedBottle?.id,
                                       bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                                     },
                                     dmReplyText
