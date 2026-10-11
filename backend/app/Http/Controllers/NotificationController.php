@@ -12,7 +12,23 @@ class NotificationController extends Controller
         $query = Notification::whereNull('read_at');
         if ($request->user()) $query->where('user_id', $request->user()->id);
         else $query->where('guest_key', $request->header('X-Guest-Key'));
-        return response()->json(['count' => $query->count(), 'notifications' => $query->latest()->limit(30)->get()]);
+        $notificationCount = (clone $query)->count();
+
+        // Include incoming unread DMs in the same activity badge count.
+        $recipientQuery = DmRecipient::query();
+        if ($request->user()) $recipientQuery->where('user_id', $request->user()->id);
+        else $recipientQuery->where('guest_key', $request->header('X-Guest-Key'));
+        $handle = $recipientQuery->value('handle');
+        $dmCount = $handle
+            ? DirectMessage::query()->where('recipient_handle', $handle)->whereNull('read_at')->count()
+            : 0;
+
+        return response()->json([
+            'count' => $notificationCount + $dmCount,
+            'notification_count' => $notificationCount,
+            'dm_unread_count' => $dmCount,
+            'notifications' => $query->latest()->limit(30)->get(),
+        ]);
     }
 
     public function read(Request $request, Notification $notification)
