@@ -19,7 +19,7 @@ class BottleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Bottle::query()->withCount(['reactions', 'replies'])->latest();
+        $query = Bottle::query()->withCount(['replies'])->withSum('reactions', 'level')->latest();
         if ($request->filled('mbti')) $query->whereRaw('LOWER(mbti) = ?', [strtolower($request->string('mbti')->toString())]);
         if ($request->filled('socionics')) $query->whereRaw('LOWER(socionics) = ?', [strtolower($request->string('socionics')->toString())]);
         if ($request->filled('q')) $query->where('body', 'ilike', '%'.$request->string('q')->toString().'%');
