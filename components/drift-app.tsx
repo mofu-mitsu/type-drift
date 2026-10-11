@@ -2368,7 +2368,7 @@ export default function DriftApp() {
         >
           <span className="topbar-nav-icon">
             <Compass size={16} />
-            {totalActivityBadgeCount > 0 && <span className="topbar-icon-badge" />}
+            {totalActivityBadgeCount > 0 && <span className="topbar-icon-badge">{totalActivityBadgeCount}</span>}
           </span>
           <span className="topbar-nav-label">自分の活動</span>
         </button>
