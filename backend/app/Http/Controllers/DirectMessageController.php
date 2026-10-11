@@ -128,7 +128,7 @@ class DirectMessageController extends Controller
             'target_emoji' => $isMine ? $message->recipient_emoji : $message->sender_emoji,
             'target_type' => '広場の住人',
             'body' => $message->body,
-            'created_at' => $message->created_at?->getTimestampMs(),
+            'created_at' => $message->created_at ? $message->created_at->getTimestamp() * 1000 : null,
             'read' => $isMine || $message->read_at !== null,
             'read_at' => $message->read_at,
             'is_mine' => $isMine,
