@@ -34,29 +34,47 @@ class DirectMessageController extends Controller
     {
         $sender = $this->recipientFor($request);
         $data = $request->validate([
-            'recipient_handle' => ['required', 'uuid', 'exists:dm_recipients,handle'],
+            'recipient_handle' => ['nullable', 'uuid', 'exists:dm_recipients,handle', 'required_without:bottle_id'],
+            'bottle_id' => ['nullable', 'integer', 'exists:bottles,id', 'required_without:recipient_handle'],
             'body' => ['required', 'string', 'max:5000'],
             'sender_name' => ['nullable', 'string', 'max:80'],
             'recipient_name' => ['nullable', 'string', 'max:80'],
             'sender_emoji' => ['nullable', 'string', 'max:16'],
             'recipient_emoji' => ['nullable', 'string', 'max:16'],
-            'bottle_id' => ['nullable', 'integer', 'exists:bottles,id'],
         ]);
 
-        abort_if($data['recipient_handle'] === $sender->handle, 422, '自分宛てには送信できません。');
+        $bottle = null;
+        if (!empty($data['bottle_id'])) {
+            $bottle = Bottle::query()->findOrFail($data['bottle_id']);
+            abort_if(!$bottle->user_id && !$bottle->guest_key, 422, 'このボトルの投稿者はDMを受信できません。');
+            if ($bottle->user_id) {
+                $target = DmRecipient::query()->firstOrCreate(
+                    ['user_id' => $bottle->user_id],
+                    ['handle' => (string) Str::uuid()],
+                );
+            } else {
+                $target = DmRecipient::query()->firstOrCreate(
+                    ['guest_key' => $bottle->guest_key],
+                    ['handle' => (string) Str::uuid()],
+                );
+            }
+        } else {
+            $target = DmRecipient::query()->where('handle', $data['recipient_handle'])->firstOrFail();
+        }
 
-        $target = DmRecipient::query()->where('handle', $data['recipient_handle'])->firstOrFail();
+        abort_if($target->handle === $sender->handle, 422, '自分宛てには送信できません。');
+
         $message = DirectMessage::create([
             'sender_handle' => $sender->handle,
             'recipient_handle' => $target->handle,
             'sender_user_id' => $sender->user_id,
             'recipient_user_id' => $target->user_id,
             'sender_name' => $data['sender_name'] ?? ($request->user()?->name ?: '匿名の誰か'),
-            'recipient_name' => $data['recipient_name'] ?? '匿名の誰か',
+            'recipient_name' => $data['recipient_name'] ?? ($bottle ? ('匿名の'.($bottle->mbti ?: $bottle->socionics ?: '誰か')) : '匿名の誰か'),
             'sender_emoji' => $data['sender_emoji'] ?? '◌',
             'recipient_emoji' => $data['recipient_emoji'] ?? '◌',
             'body' => trim($data['body']),
-            'bottle_id' => $data['bottle_id'] ?? null,
+            'bottle_id' => $bottle?->id,
         ]);
 
         return response()->json(['message' => $this->present($message, $sender->handle)], 201);
