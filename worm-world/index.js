@@ -130,11 +130,19 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
       ? singleObject.replies
       : (singleObject.character || singleObject.name || singleObject.body || singleObject.text || singleObject.reply || singleObject.message || singleObject.content)
         ? [singleObject]
-        : (singleObject.reply && typeof singleObject.reply === 'object' ? [singleObject.reply] : []);
-    let replies = normalizedReplies.slice(0, 2).map(item => ({
-      character: item.character || item.name || item.speaker || preferredCharacter || 'ダーリンちゃん',
-      body: item.body || item.text || item.content || (typeof item.reply === 'string' ? item.reply : '') || item.message || '',
-    }));
+        : [];
+    let replies = normalizedReplies.slice(0, 2).map(item => {
+      const nestedReply = item && typeof item.reply === 'object' ? item.reply : {};
+      const nestedMessage = item && typeof item.message === 'object' ? item.message : {};
+      return {
+        character: item.character || item.name || item.speaker || nestedReply.character || nestedReply.name || preferredCharacter || 'ダーリンちゃん',
+        body: item.body || item.text || item.content ||
+          (typeof item.reply === 'string' ? item.reply : '') ||
+          item.message && typeof item.message === 'string' ? item.message :
+          nestedReply.body || nestedReply.text || nestedReply.content ||
+          nestedMessage.body || nestedMessage.text || nestedMessage.content || '',
+      };
+    });
     if (preferredCharacter) replies = replies.sort((a, b) => Number(b.character === preferredCharacter) - Number(a.character === preferredCharacter));
     const chosen = replies.find(item => item.character === preferredCharacter) || replies[0];
     if (!chosen || !String(chosen.body || '').trim()) {
@@ -144,7 +152,16 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
         model: GROQ_MODEL,
         contentLength: rawContent.length,
         finishReason: data.choices?.[0]?.finish_reason || 'unknown',
-        keys: Object.keys(singleObject || {}),
+        contentType: typeof message.content,
+        parsedType: Array.isArray(parsed) ? 'array' : typeof parsed,
+        topLevelKeys: Object.keys(singleObject || {}),
+        replyCount: normalizedReplies.length,
+        replyShapes: normalizedReplies.slice(0, 3).map(item => ({
+          type: Array.isArray(item) ? 'array' : typeof item,
+          keys: item && typeof item === 'object' ? Object.keys(item).slice(0, 12) : [],
+          valueTypes: item && typeof item === 'object' ? Object.fromEntries(Object.entries(item).slice(0, 12).map(([key, value]) => [key, Array.isArray(value) ? 'array' : typeof value])) : {},
+        })),
+        contentPreview: rawContent.slice(0, 700),
       });
       const safe = fallbackReply('invalid_reply_shape');
       return { ...safe, source: 'fallback', reason: 'invalid_reply_shape' };
