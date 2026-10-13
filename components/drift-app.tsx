@@ -2227,19 +2227,46 @@ export default function DriftApp() {
     const api = process.env.NEXT_PUBLIC_API_URL;
     const targets = serverNotifications.filter(n => !types || types.includes(n.type));
     if (!api || targets.length === 0) return;
-    await Promise.all(targets.map(n => fetch(`${api}/api/notifications/${n.id}/read`, {
-      method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
-    }).catch(() => undefined)));
-    setServerNotifications(current => current.filter(n => !targets.some(target => target.id === n.id)));
-    setServerNotificationCount(current => Math.max(0, current - targets.length));
+    const results = await Promise.all(targets.map(async n => {
+      try {
+        const response = await fetch(`${api}/api/notifications/${n.id}/read`, {
+          method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
+        });
+        return { id: n.id, ok: response.ok, status: response.status };
+      } catch {
+        return { id: n.id, ok: false, status: 0 };
+      }
+    }));
+    const readIds = new Set(results.filter(result => result.ok).map(result => result.id));
+    setServerNotifications(current => current.filter(n => !readIds.has(n.id)));
+    setServerNotificationCount(current => Math.max(0, current - readIds.size));
+    const failed = results.filter(result => !result.ok);
+    if (failed.length) {
+      console.error("[Type Drift] notification read failed", failed);
+      setPlazaToast(`通知を既読にできませんでした（${failed[0].status || "通信エラー"}）`);
+    }
   };
 
   const markAllNotificationsAsRead = () => {
-    void fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/notifications/read-all`, {
-      method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
-    }).then(response => response.ok ? response.json() : null).then(data => {
-      if (data?.ok) { setServerNotifications([]); setServerNotificationCount(0); }
-    }).catch(() => undefined);
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    if (api) {
+      void fetch(`${api}/api/notifications/read-all`, {
+        method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
+      }).then(async response => {
+        const data = response.ok ? await response.json() : null;
+        if (data?.ok) {
+          setServerNotifications([]);
+          setServerNotificationCount(0);
+          setPlazaToast(`✓ すべての通知を既読にしました（${Number(data.updated || 0)}件）`);
+        } else {
+          console.error("[Type Drift] read-all failed", { status: response.status, data });
+          setPlazaToast(`通知を既読にできませんでした（${response.status}）`);
+        }
+      }).catch(error => {
+        console.error("[Type Drift] read-all request failed", error);
+        setPlazaToast("通知を既読にできませんでした（通信エラー）");
+      });
+    }
     setDirectMessages(prev => {
       const updated = prev.map(m => ({ ...m, read: true }));
       try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
@@ -2251,7 +2278,7 @@ export default function DriftApp() {
     if (isAdminLoggedIn) {
       markAllAdminAsRead();
     }
-    setPlazaToast("✓ すべての通知を既読にしました");
+    if (!api) setPlazaToast("✓ この端末の通知を既読にしました");
   };
 
   // 問い合わせ・返信タブを開いた時に自動既読
@@ -3583,7 +3610,7 @@ export default function DriftApp() {
             <button
               type="button"
               className={`activity-v2-nav-item ${activityTab === "mine" ? "active" : ""}`}
-              onClick={() => { setActivityTab("mine"); void markServerNotificationsRead(["bottle_reply", "bottle_reaction"]); }}
+              onClick={() => { setActivityTab("mine"); }}
             >
               <div className="v2-circle-icon v2-icon-sea">
                 <IconV2BottleSea size={28} />
@@ -3596,7 +3623,7 @@ export default function DriftApp() {
             <button
               type="button"
               className={`activity-v2-nav-item ${activityTab === "liked" ? "active" : ""}`}
-              onClick={() => { setActivityTab("liked"); void markServerNotificationsRead(["bottle_reaction"]); }}
+              onClick={() => { setActivityTab("liked"); }}
             >
               <div className="v2-circle-icon v2-icon-like">
                 <IconV2LikeChat size={28} />
@@ -3609,7 +3636,7 @@ export default function DriftApp() {
             <button
               type="button"
               className={`activity-v2-nav-item ${activityTab === "replied" ? "active" : ""}`}
-              onClick={() => { setActivityTab("replied"); void markServerNotificationsRead(["reply_reply", "reply_reaction"]); }}
+              onClick={() => { setActivityTab("replied"); }}
             >
               <div className="v2-circle-icon v2-icon-reply">
                 <IconV2ReplyArrow size={28} />
