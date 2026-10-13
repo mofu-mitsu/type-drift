@@ -1270,6 +1270,16 @@ export default function DriftApp() {
     const timer = window.setInterval(refresh, 20000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    const openFeedback = () => {
+      setActivePage("home");
+      setFeedbackOpen(true);
+      window.setTimeout(() => document.querySelector(".feedback-box")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    };
+    window.addEventListener("type-drift:open-feedback", openFeedback);
+    return () => window.removeEventListener("type-drift:open-feedback", openFeedback);
+  }, []);
+
   // AIボトルは海にいる時だけ、低頻度で一件だけ漂着させる。広場の会話AIとは別経路。
   useEffect(() => {
     if (activePage !== "sea" || typeof window === "undefined") return;
@@ -2194,7 +2204,23 @@ export default function DriftApp() {
     setPlazaToast("✓ 意見箱とお問い合わせの通知を既読にしました");
   };
 
+  const markServerNotificationsRead = async (types?: string[]) => {
+    const api = process.env.NEXT_PUBLIC_API_URL;
+    const targets = serverNotifications.filter(n => !types || types.includes(n.type));
+    if (!api || targets.length === 0) return;
+    await Promise.all(targets.map(n => fetch(`${api}/api/notifications/${n.id}/read`, {
+      method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
+    }).catch(() => undefined)));
+    setServerNotifications(current => current.filter(n => !targets.some(target => target.id === n.id)));
+    setServerNotificationCount(current => Math.max(0, current - targets.length));
+  };
+
   const markAllNotificationsAsRead = () => {
+    void fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/notifications/read-all`, {
+      method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
+    }).then(response => response.ok ? response.json() : null).then(data => {
+      if (data?.ok) { setServerNotifications([]); setServerNotificationCount(0); }
+    }).catch(() => undefined);
     setDirectMessages(prev => {
       const updated = prev.map(m => ({ ...m, read: true }));
       try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
@@ -3270,7 +3296,7 @@ export default function DriftApp() {
               >
                 <Plus size={18} /> 秘密を流す
               </button>
-              {totalActivityBadgeCount > 0 && (
+              {true && (
                 <button
                   type="button"
                   onClick={markAllNotificationsAsRead}
@@ -3516,7 +3542,7 @@ export default function DriftApp() {
             <button
               type="button"
               className={`activity-v2-nav-item ${activityTab === "mine" ? "active" : ""}`}
-              onClick={() => setActivityTab("mine")}
+              onClick={() => { setActivityTab("mine"); void markServerNotificationsRead(["bottle_reply", "bottle_reaction"]); }}
             >
               <div className="v2-circle-icon v2-icon-sea">
                 <IconV2BottleSea size={28} />
@@ -3529,26 +3555,26 @@ export default function DriftApp() {
             <button
               type="button"
               className={`activity-v2-nav-item ${activityTab === "liked" ? "active" : ""}`}
-              onClick={() => setActivityTab("liked")}
+              onClick={() => { setActivityTab("liked"); void markServerNotificationsRead(["bottle_reaction"]); }}
             >
               <div className="v2-circle-icon v2-icon-like">
                 <IconV2LikeChat size={28} />
               </div>
               <span className="v2-nav-label">いいねしたボトル</span>
-              {likedBottleIds.length > 0 && <span className="tab-pill-badge activity-count-badge">{likedBottleIds.length}</span>}
+              {serverNotifications.filter(n => n.type === "bottle_reaction").length > 0 && <span className="tab-pill-badge activity-count-badge">{serverNotifications.filter(n => n.type === "bottle_reaction").length}</span>}
               <span className="v2-nav-arrow">→</span>
             </button>
 
             <button
               type="button"
               className={`activity-v2-nav-item ${activityTab === "replied" ? "active" : ""}`}
-              onClick={() => setActivityTab("replied")}
+              onClick={() => { setActivityTab("replied"); void markServerNotificationsRead(["reply_reply", "reply_reaction"]); }}
             >
               <div className="v2-circle-icon v2-icon-reply">
                 <IconV2ReplyArrow size={28} />
               </div>
               <span className="v2-nav-label">返信したボトル</span>
-              {(repliedBottleIds.length + unreadReplyActivityCount) > 0 && <span className="tab-pill-badge activity-count-badge">{repliedBottleIds.length + unreadReplyActivityCount}</span>}
+              {unreadReplyActivityCount > 0 && <span className="tab-pill-badge activity-count-badge">{unreadReplyActivityCount}</span>}
               <span className="v2-nav-arrow">→</span>
             </button>
 
