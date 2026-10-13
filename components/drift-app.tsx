@@ -2435,7 +2435,7 @@ export default function DriftApp() {
         >
           <span className="topbar-nav-icon">
             <Compass size={16} />
-            {totalActivityBadgeCount > 0 && <span className="topbar-icon-badge">{totalActivityBadgeCount}</span>}
+            
           </span>
           <span className="topbar-nav-label">自分の活動</span>
         </button>
@@ -2558,7 +2558,7 @@ export default function DriftApp() {
               onClick={() => { setActivePage("activity"); setMobileMenuOpen(false); }}
             >
               <Compass size={16} color="#0284c7" /> 自分の活動・メッセージ
-              {totalActivityBadgeCount > 0 && <span className="topbar-dm-pill" style={{ marginLeft: "auto" }}>{totalActivityBadgeCount}</span>}
+              
             </button>
             <button
               type="button"
