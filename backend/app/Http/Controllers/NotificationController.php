@@ -36,16 +36,5 @@ class NotificationController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function readAll(Request $request)
-    {
-        $query = Notification::whereNull('read_at');
-        if ($request->user()) $query->where('user_id', $request->user()->id);
-        else {
-            $guestKey = $request->header('X-Guest-Key');
-            if (!$guestKey) return response()->json(['ok' => true, 'count' => 0]);
-            $query->where('guest_key', $guestKey);
-        }
-        $count = $query->update(['read_at' => now()]);
-        return response()->json(['ok' => true, 'count' => $count]);
-    }
+
 }
