@@ -231,7 +231,10 @@ export default function PlazaPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: humanText, history: messages.slice(-12) }),
       });
-      if (!response.ok) throw new Error(`ai failed (${response.status})`);
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${errorBody || response.statusText || 'response not ok'}`);
+      }
       const data = await response.json();
       setAiStatus(`${data.source === 'groq' ? 'Groq' : 'fallback'} · ${data.model || 'モデル未確認'}`);
       console.info('[Type Drift AI] response', { source: data.source, reason: data.reason, model: data.model, replies: data.replies?.length || 0 });
@@ -254,6 +257,14 @@ export default function PlazaPanel({
         onToast?.('AIの応答でエラーが起きました。意見箱から報告できます。');
         window.dispatchEvent(new CustomEvent('type-drift:open-feedback', { detail: { category: '不具合', body: `広場AIエラー: ${detail}` } }));
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
+      const visibleError = `AIエラー詳細\\n${message}\\nendpoint=${aiUrl}`;
+      console.error('[Type Drift AI] request failed', JSON.stringify({ message, endpoint: aiUrl, humanText: humanText.slice(0, 120) }, null, 2));
+      sendRelay({ type: 'plaza_ai_message', character, body: visibleError });
+      setLocalToast(`AIエラー: ${message}`);
+      onToast?.(`AIエラー: ${message}`);
     } finally {
       setAiBusy(false);
     }
