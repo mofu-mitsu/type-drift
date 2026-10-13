@@ -138,7 +138,7 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
         character: item.character || item.name || item.speaker || nestedReply.character || nestedReply.name || preferredCharacter || 'ダーリンちゃん',
         body: item.body || item.text || item.content ||
           (typeof item.reply === 'string' ? item.reply : '') ||
-          item.message && typeof item.message === 'string' ? item.message :
+          (typeof item.message === 'string' ? item.message : '') ||
           nestedReply.body || nestedReply.text || nestedReply.content ||
           nestedMessage.body || nestedMessage.text || nestedMessage.content || '',
       };
