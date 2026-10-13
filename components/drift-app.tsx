@@ -296,6 +296,25 @@ export default function DriftApp() {
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
   const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string; message: string; created_at: string }>>([]);
 
+  // 広場AIのエラーから、意見箱を直接開けるようにする
+  useEffect(() => {
+    const openFeedbackFromAiError = (event: Event) => {
+      const detail = (event as CustomEvent<{ category?: string; body?: string }>).detail;
+      setActivePage("home");
+      setFeedbackOpen(true);
+      window.setTimeout(() => {
+        document.querySelector(".facility-card--feedback")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const textarea = document.querySelector<HTMLTextAreaElement>(".facility-card--feedback textarea");
+        if (textarea && detail?.body && !textarea.value) {
+          textarea.value = detail.body;
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      }, 150);
+    };
+    window.addEventListener("type-drift:open-feedback", openFeedbackFromAiError);
+    return () => window.removeEventListener("type-drift:open-feedback", openFeedbackFromAiError);
+  }, []);
+
   // ダーリンちゃんのミニゲーム・心理テスト用State
   const [darlingTargetNumber, setDarlingTargetNumber] = useState<number | null>(null);
   const [darlingGuessCount, setDarlingGuessCount] = useState<number>(0);
