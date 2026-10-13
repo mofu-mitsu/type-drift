@@ -46,6 +46,7 @@ Route::post('/question-prompts', [QuestionPromptController::class, 'store']);
 Route::get('/notifications/unread', [NotificationController::class, 'unread']);
 Route::post('/notifications/{notification}/read', [NotificationController::class, 'read']);
 Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
+Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
 
 Route::post('/worm/position', [WormController::class, 'position'])
     ->middleware('throttle:1200,1');
