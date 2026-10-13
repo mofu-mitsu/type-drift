@@ -1335,8 +1335,9 @@ export default function DriftApp() {
       for (const item of npcSeeds) unique.set(item.id, item);
       for (const item of remote) unique.set(item.id, item);
       setBottles([...unique.values()].sort((a, b) => {
-        if (a.id < 0 && b.id >= 0) return -1;
-        if (a.id >= 0 && b.id < 0) return 1;
+        // ユーザーの投稿を先頭に並べ、固定の初期NPC投稿はその後ろに置く。
+        if (a.id < 0 && b.id >= 0) return 1;
+        if (a.id >= 0 && b.id < 0) return -1;
         return 0;
       }));
     }).catch(() => undefined);
@@ -1443,8 +1444,9 @@ export default function DriftApp() {
         for (const item of npcSeeds) unique.set(item.id, item);
         for (const item of remote) unique.set(item.id, item);
         setBottles([...unique.values()].sort((a, b) => {
-          if (a.id < 0 && b.id >= 0) return -1;
-          if (a.id >= 0 && b.id < 0) return 1;
+          // ユーザーの投稿を先頭に並べ、固定の初期NPC投稿はその後ろに置く。
+          if (a.id < 0 && b.id >= 0) return 1;
+          if (a.id >= 0 && b.id < 0) return -1;
           return 0;
         }));
         console.info("[Type Drift] bottles loaded", remote.length);
