@@ -99,8 +99,16 @@ class BottleController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function replies(Bottle $bottle)
+    public function replies(Request $request, Bottle $bottle)
     {
+        // Reply bodies are visible only to the owner of the bottle. Counts remain public in the bottle feed.
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        $isOwner = ($userId && $bottle->user_id === $userId)
+            || (!$userId && $guestKey && $bottle->guest_key === $guestKey);
+        if (!$isOwner) {
+            return response()->json(['replies' => []]);
+        }
         return response()->json(['replies' => $bottle->replies()->with(['reactions', 'children' => fn ($query) => $query->latest(), 'children.reactions'])->latest()->get()]);
     }
 
