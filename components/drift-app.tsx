@@ -1297,9 +1297,19 @@ export default function DriftApp() {
     const refresh = () => void fetch(`${api}/api/bottles`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
       const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
       const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
+      // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
+      // NPCには負の固定IDを割り当て、Neon側のIDと衝突させない。
+      const npcSeeds = initialBottles
+        .filter(item => Boolean(item.ai))
+        .map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
       const unique = new Map<number, Bottle>();
+      for (const item of npcSeeds) unique.set(item.id, item);
       for (const item of remote) unique.set(item.id, item);
-      setBottles([...unique.values()]);
+      setBottles([...unique.values()].sort((a, b) => {
+        if (a.id < 0 && b.id >= 0) return -1;
+        if (a.id >= 0 && b.id < 0) return 1;
+        return 0;
+      }));
     }).catch(() => undefined);
     const timer = window.setInterval(refresh, 3000);
     const immediateRefresh = () => refresh();
@@ -1397,9 +1407,17 @@ export default function DriftApp() {
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
+        const npcSeeds = initialBottles
+          .filter(item => Boolean(item.ai))
+          .map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
         const unique = new Map<number, Bottle>();
+        for (const item of npcSeeds) unique.set(item.id, item);
         for (const item of remote) unique.set(item.id, item);
-        setBottles([...unique.values()]);
+        setBottles([...unique.values()].sort((a, b) => {
+          if (a.id < 0 && b.id >= 0) return -1;
+          if (a.id >= 0 && b.id < 0) return 1;
+          return 0;
+        }));
         console.info("[Type Drift] bottles loaded", remote.length);
       })
       .catch(error => console.error("[Type Drift] bottle loading failed", error));
