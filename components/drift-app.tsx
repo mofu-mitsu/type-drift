@@ -2339,9 +2339,31 @@ export default function DriftApp() {
       try { localStorage.setItem("type-drift-my-replies", JSON.stringify(updated)); } catch {}
       return updated;
     });
+    // 返信した実際のボトルと返信本文を、個別メッセージにも紐づけて保存する
+    const replyContextMessage: DirectMessage = {
+      id: `dm-bottle-reply-${selected.id}-${Date.now()}`,
+      threadId: `bottle-${selected.id}`,
+      sender: "あなた",
+      recipient: selected.author || "匿名のボトル主",
+      targetEmoji: selected.emoji || "🌊",
+      targetType: selected.type,
+      body,
+      createdAt: Date.now(),
+      read: true,
+      isMine: true,
+      bottleId: selected.id,
+      bottleSnippet: selected.text,
+      bottleAuthor: selected.author,
+      bottleType: selected.type,
+    };
+    setDirectMessages(previous => {
+      const updated = [...previous, replyContextMessage];
+      try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     setReply("");
     setReplyParentId(undefined);
-    setPlazaToast("返信の言葉を海へ放ちました");
+    setPlazaToast("返信の言葉を海へ放ちました。個別メッセージにも記録しました");
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (api) { const response = await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); }
     if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
