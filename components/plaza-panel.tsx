@@ -251,12 +251,11 @@ export default function PlazaPanel({
         const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
         const detail = `reason=${String(data?.reason || 'empty_reply')} / source=${String(data?.source || 'unknown')} / model=${String(data?.model || 'unknown')}`;
         const payloadText = JSON.stringify(data, null, 2);
-        const visibleError = `AIエラー詳細\n${detail}\nレスポンス:\n${payloadText || '(空のレスポンス)'}`;
+        const visibleError = `エラーが出ちゃったみたい……🥺\nエラー内容：${detail}\n意見箱から報告してね。\n\n（技術詳細）\n${payloadText || '(空のレスポンス)'}`;
         console.error('[Type Drift AI] fallback/error detail', visibleError);
         sendRelay({ type: 'plaza_ai_message', character, body: visibleError });
-        setLocalToast(`AIエラー詳細: ${detail}`);
-        onToast?.(`AIエラー詳細: ${detail}`);
-        window.dispatchEvent(new CustomEvent('type-drift:open-feedback', { detail: { category: '不具合', body: `広場AIエラー: ${detail}` } }));
+        setLocalToast(`AIエラー: ${detail}`);
+        onToast?.(`AIエラー: ${detail}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
