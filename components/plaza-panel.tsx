@@ -240,18 +240,19 @@ export default function PlazaPanel({
             typeof reply?.character === 'string' && typeof reply?.body === 'string' && reply.body.trim().length > 0
           ).slice(0, 1)
         : [];
-      // エラーをテンプレ応答で隠さず、APIの reason / model をそのまま表示して原因を追えるようにする。
       if (replies.length > 0 && data.source === 'groq') {
         for (const reply of replies) {
           sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body.trim() });
         }
       } else {
         const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
-        const detail = `[AIエラー] reason=${String(data?.reason || 'empty_reply')} / source=${String(data?.source || 'unknown')} / model=${String(data?.model || 'unknown')}`;
+        const detail = `reason=${String(data?.reason || 'empty_reply')} / source=${String(data?.source || 'unknown')} / model=${String(data?.model || 'unknown')}`;
+        const friendly = 'エラーが出ちゃったみたい……🥺\n意見箱から報告してね。';
         console.error('[Type Drift AI] fallback/error detail', { reason: data?.reason, source: data?.source, model: data?.model, payload: data });
-        sendRelay({ type: 'plaza_ai_message', character, body: detail });
-        setLocalToast(detail);
-        onToast?.(detail);
+        sendRelay({ type: 'plaza_ai_message', character, body: friendly });
+        setLocalToast('AIの応答でエラーが起きました。意見箱から報告できます。');
+        onToast?.('AIの応答でエラーが起きました。意見箱から報告できます。');
+        window.dispatchEvent(new CustomEvent('type-drift:open-feedback', { detail: { category: '不具合', body: `広場AIエラー: ${detail}` } }));
       }
     } finally {
       setAiBusy(false);
