@@ -455,6 +455,15 @@ export default function PlazaPanel({
                     {isAi && <small className="ai-tag">AI</small>}
                   </div>
                   <p className="plaza-chat-text">{message.body}</p>
+                  {isAi && message.body.startsWith('エラーが出ちゃったみたい') && (
+                    <button
+                      type="button"
+                      className="plaza-chat-send-btn"
+                      onClick={() => window.dispatchEvent(new CustomEvent('type-drift:open-feedback', { detail: { category: '不具合', body: message.body } }))}
+                    >
+                      📮 意見箱から報告する
+                    </button>
+                  )}
                 </div>
               </article>
             );
