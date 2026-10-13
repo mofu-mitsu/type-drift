@@ -2075,6 +2075,10 @@ export default function DriftApp() {
     return adminPendingFeedbackCount + adminPendingConsultationCount;
   }, [adminPendingFeedbackCount, adminPendingConsultationCount]);
 
+  // 活動カテゴリ別の未読バッジ。通知種別をカテゴリごとに分け、全件合算にはしない。
+  const unreadBottleActivityCount = useMemo(() => serverNotifications.filter(n => n.type === "bottle_reply" || n.type === "bottle_reaction").length, [serverNotifications]);
+  const unreadReplyActivityCount = useMemo(() => serverNotifications.filter(n => n.type === "reply_reply" || n.type === "reply_reaction").length, [serverNotifications]);
+
   // 🧭 「自分の活動」全体の直接通知バッジ数
   const totalActivityBadgeCount = useMemo(() => {
     let count = serverNotificationCount + unreadDmCount + unreadConsultationCount + unreadInquiryReplyCount;
@@ -3518,6 +3522,7 @@ export default function DriftApp() {
                 <IconV2BottleSea size={28} />
               </div>
               <span className="v2-nav-label">流したボトル</span>
+              {unreadBottleActivityCount > 0 && <span className="tab-pill-badge activity-count-badge">{unreadBottleActivityCount}</span>}
               <span className="v2-nav-arrow">→</span>
             </button>
 
@@ -3530,6 +3535,7 @@ export default function DriftApp() {
                 <IconV2LikeChat size={28} />
               </div>
               <span className="v2-nav-label">いいねしたボトル</span>
+              {likedBottleIds.length > 0 && <span className="tab-pill-badge activity-count-badge">{likedBottleIds.length}</span>}
               <span className="v2-nav-arrow">→</span>
             </button>
 
@@ -3542,6 +3548,7 @@ export default function DriftApp() {
                 <IconV2ReplyArrow size={28} />
               </div>
               <span className="v2-nav-label">返信したボトル</span>
+              {(repliedBottleIds.length + unreadReplyActivityCount) > 0 && <span className="tab-pill-badge activity-count-badge">{repliedBottleIds.length + unreadReplyActivityCount}</span>}
               <span className="v2-nav-arrow">→</span>
             </button>
 
