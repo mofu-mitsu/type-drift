@@ -249,9 +249,10 @@ export default function PlazaPanel({
         }
       } else {
         const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
-        const detail = `reason=${String(data?.reason || 'empty_reply')} / source=${String(data?.source || 'unknown')} / model=${String(data?.model || 'unknown')}`;
-        const payloadText = JSON.stringify(data, null, 2);
-        const visibleError = `エラーが出ちゃったみたい……🥺\nエラー内容：${detail}\n意見箱から報告してね。\n\n（技術詳細）\n${payloadText || '(空のレスポンス)'}`;
+        const reason = String(data?.reason || 'empty_reply');
+        const model = String(data?.model || 'unknown');
+        const detail = `${reason}（モデル: ${model}）`;
+        const visibleError = `エラーが出ちゃったみたい……🥺\nエラー内容は ${detail}\n意見箱から報告してね。`;
         console.error('[Type Drift AI] fallback/error detail', visibleError);
         sendRelay({ type: 'plaza_ai_message', character, body: visibleError });
         setLocalToast(`AIエラー: ${detail}`);
@@ -260,7 +261,7 @@ export default function PlazaPanel({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
-      const visibleError = `AIエラー詳細\\n${message}\\nendpoint=${aiUrl}`;
+      const visibleError = `エラーが出ちゃったみたい……🥺\nエラー内容は ${message.slice(0, 240)}\n意見箱から報告してね。`;
       console.error('[Type Drift AI] request failed', JSON.stringify({ message, endpoint: aiUrl, humanText: humanText.slice(0, 120) }, null, 2));
       sendRelay({ type: 'plaza_ai_message', character, body: visibleError });
       setLocalToast(`AIエラー: ${message}`);
