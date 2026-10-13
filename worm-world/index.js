@@ -126,11 +126,19 @@ async function plazaAI(body, history = [], requestedCharacter = null) {
     // Qwen/Groq can return either a replies array, one character object, or a
     // compact shape such as {"character":"...","reply":"..."}.
     const singleObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    const normalizedReplies = Array.isArray(singleObject.replies)
-      ? singleObject.replies
-      : (singleObject.character || singleObject.name || singleObject.body || singleObject.text || singleObject.reply || singleObject.message || singleObject.content)
-        ? [singleObject]
-        : [];
+    // Qwen can return a bare array, { replies: [...] }, one reply object, or
+    // wrap the reply under data/result/output. Normalize these before validation.
+    const wrapped = singleObject.data && typeof singleObject.data === 'object' ? singleObject.data
+      : singleObject.result && typeof singleObject.result === 'object' ? singleObject.result
+      : singleObject.output && typeof singleObject.output === 'object' ? singleObject.output
+      : singleObject;
+    const normalizedReplies = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(wrapped.replies)
+        ? wrapped.replies
+        : (wrapped.character || wrapped.name || wrapped.speaker || wrapped.body || wrapped.text || wrapped.reply || wrapped.message || wrapped.content)
+          ? [wrapped]
+          : [];
     let replies = normalizedReplies.slice(0, 2).map(item => {
       const nestedReply = item && typeof item.reply === 'object' ? item.reply : {};
       const nestedMessage = item && typeof item.message === 'object' ? item.message : {};
