@@ -1,4 +1,7 @@
-FROM php:8.4-apache
+FROM php:8.4.27-apache
+
+# CVE-2026-115560 mitigation: this application does not use PHP session upload progress.
+COPY php-security.ini /usr/local/etc/php/conf.d/zz-type-drift-security.ini
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git unzip libpq-dev libzip-dev \
