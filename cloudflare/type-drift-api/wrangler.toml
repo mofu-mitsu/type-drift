@@ -1,4 +1,4 @@
-name = "type-drift-api"
+name = "type-drift-api-fallback"
 main = "src/index.ts"
 compatibility_date = "2026-09-19"
 

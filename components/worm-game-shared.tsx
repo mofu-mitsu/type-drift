@@ -1,5 +1,6 @@
 'use client';
 import { useCallback,useEffect,useRef,useState } from 'react';
+import { apiFetch } from '@/lib/api-client';
 
 type P={x:number;y:number};
 type Drop=P&{id:string;expires:number};
@@ -24,9 +25,9 @@ const bodyPath=(history:P[],maxSegments:number,gap=BODY_GAP):P[]=>{if(!history.l
 export default function WormGameShared({nickname,onExit}:{nickname:string;onExit:()=>void}){
  const [score,setScore]=useState(0),[state,setState]=useState<'intro'|'playing'|'gameover'>('intro'),[net,setNet]=useState<'connecting'|'connected'|'offline'>('connecting'),[ranking,setRanking]=useState<R[]>([]),[version,setVersion]=useState(0),[shareMessage,setShareMessage]=useState('');
  const canvas=useRef<HTMLCanvasElement>(null),box=useRef<HTMLDivElement>(null),p=useRef<W>(makePlayer(nickname)),npcs=useRef<W[]>(makeInitialNpcs()),remotes=useRef<Map<string,W>>(new Map()),foods=useRef<P[]>([]),drops=useRef<Drop[]>([]),collectedDrops=useRef<Set<string>>(new Set()),socket=useRef<WebSocket|null>(null),key=useRef(''),raf=useRef(0),last=useRef(0),desired=useRef<P>({x:1,y:0}),pointer=useRef({active:false,lastMove:0}),lastUiUpdate=useRef(0);
- const load=useCallback(async()=>{if(!key.current)return;try{const r=await fetch(`${API}/api/worm/ranking?clientKey=${encodeURIComponent(key.current)}`,{cache:'no-store'});if(r.ok){const d=await r.json();setRanking(Array.isArray(d.scores)?d.scores:[])}}catch{}},[]);
+ const load=useCallback(async()=>{if(!key.current)return;try{const r=await apiFetch(`/api/worm/ranking?clientKey=${encodeURIComponent(key.current)}`,{cache:'no-store'});if(r.ok){const d=await r.json();setRanking(Array.isArray(d.scores)?d.scores:[])}}catch{}},[]);
  const send=useCallback(()=>{const ws=socket.current,w=p.current;if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'player',clientId:key.current,name:w.name,emoji:w.emoji,body:w.body,x:w.x,y:w.y,dirX:w.dir.x,dirY:w.dir.y,score:w.score,length:w.length,isAlive:w.isAlive}))},[]);
- const save=useCallback(async()=>{if(!key.current||p.current.score<=0)return;try{await fetch(`${API}/api/worm/ranking`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientKey:key.current,nickname:p.current.name.slice(0,80),score:p.current.score})})}catch{}},[]);
+ const save=useCallback(async()=>{if(!key.current||p.current.score<=0)return;try{await apiFetch('/api/worm/ranking',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientKey:key.current,nickname:p.current.name.slice(0,80),score:p.current.score})})}catch{}},[]);
  const dropCabbages=useCallback((w:W)=>{const count=Math.max(3,Math.min(30,w.length));const now=performance.now();for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,d=10+Math.random()*55;drops.current.push({id:`${w.id}-${now}-${i}-${Math.random()}`,x:Math.max(0,Math.min(S,w.x+Math.cos(a)*d)),y:Math.max(0,Math.min(S,w.y+Math.sin(a)*d)),expires:now+30000})}},[]);
  useEffect(()=>{let k=sessionStorage.getItem('type-drift-worm-tab-key');if(!k){k=crypto.randomUUID();sessionStorage.setItem('type-drift-worm-tab-key',k)}key.current=k;foods.current=Array.from({length:180},()=>({x:Math.random()*S,y:Math.random()*S}));void load()},[load]);
  useEffect(()=>{const t=setInterval(()=>void load(),3000);return()=>clearInterval(t)},[load]);

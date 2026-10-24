@@ -2,10 +2,14 @@
   "name": "type-drift-api",
   "private": true,
   "scripts": {
-    "deploy": "npx wrangler@4.38.0 deploy",
-    "dev": "npx wrangler@4.38.0 dev"
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.152.0"
   }
 }

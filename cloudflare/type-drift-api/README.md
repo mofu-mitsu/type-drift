@@ -1,24 +1,27 @@
-# type-drift-api
+# Type Drift Cloudflare API fallback
 
-Render の Laravel API から Cloudflare Worker へ移行するための API。
+Render remains the primary API. This Worker is an independent fallback that writes to the existing Neon production project (`mofumitsu` / `neondb`); do not create a new Neon project.
 
-現在の現行フロントで必要な公開 API は芋虫ランキングです。
+## Fallback routes
 
-## 必要な設定
+- Bottles: list, publish, delete, reactions, replies, poll votes
+- Notifications: unread list and mark read/read all
+- Consultation entries, question prompts, plaza message/chain history
+- Presence join/heartbeat/leave/online count, activity events, and feedback
+- Worm ranking and `/api/health`
 
-Cloudflare Worker の Secret に Neon の接続文字列を登録します。
+Guest-key ownership (`X-Guest-Key`) is shared across both APIs. OAuth/profile writes remain Render-only: a Render session cookie cannot authenticate on a separate `workers.dev` domain. A shared token or custom-domain auth bridge is needed for signed-in continuity.
 
-DATABASE_URL
+## Deploy
 
-Cloudflare は Neon に接続する方法として @neondatabase/serverless をサポートしています。Hyperdrive を使う構成にも変更できます。
+```bash
+cd cloudflare/type-drift-api
+npm ci
+npx wrangler login
+npx wrangler secret put DATABASE_URL
+npm run deploy
+```
 
-## 移行手順
+Use the existing Neon production connection string as the Worker secret. Never commit or paste it into chat. The deployed Worker URL is `https://type-drift-api-fallback.mitsuki-momoka.workers.dev`.
 
-1. npm install で lockfile を生成
-2. wrangler secret put DATABASE_URL
-3. Worker をデプロイ
-4. NEXT_PUBLIC_API_URL を Worker URL に変更
-5. 本番で GET/POST /api/worm/ranking を確認
-6. 問題なければ Render の type-drift-api を撤退対象にする
-
-この Worker をデプロイするまでは、フロント側の Render URL は変更しません。
+In Vercel, keep `NEXT_PUBLIC_API_URL=https://type-drift-api.onrender.com`, add `NEXT_PUBLIC_FALLBACK_API_URL=https://type-drift-api-fallback.mitsuki-momoka.workers.dev`, then redeploy the frontend. `ALLOWED_ORIGIN` is set for `https://type-drift.vercel.app`; add preview/custom frontend origins if required.

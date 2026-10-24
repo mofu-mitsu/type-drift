@@ -10,6 +10,7 @@ import ConsultationRoom from "./consultation-room";
 import ChainPage from "./chain-page";
 import { INITIAL_CONSULTATION_POSTS, type ConsultationPost, type ConsultationComment, type DiagnosisResult } from "@/types/consultation";
 import { getGuestKey, logActivity } from "@/lib/activity-log";
+import { apiFetch } from "@/lib/api-client";
 import {
   IconV2BottleSea,
   IconV2LikeChat,
@@ -194,7 +195,7 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
       let guestKey = localStorage.getItem("type-drift-guest-key");
       if (!guestKey) { guestKey = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", guestKey); }
       try {
-        await fetch(`${api}/api/feedback`, {
+        await apiFetch('/api/feedback', {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey },
           body: JSON.stringify({ body: body.trim(), category, needsReply }),
@@ -1287,7 +1288,7 @@ export default function DriftApp() {
       if (refreshing) return;
       refreshing = true;
       try {
-        const response = await fetch(`${api}/api/notifications/unread`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
+        const response = await apiFetch('/api/notifications/unread', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
         if (!response.ok) throw new Error(`notifications ${response.status}`);
         const data = await response.json();
         setServerNotificationCount(Number(data?.count || 0));
@@ -1339,7 +1340,7 @@ export default function DriftApp() {
           console.error("[Type Drift AI] bottle generation failed", { status: response.status, reason: data?.reason, detail: data?.detail, model: data?.model });
           return;
         }
-        await fetch(`${api}/api/bottles`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body: reply.body, mbti: reply.character === "LSI芋虫" ? "INTJ" : "INTP", socionics: reply.character === "LSI芋虫" ? "LSI" : "ILI", enneagram: reply.character === "LSI芋虫" ? "5w6" : "5w4", is_ai: true, ai_character: reply.character }) });
+        await apiFetch('/api/bottles', { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body: reply.body, mbti: reply.character === "LSI芋虫" ? "INTJ" : "INTP", socionics: reply.character === "LSI芋虫" ? "LSI" : "ILI", enneagram: reply.character === "LSI芋虫" ? "5w6" : "5w4", is_ai: true, ai_character: reply.character }) });
         window.dispatchEvent(new Event("type-drift:refresh-bottles"));
       } catch (error) { console.warn("[Type Drift] AI bottle drift failed", error); }
     }, 6000);
@@ -1349,7 +1350,7 @@ export default function DriftApp() {
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    const refresh = () => void fetch(`${api}/api/bottles`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
+    const refresh = () => void apiFetch('/api/bottles', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
       const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
       const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
       // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
@@ -1376,7 +1377,7 @@ export default function DriftApp() {
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    const refresh = () => void fetch(`${api}/api/consultations`).then(response => response.ok ? response.json() : null).then(data => {
+    const refresh = () => void apiFetch('/api/consultations').then(response => response.ok ? response.json() : null).then(data => {
       const entries = Array.isArray(data?.entries) ? data.entries : [];
       const remote = entries.map((entry: any) => ({ ...(entry.payload || {}), id: entry.external_id, category: entry.category || entry.payload?.category || "forum", freeText: entry.body || entry.payload?.freeText || "", comments: entry.payload?.comments || [] } as ConsultationPost));
       if (remote.length) setConsultationPosts(current => [...remote, ...current.filter(item => !remote.some((row: ConsultationPost) => row.id === item.id))]);
@@ -1440,7 +1441,7 @@ export default function DriftApp() {
       return;
     }
     console.info("[Type Drift] loading bottles", api);
-    void fetch(`${api}/api/bottles`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } })
+    void apiFetch('/api/bottles', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } })
       .then(async response => {
         if (!response.ok) throw new Error(`bottles ${response.status}`);
         return response.json();
@@ -1488,7 +1489,7 @@ export default function DriftApp() {
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    void fetch(`${api}/api/question-prompts`).then(response => response.ok ? response.json() : null).then(data => {
+    void apiFetch('/api/question-prompts').then(response => response.ok ? response.json() : null).then(data => {
       if (Array.isArray(data?.questions)) setQuestionPrompts([...data.questions.map((item: { body: string }) => item.body), ...BOTTLE_PROMPTS].filter((item, index, list) => list.indexOf(item) === index));
     }).catch(() => undefined);
   }, []);
@@ -2262,7 +2263,7 @@ export default function DriftApp() {
     if (!api || targets.length === 0) return;
     const results = await Promise.all(targets.map(async n => {
       try {
-        const response = await fetch(`${api}/api/notifications/${n.id}/read`, {
+        const response = await apiFetch(`/api/notifications/${n.id}/read`, {
           method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
         });
         return { id: n.id, ok: response.ok, status: response.status };
@@ -2288,7 +2289,7 @@ export default function DriftApp() {
   const markAllNotificationsAsRead = () => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (api) {
-      void fetch(`${api}/api/notifications/read-all`, {
+      void apiFetch('/api/notifications/read-all', {
         method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() }
       }).then(async response => {
         const data = response.ok ? await response.json() : null;
@@ -2385,11 +2386,11 @@ export default function DriftApp() {
     const matchesSocionics = !socionicsFilter || b.socionics.toUpperCase() === socionicsFilter;
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
-  const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); } };
+  const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
   const uploadToCloudinary = async (dataUrl?: string) => { const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; if (!dataUrl) return undefined; if (!cloudName || !preset) { setPlazaToast("画像保存は未設定ですが、本文だけ投稿できます。Cloudinary設定後に画像を保存できます"); return undefined; } const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
-  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; let serverBottle: any = null; const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/bottles`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); serverBottle = (await response.json()).bottle; } const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
+  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
-  const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); const api = process.env.NEXT_PUBLIC_API_URL; if (api) await fetch(`${api}/api/question-prompts`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
+  const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); await apiFetch('/api/question-prompts', { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
   const readDraftImage = (file: File | undefined) => { if (!file) return; if (!file.type.startsWith("image/")) return; if (file.size > 5 * 1024 * 1024) { setPlazaToast("画像は5MB以内にしてください"); return; } const reader = new FileReader(); reader.onload = () => setDraftImage(String(reader.result)); reader.readAsDataURL(file); };
   const guestKey = () => { let key = localStorage.getItem("type-drift-guest-key"); if (!key) { key = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", key); } return key; };
   const sendReply = async () => {
@@ -2430,23 +2431,19 @@ export default function DriftApp() {
     setReply("");
     setReplyParentId(undefined);
     setPlazaToast("返信の言葉を海へ放ちました。個別メッセージにも記録しました");
-    const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api) { const response = await fetch(`${api}/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); }
+    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
   const deleteBottle = async (bottle: Bottle) => {
     if (!bottle.mine) return;
-    const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api) {
-      const response = await fetch(`${api}/api/bottles/${bottle.id}`, { method: "DELETE", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
-      if (!response.ok) { setPlazaToast("この端末の投稿として確認できないため削除できません"); return; }
-    }
+    const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "DELETE", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
+    if (!response.ok) { setPlazaToast("この端末の投稿として確認できないため削除できません"); return; }
     setBottles(items => items.filter(item => item.id !== bottle.id));
     setSelected(null);
     setPlazaToast("ボトルを海から回収しました");
   };
-  const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const api = process.env.NEXT_PUBLIC_API_URL; if (api) { const response = await fetch(`${api}/api/replies/${replyId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": guestKey() } }); if (!response.ok) setPlazaToast(`返信への反応を保存できませんでした（${response.status}）`); } logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
+  const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const response = await apiFetch(`/api/replies/${replyId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": guestKey() } }); if (!response.ok) setPlazaToast(`返信への反応を保存できませんでした（${response.status}）`); logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
   const openBottle = async (bottle: Bottle) => {
     setSelected(bottle);
     setPicked(true);
@@ -2455,7 +2452,7 @@ export default function DriftApp() {
     if (!bottle.mine) { setReplyItems(items => ({ ...items, [bottle.id]: [] })); return; }
     if (!api || !Number.isFinite(bottle.id) || bottle.id > 1_000_000_000_000) return;
     try {
-      const response = await fetch(`${api}/api/bottles/${bottle.id}/replies`, { credentials: "include", headers: { "X-Guest-Key": guestKey() } });
+      const response = await apiFetch(`/api/bottles/${bottle.id}/replies`, { credentials: "include", headers: { "X-Guest-Key": guestKey() } });
       if (!response.ok) return;
       const data = await response.json();
       const flattened: ReplyItem[] = [];

@@ -1,3 +1,5 @@
+import { apiFetch } from './api-client';
+
 export function getGuestKey() {
   if (typeof window === 'undefined') return '';
   let key = localStorage.getItem('type-drift-guest-key');
@@ -7,11 +9,9 @@ export function getGuestKey() {
   }
   return key;
 }
-
 export function logActivity(eventType: string, payload: Record<string, unknown> = {}, entity?: { type?: string; id?: string | number }) {
-  const api = process.env.NEXT_PUBLIC_API_URL;
-  if (!api || typeof window === 'undefined') return;
-  void fetch(`${api}/api/activity-events`, {
+  if (typeof window === 'undefined') return;
+  void apiFetch('/api/activity-events', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() },
@@ -21,9 +21,8 @@ export function logActivity(eventType: string, payload: Record<string, unknown> 
 }
 
 export function logConsultation(entry: { externalId: string; parentExternalId?: string; entryType: 'thread' | 'reply' | 'followup'; category?: string; body?: string; payload?: Record<string, unknown> }) {
-  const api = process.env.NEXT_PUBLIC_API_URL;
-  if (!api || typeof window === 'undefined') return;
-  void fetch(`${api}/api/consultations/events`, {
+  if (typeof window === 'undefined') return;
+  void apiFetch('/api/consultations/events', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() },
@@ -31,3 +30,4 @@ export function logConsultation(entry: { externalId: string; parentExternalId?: 
     keepalive: true,
   }).catch(() => undefined);
 }
+

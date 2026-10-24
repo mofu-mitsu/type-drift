@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Send, Waves, RefreshCw } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
 
 type ChainPageProps = {
   onBack: () => void;
@@ -38,7 +39,7 @@ export default function ChainPage({ onBack, onToast }: ChainPageProps) {
       return;
     }
     try {
-      const response = await fetch(`${api}/api/plaza/chain`, {
+      const response = await apiFetch('/api/plaza/chain', {
         credentials: 'include',
         headers: { 'X-Guest-Key': guestKey() },
         cache: 'no-store',
@@ -69,7 +70,7 @@ export default function ChainPage({ onBack, onToast }: ChainPageProps) {
     }
     setSaving(true);
     try {
-      const response = await fetch(`${api}/api/plaza/chain`, {
+      const response = await apiFetch('/api/plaza/chain', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'X-Guest-Key': guestKey() },

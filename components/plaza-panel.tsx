@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getGuestKey, logActivity } from '@/lib/activity-log';
+import { apiFetch } from '@/lib/api-client';
 
 export type PlazaMessage = {
   id: string;
@@ -83,7 +84,7 @@ export default function PlazaPanel({
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    void fetch(`${api}/api/plaza/chain`, { credentials: 'include', headers: { 'X-Guest-Key': getGuestKey() } })
+    void apiFetch('/api/plaza/chain', { credentials: 'include', headers: { 'X-Guest-Key': getGuestKey() } })
       .then(response => response.ok ? response.json() : null)
       .then(data => { if (data?.chain?.body) setChainText(data.chain.body); })
       .catch(() => undefined);
@@ -98,7 +99,7 @@ export default function PlazaPanel({
     let heartbeat: number | null = null;
     const presence = (path: string, payload: Record<string, unknown>) => {
       if (!api) return;
-      void fetch(`${api}/api/presence/${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify(payload), keepalive: path === 'leave' }).catch(() => undefined);
+      void apiFetch(`/api/presence/${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify(payload), keepalive: path === 'leave' }).catch(() => undefined);
     };
     const connect = () => {
       if (!alive) return;
@@ -289,7 +290,7 @@ export default function PlazaPanel({
       setMessages(curr => [...curr, localMsg]);
     }
     const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api) void fetch(`${api}/api/plaza/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ nickname: author, body }) }).catch(() => undefined);
+    if (api) void apiFetch('/api/plaza/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ nickname: author, body }) }).catch(() => undefined);
     logActivity('plaza_message', { bodyLength: body.length, author });
     setText('');
     onUserMessageSent?.(body, author);
@@ -301,7 +302,7 @@ export default function PlazaPanel({
     if (!body) return;
     if (sendRelay({ type: 'plaza_chain_append', body })) setChainInput('');
     const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api) void fetch(`${api}/api/plaza/chain`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ body }) })
+    if (api) void apiFetch('/api/plaza/chain', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ body }) })
       .then(response => response.ok ? response.json() : null)
       .then(data => { if (data?.chain?.body) setChainText(data.chain.body); })
       .catch(() => undefined);
