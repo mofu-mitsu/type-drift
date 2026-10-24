@@ -294,7 +294,8 @@ export default function DriftApp() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
-  const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string; message: string; created_at: string }>>([]);
+  const [serverNotificationCounts, setServerNotificationCounts] = useState<Record<string, number>>({});
+  const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string | null; message: string; created_at: string }>>([]);
 
   // 広場AIのエラーから、意見箱を直接開けるようにする
   useEffect(() => {
@@ -1281,13 +1282,36 @@ export default function DriftApp() {
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    const refresh = () => fetch(`${api}/api/notifications/unread`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
-      setServerNotificationCount(Number(data?.count || 0));
-      setServerNotifications(Array.isArray(data?.notifications) ? data.notifications : []);
-    }).catch(() => undefined);
+    let refreshing = false;
+    const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const response = await fetch(`${api}/api/notifications/unread`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
+        if (!response.ok) throw new Error(`notifications ${response.status}`);
+        const data = await response.json();
+        setServerNotificationCount(Number(data?.count || 0));
+        setServerNotificationCounts(Object.fromEntries(Object.entries(data?.counts || {}).map(([type, count]) => [type, Number(count) || 0])));
+        setServerNotifications(Array.isArray(data?.notifications) ? data.notifications : []);
+      } catch (error) {
+        console.warn("[Type Drift] notification sync failed", error);
+      } finally {
+        refreshing = false;
+      }
+    };
     void refresh();
-    const timer = window.setInterval(refresh, 20000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 12000);
+    const onFocus = () => void refresh();
+    const onVisibility = () => { if (document.visibilityState === "visible") void refresh(); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("type-drift:refresh-notifications", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("type-drift:refresh-notifications", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
   useEffect(() => {
     const openFeedback = () => {
@@ -1303,16 +1327,18 @@ export default function DriftApp() {
   useEffect(() => {
     if (activePage !== "sea" || typeof window === "undefined") return;
     const api = process.env.NEXT_PUBLIC_API_URL;
-    const world = process.env.NEXT_PUBLIC_WORM_WORLD_URL || "https://type-drift-worm-world.onrender.com";
     if (!api || sessionStorage.getItem("type-drift-ai-bottle-window") === new Date().toISOString().slice(0, 13)) return;
     const timer = window.setTimeout(async () => {
       if (Math.random() > 0.18) return;
       sessionStorage.setItem("type-drift-ai-bottle-window", new Date().toISOString().slice(0, 13));
       try {
-        const response = await fetch(`${world}/api/plaza/ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: "類型の海に漂着する、短い秘密メモを一つ書いてください。相談ではなく、観測や違和感の一文にしてください。", character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", history: [] }) });
-        const data = response.ok ? await response.json() : null;
+        const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "bottle", body: "類型の海に漂着する、短い秘密メモを一つ書いてください。相談ではなく、観測や違和感の一文にしてください。", character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", history: [] }) });
+        const data = await response.json().catch(() => null);
         const reply = Array.isArray(data?.replies) ? data.replies[0] : null;
-        if (data?.source !== "groq" || !reply?.body) return;
+        if (!response.ok || data?.source !== "groq" || !reply?.body) {
+          console.error("[Type Drift AI] bottle generation failed", { status: response.status, reason: data?.reason, detail: data?.detail, model: data?.model });
+          return;
+        }
         await fetch(`${api}/api/bottles`, { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body: reply.body, mbti: reply.character === "LSI芋虫" ? "INTJ" : "INTP", socionics: reply.character === "LSI芋虫" ? "LSI" : "ILI", enneagram: reply.character === "LSI芋虫" ? "5w6" : "5w4", is_ai: true, ai_character: reply.character }) });
         window.dispatchEvent(new Event("type-drift:refresh-bottles"));
       } catch (error) { console.warn("[Type Drift] AI bottle drift failed", error); }
@@ -1373,8 +1399,14 @@ export default function DriftApp() {
     socket.onmessage = event => {
       try {
         const message = JSON.parse(event.data);
-        if (message.event === "bottle.activity.updated") window.dispatchEvent(new Event("type-drift:refresh-bottles"));
-        if (message.event === "consultation.updated") window.dispatchEvent(new Event("type-drift:refresh-consultations"));
+        if (message.event === "bottle.activity.updated") {
+          window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+          window.dispatchEvent(new Event("type-drift:refresh-notifications"));
+        }
+        if (message.event === "consultation.updated") {
+          window.dispatchEvent(new Event("type-drift:refresh-consultations"));
+          window.dispatchEvent(new Event("type-drift:refresh-notifications"));
+        }
       } catch {}
     };
     return () => socket.close();
@@ -1931,14 +1963,13 @@ export default function DriftApp() {
   ];
 
   const requestDmAiReply = async (target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } }, userText: string) => {
-    const world = process.env.NEXT_PUBLIC_WORM_WORLD_URL || "https://type-drift-worm-world.onrender.com";
     try {
       const preferred = target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
-      const response = await fetch(`${world}/api/plaza/ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [{ author: target.name, character: preferred, body: userText }] }) });
-      const data = response.ok ? await response.json() : null;
+      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [{ author: target.name, character: preferred, body: userText }] }) });
+      const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
-      const replyBody = data?.source !== "groq"
-        ? `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || "unknown"}」\n気になる場合は意見箱へ送ってね。`
+      const replyBody = !response.ok || data?.source !== "groq"
+        ? `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n気になる場合は意見箱へ送ってね。`
         : String(reply?.body || (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)]));
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
@@ -2107,8 +2138,8 @@ export default function DriftApp() {
   }, [adminPendingFeedbackCount, adminPendingConsultationCount]);
 
   // 活動カテゴリ別の未読バッジ。通知種別をカテゴリごとに分け、全件合算にはしない。
-  const unreadBottleActivityCount = useMemo(() => serverNotifications.filter(n => n.type === "bottle_reply" || n.type === "bottle_reaction").length, [serverNotifications]);
-  const unreadReplyActivityCount = useMemo(() => serverNotifications.filter(n => n.type === "reply_reply" || n.type === "reply_reaction").length, [serverNotifications]);
+  const unreadBottleActivityCount = useMemo(() => Number(serverNotificationCounts.bottle_reply || 0) + Number(serverNotificationCounts.bottle_reaction || 0), [serverNotificationCounts]);
+  const unreadReplyActivityCount = useMemo(() => Number(serverNotificationCounts.reply_reply || 0) + Number(serverNotificationCounts.reply_reaction || 0), [serverNotificationCounts]);
 
   // 🧭 「自分の活動」全体の直接通知バッジ数
   const totalActivityBadgeCount = useMemo(() => {
@@ -2225,9 +2256,9 @@ export default function DriftApp() {
     setPlazaToast("✓ 意見箱とお問い合わせの通知を既読にしました");
   };
 
-  const markServerNotificationsRead = async (types?: string[]) => {
+  const markServerNotificationsRead = async (types?: string[], notificationId?: number) => {
     const api = process.env.NEXT_PUBLIC_API_URL;
-    const targets = serverNotifications.filter(n => !types || types.includes(n.type));
+    const targets = serverNotifications.filter(n => (!types || types.includes(n.type)) && (notificationId === undefined || n.id === notificationId));
     if (!api || targets.length === 0) return;
     const results = await Promise.all(targets.map(async n => {
       try {
@@ -2240,8 +2271,13 @@ export default function DriftApp() {
       }
     }));
     const readIds = new Set(results.filter(result => result.ok).map(result => result.id));
+    const readByType = targets.filter(n => readIds.has(n.id)).reduce<Record<string, number>>((counts, n) => {
+      counts[n.type] = (counts[n.type] || 0) + 1;
+      return counts;
+    }, {});
     setServerNotifications(current => current.filter(n => !readIds.has(n.id)));
     setServerNotificationCount(current => Math.max(0, current - readIds.size));
+    setServerNotificationCounts(current => Object.fromEntries(Object.entries(current).map(([type, count]) => [type, Math.max(0, count - (readByType[type] || 0))])));
     const failed = results.filter(result => !result.ok);
     if (failed.length) {
       console.error("[Type Drift] notification read failed", failed);
@@ -2259,6 +2295,7 @@ export default function DriftApp() {
         if (data?.ok) {
           setServerNotifications([]);
           setServerNotificationCount(0);
+          setServerNotificationCounts({});
           setPlazaToast(`✓ すべての通知を既読にしました（${Number(data.updated || 0)}件）`);
         } else {
           console.error("[Type Drift] read-all failed", { status: response.status, data });
@@ -3631,7 +3668,7 @@ export default function DriftApp() {
                 <IconV2LikeChat size={28} />
               </div>
               <span className="v2-nav-label">いいねしたボトル</span>
-              {serverNotifications.filter(n => n.type === "bottle_reaction").length > 0 && <span className="tab-pill-badge activity-count-badge">{serverNotifications.filter(n => n.type === "bottle_reaction").length}</span>}
+              {Number(serverNotificationCounts.bottle_reaction || 0) > 0 && <span className="tab-pill-badge activity-count-badge">{Number(serverNotificationCounts.bottle_reaction || 0)}</span>}
               <span className="v2-nav-arrow">→</span>
             </button>
 
@@ -3728,6 +3765,32 @@ export default function DriftApp() {
           {/* ==================================================== */}
           {(activityTab === "mine" || activityTab === "liked" || activityTab === "replied") && (
             <>
+              {activityTab === "mine" && serverNotifications.length > 0 && (
+                <section className="activity-notification-feed" aria-label="未読のお知らせ">
+                  <div className="activity-notification-feed__head">
+                    <div>
+                      <p className="activity-notification-feed__eyebrow">INCOMING TIDES</p>
+                      <h3>届いた反応</h3>
+                    </div>
+                    <button type="button" onClick={markAllNotificationsAsRead}>すべて既読</button>
+                  </div>
+                  <div className="activity-notification-feed__list">
+                    {serverNotifications.map(notification => (
+                      <article className="activity-notification-card" key={notification.id}>
+                        <span className="activity-notification-card__icon" aria-hidden="true">
+                          {notification.type.includes("reaction") ? "♡" : notification.type.includes("reply") ? "↩" : "✦"}
+                        </span>
+                        <div className="activity-notification-card__body">
+                          <p>{notification.message}</p>
+                          <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" })}</time>
+                        </div>
+                        <button type="button" onClick={() => void markServerNotificationsRead(undefined, notification.id)} aria-label="この通知を既読にする">既読</button>
+                      </article>
+                    ))}
+                  </div>
+                  {serverNotificationCount > serverNotifications.length && <p className="activity-notification-feed__more">ほかに未読のお知らせが {serverNotificationCount - serverNotifications.length} 件あります。</p>}
+                </section>
+              )}
               {/* 下部バナー (画像下部のアバター＋記録テキストを完全再現) */}
               <div className="activity-v2-bottom-banner">
                 <div className="v2-banner-avatar">

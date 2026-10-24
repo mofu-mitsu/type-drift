@@ -78,7 +78,7 @@ export default function PlazaPanel({
   const lastHandledEmoteId = useRef<number | null>(null);
   const lastHandledMessageId = useRef<number | null>(null);
   const sessionKeyRef = useRef<string>('');
-  const aiUrl = useMemo(() => `${WORLD}/api/plaza/ai`, []);
+  const aiUrl = useMemo(() => '/api/ai/plaza', []);
 
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;

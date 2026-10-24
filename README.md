@@ -77,7 +77,11 @@ Vercelに次の環境変数を設定して再デプロイすると、フロン�
 NEXT_PUBLIC_API_URL=https://type-drift-api.onrender.com
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=（CloudinaryのCloud name）
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=（Unsigned upload preset）
+GROQ_API_KEY=（Groq API key。Vercelのサーバー環境変数として登録）
+GROQ_MODEL=qwen/qwen3.8-27b
 ```
+
+`GROQ_API_KEY`は秘密情報です。`NEXT_PUBLIC_`を付けず、VercelのProject Settings → Environment Variablesで登録してください。変更後は新しいデプロイが必要です。広場・DM・AIボトルはVercelの`/api/ai/plaza`からGroqへ接続するため、Renderが停止していてもAI経路は独立します。APIキー未設定・Groq応答エラーは、API応答の`reason`と`detail`で判別できます。
 
 ## Render環境変数
 
@@ -89,9 +93,9 @@ DB_URL=（Neonの接続文字列）
 APP_URL=https://type-drift-api.onrender.com
 ```
 
-OAuthとAIを使う場合は、`FRONTEND_URL`、`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REDIRECT_URI`、`X_CLIENT_ID`、`X_CLIENT_SECRET`、`X_REDIRECT_URI`、`GROQ_API_KEY`もRenderへ設定します。
+OAuthを使う場合は、`FRONTEND_URL`、`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REDIRECT_URI`、`X_CLIENT_ID`、`X_CLIENT_SECRET`、`X_REDIRECT_URI`をRenderへ設定します。AIキーはRenderではなくVercelのサーバー環境変数に設定します。
 
-AIは現在、広場とDMが`type-drift-worm-world`の`/api/plaza/ai`を呼びます。`GROQ_API_KEY`はLaravel APIだけでなく、AIを実行する`type-drift-worm-world`サービスにも登録が必要です。Render停止時にCloudflareへ自動切替する仕組みはまだ未実装で、Vercelへキーを置くだけではworm-worldのキー不足は解決しません。
+Render停止時にLaravel APIをCloudflareへ自動切替する機能は未完了です。現在のCloudflare API Workerはランキング用であり、Laravel API全体の代替ではありません。Neon接続情報とAPI互換性を整えたCloudflare Workerを用意・デプロイするまでは、ボトルや通知などの永続APIはRenderの稼働に依存します。
 
 `APP_KEY`はランダム文字列ではなく、必ず`base64:`で始まるLaravel形式にします。Renderの現在の500エラーは、この鍵が不正なためCookie暗号化で発生しています。「Cannot modify header information」は二次的なエラーです。
 
