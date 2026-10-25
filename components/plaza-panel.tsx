@@ -223,14 +223,15 @@ export default function PlazaPanel({
 
   function emitAiMessage(character: string, body: string) {
     const createdAt = Date.now();
-    setMessages(current => [...current, {
+    const message: PlazaMessage = {
       id: 'ai-local-' + createdAt + '-' + Math.random().toString(36).slice(2, 8),
       author: character,
       body,
       kind: 'ai',
       emoji: character.includes('芋虫') ? '🐛' : '🥺',
       createdAt,
-    }].slice(-80));
+    };
+    setMessages(current => [...current, message].slice(-80));
     // Realtime接続中は他の参加者へ中継。切断中でも自分の履歴には残す。
     sendRelay({ type: 'plaza_ai_message', character, body });
   }
