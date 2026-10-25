@@ -1918,7 +1918,7 @@ export default function DriftApp() {
           const response = await fetch(`${api}/api/dm/messages`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
-            body: JSON.stringify({ recipient_handle: target.bottleId ? undefined : target.id, bottle_id: target.bottleId, body: text.trim(), sender_name: nickname || "匿名の誰か", recipient_name: target.name, sender_emoji: "◌", recipient_emoji: target.emoji }),
+            body: JSON.stringify({ recipient_handle: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(target.id) ? target.id : undefined, bottle_id: target.bottleId, body: text.trim(), sender_name: nickname || "匿名の誰か", recipient_name: target.name, sender_emoji: "◌", recipient_emoji: target.emoji }),
           });
           if (!response.ok) {
             const detail = await response.text();
