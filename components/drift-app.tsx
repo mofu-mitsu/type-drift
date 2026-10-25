@@ -2475,7 +2475,7 @@ export default function DriftApp() {
           id: `server-dm-${saved.id}`, serverId: Number(saved.id), threadId: String(saved.thread_id || `bottle-${selected.id}`),
           sender: String(saved.sender_name || "あなた"), recipient: String(saved.recipient_name || "波間に漂うボトルの主（匿名）"),
           targetEmoji: "🌊", targetType: saved.bottle_type || selected.type, body: String(saved.body || body),
-          createdAt: new Date(saved.created_at).getTime() || Date.now(), read: true, isMine: true,
+          createdAt: new Date(saved.created_at).getTime() || Date.now(), read: false, isMine: true,
           bottleId: Number(saved.bottle_id || selected.id), bottleSnippet: saved.bottle_snippet || selected.text,
           bottleAuthor: saved.bottle_author || selected.author, bottleType: saved.bottle_type || selected.type,
         };
@@ -3943,7 +3943,7 @@ export default function DriftApp() {
                             <div className="dm-thread-top">
                               <div className="dm-thread-name-row">
                                 <span className="dm-thread-name">
-                                  {isBottleThread ? "波間に漂うボトルの主" : thread.name}
+                                  {thread.name}
                                 </span>
                                 <span className={`dm-thread-badge ${isBottleThread ? "secret" : ""}`}>
                                   {isBottleThread ? (thread.type && thread.type !== "自認未設定" ? `🌊 ${thread.type}` : "🌊 匿名ボトル") : (thread.type || "広場の住人")}
@@ -4017,7 +4017,7 @@ export default function DriftApp() {
                         <div className="dm-room-title-info">
                           <span style={{ fontSize: "20px" }}>{currentThread.emoji}</span>
                           <div>
-                            <strong>{isBottleThread ? "波間に漂うボトルの主（匿名）" : currentThread.name}</strong>
+                            <strong>{currentThread.name}</strong>
                             {currentThread.type && (
                               <span className="dm-thread-badge" style={{ marginLeft: "6px" }}>
                                 {currentThread.type}
