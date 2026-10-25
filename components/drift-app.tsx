@@ -2070,6 +2070,9 @@ export default function DriftApp() {
           read: Boolean(row.read),
           isMine: Boolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined,
+          bottleSnippet: typeof row.bottle_snippet === "string" ? row.bottle_snippet : undefined,
+          bottleAuthor: typeof row.bottle_author === "string" ? row.bottle_author : undefined,
+          bottleType: typeof row.bottle_type === "string" ? row.bottle_type : undefined,
         }));
         setDirectMessages(previous => [
           ...previous.filter(message => !message.id.startsWith("server-dm-")),
@@ -3799,7 +3802,7 @@ export default function DriftApp() {
                             <div className="dm-thread-top">
                               <div className="dm-thread-name-row">
                                 <span className="dm-thread-name">
-                                  {isBottleThread ? "波間に漂うボトルの主" : thread.name}
+                                  {thread.name}
                                 </span>
                                 <span className={`dm-thread-badge ${isBottleThread ? "secret" : ""}`}>
                                   {isBottleThread ? (thread.type && thread.type !== "自認未設定" ? `🌊 ${thread.type}` : "🌊 匿名ボトル") : (thread.type || "広場の住人")}
@@ -3873,7 +3876,7 @@ export default function DriftApp() {
                         <div className="dm-room-title-info">
                           <span style={{ fontSize: "20px" }}>{currentThread.emoji}</span>
                           <div>
-                            <strong>{isBottleThread ? "波間に漂うボトルの主（匿名）" : currentThread.name}</strong>
+                            <strong>{currentThread.name}</strong>
                             {currentThread.type && (
                               <span className="dm-thread-badge" style={{ marginLeft: "6px" }}>
                                 {currentThread.type}
@@ -3935,7 +3938,7 @@ export default function DriftApp() {
                               {msg.body}
                             </div>
                             <div className="dm-bubble-meta">
-                              {msg.isMine && <span style={{ color: "#0d9488" }}>既読</span>}
+                              {msg.isMine && <span style={{ color: "#0d9488" }}>{msg.read ? "既読" : "送信済み"}</span>}
                               <span>
                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                               </span>
