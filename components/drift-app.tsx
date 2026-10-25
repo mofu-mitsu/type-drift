@@ -20,7 +20,7 @@ import {
   IconV2IdentityPlanet,
 } from "./v2-activity-icons";
 
-const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxIpODHuVqaJBArR-YWSbFzznc7Ils6xmI8Lyu50yxJ9LNLj9z3fhBcXyLC2HoXBQ3s/exec";
+const DEFAULT_GAS_URL = process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
 
 type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; time: string; ai?: string; mine?: boolean; color: string };
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number };
@@ -51,6 +51,8 @@ type DirectMessage = {
   bottleSnippet?: string;
   bottleAuthor?: string;
   bottleType?: string;
+  serverId?: number;
+  isAiError?: boolean;
 };
 
 type Announcement = {
@@ -315,6 +317,44 @@ export default function DriftApp() {
     };
     window.addEventListener("type-drift:open-feedback", openFeedbackFromAiError);
     return () => window.removeEventListener("type-drift:open-feedback", openFeedbackFromAiError);
+  }, []);
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_API_URL) return;
+    let busy = false;
+    const refresh = async () => {
+      if (busy || document.visibilityState !== "visible") return;
+      busy = true;
+      try {
+        const response = await apiFetch('/api/direct-messages', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => ({
+          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: String(row.thread_id || `bottle-${row.bottle_id}`),
+          sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
+          targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: String(row.body || ""),
+          createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
+          bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
+          bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
+        }));
+        setDirectMessages(current => {
+          const merged = [...current];
+          for (const incoming of remote) {
+            const index = merged.findIndex(item => item.serverId === incoming.serverId || (!item.serverId && item.threadId === incoming.threadId && item.isMine === incoming.isMine && item.body === incoming.body && Math.abs(item.createdAt - incoming.createdAt) < 120_000));
+            if (index >= 0) merged[index] = { ...merged[index], ...incoming };
+            else merged.push(incoming);
+          }
+          merged.sort((a, b) => a.createdAt - b.createdAt);
+          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(merged)); } catch {}
+          return merged;
+        });
+      } catch (error) {
+        console.error("[Type Drift] direct-message sync failed", error);
+      } finally { busy = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 7000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, []);
 
   // ダーリンちゃんのミニゲーム・心理テスト用State
@@ -1888,7 +1928,7 @@ export default function DriftApp() {
 
     // GAS受付窓口へ送信 (no-cors, text/plain)
     try {
-      fetch(gasUrl || DEFAULT_GAS_URL, {
+      if (gasUrl || DEFAULT_GAS_URL) fetch(gasUrl || DEFAULT_GAS_URL, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1969,14 +2009,20 @@ export default function DriftApp() {
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [{ author: target.name, character: preferred, body: userText }] }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
-      const replyBody = !response.ok || data?.source !== "groq"
+      const hasError = !response.ok || data?.source !== "groq";
+      const replyBody = hasError
         ? `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n気になる場合は意見箱へ送ってね。`
-        : String(reply?.body || (target.id === "darling" ? DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)] : WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)]));
-      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
+        : String(reply?.body || "返信を受け取れませんでした。もう一度話しかけてください。");
+      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
       logActivity("direct_message_ai_reply", { target: preferred, bodyLength: replyBody.length }, { type: "direct_message", id: target.id });
       setPlazaToast(`💌 ${preferred}から返信が届きました`);
-    } catch { /* テンプレート返信は既存のフォールバックで維持 */ }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const replyMsg: DirectMessage = { id: `dm-ai-error-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「network_error」\n詳細: ${detail.slice(0, 180)}\n気になる場合は意見箱へ送ってね。`, createdAt: Date.now(), read: false, isMine: false, isAiError: true, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
+      setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
+      console.error("[Type Drift AI] DM request failed", { character: preferred, detail });
+    }
   };
 
   const sendDirectMessage = (
@@ -2179,6 +2225,8 @@ export default function DriftApp() {
   }, [directMessages]);
 
   const markThreadAsRead = (threadId: string) => {
+    const unreadServerMessages = directMessages.filter(message => message.threadId === threadId && !message.isMine && !message.read && message.serverId);
+    for (const message of unreadServerMessages) void apiFetch(`/api/direct-messages/${message.serverId}/read`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).catch(error => console.error("[Type Drift] direct-message read sync failed", error));
     setDirectMessages(prev => {
       const updated = prev.map(m => {
         const mThread = m.threadId || (m.isMine ? m.recipient : m.sender);
@@ -2431,7 +2479,7 @@ export default function DriftApp() {
     setReply("");
     setReplyParentId(undefined);
     setPlazaToast("返信の言葉を海へ放ちました。個別メッセージにも記録しました");
-    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); else { const result = await response.json().catch(() => null); const saved = result?.direct_message; if (saved?.id) setDirectMessages(current => current.map(message => message.id === replyContextMessage.id ? { ...message, id: `server-dm-${saved.id}`, serverId: Number(saved.id) } : message)); window.dispatchEvent(new Event("type-drift:refresh-notifications")); } window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
@@ -2520,7 +2568,7 @@ export default function DriftApp() {
         >
           <span className="topbar-nav-icon">
             <Compass size={16} />
-            
+            {totalActivityBadgeCount > 0 && <span className="topbar-unread-badge">{totalActivityBadgeCount > 99 ? "99+" : totalActivityBadgeCount}</span>}
           </span>
           <span className="topbar-nav-label">自分の活動</span>
         </button>
@@ -4022,6 +4070,7 @@ export default function DriftApp() {
                             )}
                             <div className="dm-bubble-content">
                               {msg.body}
+                              {msg.isAiError && <button type="button" className="dm-ai-error-report" onClick={() => window.dispatchEvent(new CustomEvent("type-drift:open-feedback", { detail: { category: "AIエラー", body: `[AI応答エラー]\n${msg.body}` } }))}>このエラーを意見箱へ送る</button>}
                             </div>
                             <div className="dm-bubble-meta">
                               {msg.isMine && <span style={{ color: "#0d9488" }}>既読</span>}
@@ -5258,3 +5307,4 @@ export default function DriftApp() {
     )}
   </main>;
 }
+

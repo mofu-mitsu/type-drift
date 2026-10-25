@@ -26,7 +26,7 @@ import {
 import { ConsultationPost, ConsultationComment, DiagnosisResult } from '@/types/consultation';
 import { logActivity, logConsultation } from '@/lib/activity-log';
 
-const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxIpODHuVqaJBArR-YWSbFzznc7Ils6xmI8Lyu50yxJ9LNLj9z3fhBcXyLC2HoXBQ3s/exec";
+const DEFAULT_GAS_URL = process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
 
 const DICHOTOMIES_TEMPLATE = `【内向/外向】：
 【直感/感覚】：
@@ -206,7 +206,7 @@ export default function ConsultationRoom({
 
     // GASへ削除通知
     try {
-      fetch(activeGasUrl, {
+      if (activeGasUrl) fetch(activeGasUrl, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -261,7 +261,7 @@ export default function ConsultationRoom({
 
         // GASへ更新通知
         try {
-          fetch(activeGasUrl, {
+          if (activeGasUrl) fetch(activeGasUrl, {
             method: "POST",
             mode: "no-cors",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -316,7 +316,7 @@ export default function ConsultationRoom({
       // 自認診断依頼の場合はGAS受付窓口へ送信
       if (activeTab === "request") {
         try {
-          fetch(activeGasUrl, {
+          if (activeGasUrl) fetch(activeGasUrl, {
             method: "POST",
             mode: "no-cors",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -403,7 +403,7 @@ export default function ConsultationRoom({
 
     // GASへ追加質問を送信
     try {
-      fetch(activeGasUrl, {
+      if (activeGasUrl) fetch(activeGasUrl, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1274,3 +1274,4 @@ export default function ConsultationRoom({
     </div>
   );
 }
+

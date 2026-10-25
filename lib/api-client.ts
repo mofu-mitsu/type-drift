@@ -22,7 +22,7 @@ function isWorkerRoute(path: string, init?: RequestInit) {
   return false;
 }
 
-/** Render stays primary. Only transport errors and server errors move the request to Cloudflare. */
+/** Worker-backed routes go to Cloudflare first; remaining routes keep Render as primary with fallback. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const configured = [PRIMARY_API, FALLBACK_API].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
   const targets = isWorkerRoute(path, init) ? [...configured].reverse() : configured;
@@ -46,4 +46,5 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   if (lastResponse) return lastResponse;
   throw lastError ?? new Error("API is unavailable");
 }
+
 
