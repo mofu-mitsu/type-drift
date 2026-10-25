@@ -321,12 +321,18 @@ export default function DriftApp() {
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_API_URL) return;
     let busy = false;
+    let warnedAboutDmSync = false;
     const refresh = async () => {
       if (busy || document.visibilityState !== "visible") return;
       busy = true;
       try {
         const response = await apiFetch('/api/direct-messages', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!warnedAboutDmSync) console.error("[Type Drift DM] inbox sync rejected", { status: response.status, detail: await response.clone().text().catch(() => "") });
+          warnedAboutDmSync = true;
+          return;
+        }
+        warnedAboutDmSync = false;
         const data = await response.json();
         const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: String(row.thread_id || `bottle-${row.bottle_id}`),
@@ -348,7 +354,8 @@ export default function DriftApp() {
           return merged;
         });
       } catch (error) {
-        console.error("[Type Drift] direct-message sync failed", error);
+        if (!warnedAboutDmSync) console.error("[Type Drift DM] inbox sync failed", error);
+        warnedAboutDmSync = true;
       } finally { busy = false; }
     };
     void refresh();
@@ -2454,32 +2461,36 @@ export default function DriftApp() {
       try { localStorage.setItem("type-drift-my-replies", JSON.stringify(updated)); } catch {}
       return updated;
     });
-    // 返信した実際のボトルと返信本文を、個別メッセージにも紐づけて保存する
-    const replyContextMessage: DirectMessage = {
-      id: `dm-bottle-reply-${selected.id}-${Date.now()}`,
-      threadId: `bottle-${selected.id}`,
-      sender: "あなた",
-      recipient: selected.author || "匿名のボトル主",
-      targetEmoji: selected.emoji || "🌊",
-      targetType: selected.type,
-      body,
-      createdAt: Date.now(),
-      read: true,
-      isMine: true,
-      bottleId: selected.id,
-      bottleSnippet: selected.text,
-      bottleAuthor: selected.author,
-      bottleType: selected.type,
-    };
-    setDirectMessages(previous => {
-      const updated = [...previous, replyContextMessage];
-      try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
-      return updated;
-    });
     setReply("");
     setReplyParentId(undefined);
-    setPlazaToast("返信の言葉を海へ放ちました。個別メッセージにも記録しました");
-    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) }); if (!response.ok) setPlazaToast(`返信を保存できませんでした（${response.status}）`); else { const result = await response.json().catch(() => null); const saved = result?.direct_message; if (saved?.id) setDirectMessages(current => current.map(message => message.id === replyContextMessage.id ? { ...message, id: `server-dm-${saved.id}`, serverId: Number(saved.id) } : message)); window.dispatchEvent(new Event("type-drift:refresh-notifications")); } window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) });
+    if (!response.ok) {
+      console.error("[Type Drift] bottle reply save failed", { bottleId: selected.id, status: response.status, detail: await response.clone().text().catch(() => "") });
+      setPlazaToast(`返信を保存できませんでした（${response.status}）`);
+    } else {
+      const result = await response.json().catch(() => null);
+      const saved = result?.direct_message;
+      if (saved?.id) {
+        const persistedMessage: DirectMessage = {
+          id: `server-dm-${saved.id}`, serverId: Number(saved.id), threadId: String(saved.thread_id || `bottle-${selected.id}`),
+          sender: String(saved.sender_name || "あなた"), recipient: String(saved.recipient_name || "波間に漂うボトルの主（匿名）"),
+          targetEmoji: "🌊", targetType: saved.bottle_type || selected.type, body: String(saved.body || body),
+          createdAt: new Date(saved.created_at).getTime() || Date.now(), read: true, isMine: true,
+          bottleId: Number(saved.bottle_id || selected.id), bottleSnippet: saved.bottle_snippet || selected.text,
+          bottleAuthor: saved.bottle_author || selected.author, bottleType: saved.bottle_type || selected.type,
+        };
+        setDirectMessages(current => {
+          const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
+          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+        setPlazaToast("返信を保存し、個別メッセージにも記録しました");
+      } else {
+        setPlazaToast("返信を保存しました");
+      }
+      window.dispatchEvent(new Event("type-drift:refresh-notifications"));
+    }
+    window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
