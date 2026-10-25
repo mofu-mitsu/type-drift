@@ -11,6 +11,7 @@ use App\Models\Reply;
 use App\Models\ReplyReaction;
 use App\Models\Feedback;
 use App\Models\Notification;
+use App\Models\DirectMessage;
 use App\Events\BottleActivityUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +81,39 @@ class BottleController extends Controller
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey]);
+
+        // A bottle reply is also delivered to the bottle owner's private inbox.
+        // Keep the shared thread tied to the original bottle so both sides see its context.
+        $directMessage = null;
+        $senderGuestKey = $guestKey ?: ($userId ? 'user:'.$userId : null);
+        $ownerGuestKey = $bottle->guest_key ?: ($bottle->user_id ? 'user:'.$bottle->user_id : null);
+        $isOwnBottle = ($userId && $bottle->user_id && (int) $userId === (int) $bottle->user_id)
+            || ($guestKey && $bottle->guest_key && hash_equals($bottle->guest_key, $guestKey));
+
+        if (!$isOwnBottle && $senderGuestKey && $ownerGuestKey) {
+            $bottleType = trim(implode(' · ', array_filter([
+                $bottle->mbti,
+                $bottle->socionics,
+                $bottle->enneagram,
+                $bottle->other_type,
+            ])));
+
+            $directMessage = DirectMessage::create([
+                'sender_guest_key' => $senderGuestKey,
+                'recipient_guest_key' => $ownerGuestKey,
+                'sender_user_id' => $userId,
+                'recipient_user_id' => $bottle->user_id,
+                'thread_id' => 'bottle-'.$bottle->id,
+                'sender_name' => '匿名の誰か',
+                'recipient_name' => '波間に漂うボトルの主（匿名）',
+                'body' => $reply->body,
+                'bottle_id' => $bottle->id,
+                'bottle_snippet' => $bottle->body,
+                'bottle_author' => '匿名のボトル主',
+                'bottle_type' => $bottleType ?: '匿名ボトル',
+            ]);
+        }
+
         // Broadcast only after the reply is committed so refreshes can retrieve it.
         $this->broadcastSafely(new BottleActivityUpdated($bottle->id, 'reply'));
         $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reply', (string) $bottle->id, 'あなたのボトルに返信が届きました。', $userId, $guestKey);
@@ -87,7 +121,7 @@ class BottleController extends Controller
             $parent = Reply::find($data['parent_reply_id']);
             $this->notifyOwner($parent?->user_id, $parent?->guest_key, 'reply_reply', (string) $reply->id, 'あなたの返信に、さらに返事が届きました。', $userId, $guestKey);
         }
-        return response()->json(['reply' => $reply], 201);
+        return response()->json(['reply' => $reply, 'direct_message' => $directMessage], 201);
     }
 
     public function destroy(Request $request, Bottle $bottle)
