@@ -129,7 +129,7 @@ export default function PlazaPanel({
             } else if (data.type === 'plaza_message' && data.message) {
               const msg: PlazaMessage = data.message;
               setMessages(current => {
-                const filtered = current.filter(item => item.id !== msg.id);
+                const filtered = current.filter(item => item.id !== msg.id && !(msg.kind === 'ai' && item.kind === 'ai' && item.author === msg.author && item.body === msg.body && Math.abs(item.createdAt - Date.now()) < 15_000));
                 return [...filtered, msg].slice(-80);
               });
               if (msg.kind === 'human') {
@@ -189,13 +189,13 @@ export default function PlazaPanel({
     return () => window.clearTimeout(timer);
   }, [localToast]);
 
-  // 初回入室時の歓迎挨拶
+  // 入室時の歓迎挨拶。WebSocketが停止していてもAI応答自体は表示する。
   useEffect(() => {
-    if (!connected || greetedRef.current || sessionStorage.getItem('type-drift-plaza-greeted')) return;
+    if (greetedRef.current || sessionStorage.getItem('type-drift-plaza-greeted')) return;
     greetedRef.current = true;
     sessionStorage.setItem('type-drift-plaza-greeted', '1');
     void requestAi('新しい人が広場に来ました。短く自然に歓迎してください。');
-  }, [connected]);
+  }, []);
 
 
   // 送信ヘルパー
@@ -221,6 +221,19 @@ export default function PlazaPanel({
     return () => window.removeEventListener('type-drift:dm-send', receive);
   }, [nickname]);
 
+  function emitAiMessage(character: string, body: string) {
+    const createdAt = Date.now();
+    setMessages(current => [...current, {
+      id: 'ai-local-' + createdAt + '-' + Math.random().toString(36).slice(2, 8),
+      author: character,
+      body,
+      kind: 'ai',
+      emoji: character.includes('芋虫') ? '🐛' : '🥺',
+      createdAt,
+    }].slice(-80));
+    // Realtime接続中は他の参加者へ中継。切断中でも自分の履歴には残す。
+    sendRelay({ type: 'plaza_ai_message', character, body });
+  }
   // AIへの返答リクエスト
   async function requestAi(humanText: string) {
     if (aiBusy) return;
@@ -244,9 +257,9 @@ export default function PlazaPanel({
             typeof reply?.character === 'string' && typeof reply?.body === 'string' && reply.body.trim().length > 0
           ).slice(0, 1)
         : [];
-      if (replies.length > 0 && data.source === 'groq') {
+      if (replies.length > 0) {
         for (const reply of replies) {
-          sendRelay({ type: 'plaza_ai_message', character: reply.character, body: reply.body.trim() });
+          emitAiMessage(reply.character, reply.body.trim());
         }
       } else {
         const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
@@ -255,7 +268,7 @@ export default function PlazaPanel({
         const detail = `${reason}（モデル: ${model}）`;
         const visibleError = `エラーが出ちゃったみたい……🥺\nエラー内容は ${detail}\n意見箱から報告してね。`;
         console.error('[Type Drift AI] fallback/error detail', visibleError);
-        sendRelay({ type: 'plaza_ai_message', character, body: visibleError });
+        emitAiMessage(character, visibleError);
         setLocalToast(`AIエラー: ${detail}`);
         onToast?.(`AIエラー: ${detail}`);
       }
@@ -264,7 +277,7 @@ export default function PlazaPanel({
       const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
       const visibleError = `エラーが出ちゃったみたい……🥺\nエラー内容は ${message.slice(0, 240)}\n意見箱から報告してね。`;
       console.error('[Type Drift AI] request failed', JSON.stringify({ message, endpoint: aiUrl, humanText: humanText.slice(0, 120) }, null, 2));
-      sendRelay({ type: 'plaza_ai_message', character, body: visibleError });
+      emitAiMessage(character, visibleError);
       setLocalToast(`AIエラー: ${message}`);
       onToast?.(`AIエラー: ${message}`);
     } finally {
