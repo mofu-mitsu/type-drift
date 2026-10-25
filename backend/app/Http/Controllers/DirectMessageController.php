@@ -46,17 +46,25 @@ class DirectMessageController extends Controller
         $bottle = null;
         if (!empty($data['bottle_id'])) {
             $bottle = Bottle::query()->findOrFail($data['bottle_id']);
-            abort_if(!$bottle->user_id && !$bottle->guest_key, 422, 'このボトルの投稿者はDMを受信できません。');
-            if ($bottle->user_id) {
-                $target = DmRecipient::query()->firstOrCreate(
-                    ['user_id' => $bottle->user_id],
-                    ['handle' => (string) Str::uuid()],
-                );
+
+            // Existing bottle thread replies must go to the other participant,
+            // not back to the bottle owner. A first contact omits recipient_handle
+            // and resolves the bottle owner here.
+            if (!empty($data['recipient_handle'])) {
+                $target = DmRecipient::query()->where('handle', $data['recipient_handle'])->firstOrFail();
             } else {
-                $target = DmRecipient::query()->firstOrCreate(
-                    ['guest_key' => $bottle->guest_key],
-                    ['handle' => (string) Str::uuid()],
-                );
+                abort_if(!$bottle->user_id && !$bottle->guest_key, 422, 'このボトルの投稿者はDMを受信できません。');
+                if ($bottle->user_id) {
+                    $target = DmRecipient::query()->firstOrCreate(
+                        ['user_id' => $bottle->user_id],
+                        ['handle' => (string) Str::uuid()],
+                    );
+                } else {
+                    $target = DmRecipient::query()->firstOrCreate(
+                        ['guest_key' => $bottle->guest_key],
+                        ['handle' => (string) Str::uuid()],
+                    );
+                }
             }
         } else {
             $target = DmRecipient::query()->where('handle', $data['recipient_handle'])->firstOrFail();
