@@ -45,6 +45,7 @@ Route::get('/consultations', [ConsultationController::class, 'index']);
 Route::get('/question-prompts', [QuestionPromptController::class, 'index']);
 Route::post('/question-prompts', [QuestionPromptController::class, 'store']);
 Route::get('/direct-messages', [DirectMessageController::class, 'index']);
+Route::post('/direct-messages', [DirectMessageController::class, 'store']);
 Route::post('/direct-messages/{directMessage}/read', [DirectMessageController::class, 'markRead']);
 Route::get('/notifications/unread', [NotificationController::class, 'unread']);
 Route::post('/notifications/{notification}/read', [NotificationController::class, 'read']);
