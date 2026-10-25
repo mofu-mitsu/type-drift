@@ -2040,6 +2040,62 @@ export default function DriftApp() {
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
     const myDisplayName = isProfileRevealed ? (nickname || "匿名のあなた") : "匿名のあなた";
 
+    // Bottle conversations are server-backed so the other participant receives the message too.
+    if (target.id.startsWith("bottle-") && target.bottleInfo?.id) {
+      void (async () => {
+        try {
+          const response = await apiFetch("/api/direct-messages", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+            body: JSON.stringify({ bottle_id: target.bottleInfo!.id, body: text.trim() }),
+          });
+          if (!response.ok) {
+            setPlazaToast(`メッセージを送信できませんでした（${response.status}）`);
+            console.error("[Type Drift DM] bottle message send failed", { status: response.status, detail: await response.clone().text().catch(() => "") });
+            return;
+          }
+
+          const result = await response.json().catch(() => null);
+          const saved = result?.message;
+          if (!saved?.id) {
+            setPlazaToast("メッセージを保存できませんでした");
+            return;
+          }
+
+          const persistedMessage: DirectMessage = {
+            id: `server-dm-${saved.id}`,
+            serverId: Number(saved.id),
+            threadId: String(saved.thread_id || target.id),
+            sender: String(saved.sender_name || myDisplayName),
+            recipient: String(saved.recipient_name || target.name),
+            targetEmoji: target.emoji,
+            targetType: saved.bottle_type || target.type,
+            body: String(saved.body || text.trim()),
+            createdAt: new Date(saved.created_at).getTime() || Date.now(),
+            read: Boolean(saved.read),
+            isMine: true,
+            bottleId: Number(saved.bottle_id || target.bottleInfo!.id),
+            bottleSnippet: saved.bottle_snippet || target.bottleInfo!.text,
+            bottleAuthor: saved.bottle_author || target.bottleInfo!.author,
+            bottleType: saved.bottle_type || target.bottleInfo!.type,
+          };
+
+          setDirectMessages(current => {
+            const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
+            try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+            return updated;
+          });
+          logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
+          setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
+        } catch (error) {
+          console.error("[Type Drift DM] bottle message send failed", error);
+          setPlazaToast("メッセージの送信に失敗しました");
+        }
+      })();
+      return;
+    }
+
     const newMsg: DirectMessage = {
       id: `dm-${Date.now()}`,
       threadId: target.id,
@@ -4084,7 +4140,7 @@ export default function DriftApp() {
                               {msg.isAiError && <button type="button" className="dm-ai-error-report" onClick={() => window.dispatchEvent(new CustomEvent("type-drift:open-feedback", { detail: { category: "AIエラー", body: `[AI応答エラー]\n${msg.body}` } }))}>このエラーを意見箱へ送る</button>}
                             </div>
                             <div className="dm-bubble-meta">
-                              {msg.isMine && <span style={{ color: "#0d9488" }}>既読</span>}
+                              {msg.isMine && <span style={{ color: "#0d9488" }}>{msg.read ? "既読" : "送信済み"}</span>}
                               <span>
                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                               </span>
