@@ -8,6 +8,7 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ConsultationController;
 use App\Http\Controllers\QuestionPromptController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\DirectMessageController;
 use App\Http\Controllers\PlazaChainController;
 use Illuminate\Support\Facades\DB;
 
@@ -43,6 +44,8 @@ Route::post('/consultations/events', [ConsultationController::class, 'store']);
 Route::get('/consultations', [ConsultationController::class, 'index']);
 Route::get('/question-prompts', [QuestionPromptController::class, 'index']);
 Route::post('/question-prompts', [QuestionPromptController::class, 'store']);
+Route::get('/direct-messages', [DirectMessageController::class, 'index']);
+Route::post('/direct-messages/{directMessage}/read', [DirectMessageController::class, 'markRead']);
 Route::get('/notifications/unread', [NotificationController::class, 'unread']);
 Route::post('/notifications/{notification}/read', [NotificationController::class, 'read']);
 Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
