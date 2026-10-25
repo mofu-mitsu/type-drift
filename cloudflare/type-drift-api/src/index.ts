@@ -52,6 +52,7 @@ export default {
       const bottleMatch = path.match(/^\/api\/bottles\/(\d+)(?:\/(reactions|replies|votes))?$/);
       const replyReactionMatch = path.match(/^\/api\/replies\/(\d+)\/reactions$/);
       const notificationMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
+      const directMessageReadMatch = path.match(/^\/api\/direct-messages\/(\d+)\/read$/);
 
       if (path === "/api/bottles" && method === "GET") {
         const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
@@ -106,9 +107,33 @@ export default {
         if (!text) return json({ message: "body is required" }, 422, env, request);
         if (b.parent_reply_id) { const p = await sql`SELECT id FROM replies WHERE id=${Number(b.parent_reply_id)} AND bottle_id=${id} AND deleted_at IS NULL`; if (!p.length) return json({ message: "parent reply must belong to this bottle" }, 422, env, request); }
         const rows = await sql`INSERT INTO replies (bottle_id,guest_key,body,parent_reply_id,created_at,updated_at) VALUES (${id},${key},${text},${b.parent_reply_id ? Number(b.parent_reply_id) : null},NOW(),NOW()) RETURNING *`;
-        const owner = await sql`SELECT guest_key FROM bottles WHERE id=${id} AND deleted_at IS NULL`;
-        if (owner[0]?.guest_key && owner[0].guest_key !== key) await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${owner[0].guest_key},'bottle_reply',${String(id)},'あなたのボトルに返信が届きました。',NOW(),NOW())`;
-        return json({ reply: rows[0] }, 201, env, request);
+        const owner = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${id} AND deleted_at IS NULL`;
+        let directMessage = null;
+        if (owner[0]?.guest_key && owner[0].guest_key !== key && !owner[0].is_ai) {
+          const type = [owner[0].socionics, owner[0].enneagram, owner[0].mbti, owner[0].other_type].filter(Boolean).join(" · ");
+          const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,created_at,updated_at)
+            VALUES (${key},${owner[0].guest_key},${`bottle-${id}`},'匿名の誰か','波間に漂うボトルの主（匿名）',${text},${id},${owner[0].body},${type ? `匿名の${owner[0].mbti || owner[0].socionics || "誰か"}` : "匿名のボトル主"},${type},NOW(),NOW()) RETURNING *`;
+          directMessage = saved[0];
+          await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${owner[0].guest_key},'bottle_reply',${String(id)},'あなたのボトルに返信が届きました。',NOW(),NOW())`;
+        }
+        return json({ reply: rows[0], direct_message: directMessage }, 201, env, request);
+      }
+
+      if (path === "/api/direct-messages" && method === "GET") {
+        if (!key) return json({ messages: [] }, 200, env, request);
+        const rows = await sql`SELECT * FROM direct_messages WHERE sender_guest_key=${key} OR recipient_guest_key=${key} ORDER BY created_at DESC LIMIT 200`;
+        return json({ messages: rows.reverse().map((row: any) => ({
+          id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
+          body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
+          bottle_type: row.bottle_type, created_at: row.created_at,
+          is_mine: row.sender_guest_key === key, read: row.sender_guest_key === key || Boolean(row.read_at),
+        })) }, 200, env, request);
+      }
+
+      if (directMessageReadMatch && method === "POST") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        await sql`UPDATE direct_messages SET read_at=NOW(),updated_at=NOW() WHERE id=${Number(directMessageReadMatch[1])} AND recipient_guest_key=${key} AND read_at IS NULL`;
+        return json({ ok: true }, 200, env, request);
       }
 
       if (bottleMatch && method === "GET" && bottleMatch[2] === "replies") {

@@ -1,9 +1,31 @@
 const PRIMARY_API = process.env.NEXT_PUBLIC_API_URL || "https://type-drift-api.onrender.com";
 const FALLBACK_API = process.env.NEXT_PUBLIC_FALLBACK_API_URL || "https://type-drift-api-fallback.mitsuki-momoka.workers.dev";
 
+/** These endpoints are implemented by the Neon-backed Worker; prefer it directly to avoid noisy Render 429/CORS preflights. */
+function isWorkerRoute(path: string, init?: RequestInit) {
+  const method = (init?.method || "GET").toUpperCase();
+  const pathname = path.split("?", 1)[0].replace(/\/+$/, "") || "/";
+  if (pathname === "/api/bottles") return method === "GET" || method === "POST";
+  if (/^\/api\/bottles\/\d+$/.test(pathname)) return method === "DELETE";
+  if (/^\/api\/bottles\/\d+\/(reactions|replies|votes)$/.test(pathname)) return method === "GET" || method === "POST";
+  if (/^\/api\/replies\/\d+\/reactions$/.test(pathname)) return method === "POST";
+  if (pathname === "/api/notifications/unread") return method === "GET";
+  if (pathname === "/api/notifications/read-all" || /^\/api\/notifications\/\d+\/read$/.test(pathname)) return method === "POST";
+  if (pathname === "/api/consultations") return method === "GET";
+  if (pathname === "/api/consultations/events" || pathname === "/api/activity-events" || pathname === "/api/feedback") return method === "POST";
+  if (pathname === "/api/question-prompts" || pathname === "/api/plaza/chain" || pathname === "/api/plaza/messages") return method === "GET" || method === "POST";
+  if (pathname === "/api/direct-messages") return method === "GET";
+  if (/^\/api\/direct-messages\/\d+\/read$/.test(pathname)) return method === "POST";
+  if (/^\/api\/presence\/(join|heartbeat|leave)$/.test(pathname)) return method === "POST";
+  if (pathname === "/api/presence/online") return method === "GET";
+  if (pathname === "/api/worm/ranking") return method === "GET" || method === "POST";
+  return false;
+}
+
 /** Render stays primary. Only transport errors and server errors move the request to Cloudflare. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const targets = [PRIMARY_API, FALLBACK_API].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
+  const configured = [PRIMARY_API, FALLBACK_API].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
+  const targets = isWorkerRoute(path, init) ? [...configured].reverse() : configured;
   let lastError: unknown;
   let lastResponse: Response | undefined;
 
@@ -24,3 +46,4 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   if (lastResponse) return lastResponse;
   throw lastError ?? new Error("API is unavailable");
 }
+

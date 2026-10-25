@@ -5030,6 +5030,21 @@
   position: relative;
 }
 
+.dm-ai-error-report {
+  display: block;
+  margin-top: 10px;
+  border: 1px solid rgba(13, 148, 136, 0.28);
+  border-radius: 999px;
+  padding: 6px 11px;
+  background: #effaf7;
+  color: #0f766e;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.dm-ai-error-report:hover { background: #d9f2eb; }
+
 .dm-bubble-row.mine .dm-bubble-content {
   background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
   color: #ffffff;
@@ -6051,6 +6066,25 @@
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+}
+
+.topbar-unread-badge {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  z-index: 2;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fbfaf6;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .topbar-icon-badge {
