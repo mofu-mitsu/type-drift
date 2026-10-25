@@ -70,11 +70,14 @@ class DirectMessageController extends Controller
             'sender_user_id' => $sender->user_id,
             'recipient_user_id' => $target->user_id,
             'sender_name' => $data['sender_name'] ?? ($request->user()?->name ?: '匿名の誰か'),
-            'recipient_name' => $data['recipient_name'] ?? ($bottle ? ('匿名の'.($bottle->mbti ?: $bottle->socionics ?: '誰か')) : '匿名の誰か'),
+            'recipient_name' => $bottle ? '波間に漂うボトルの主（匿名）' : ($data['recipient_name'] ?? '匿名の誰か'),
             'sender_emoji' => $data['sender_emoji'] ?? '◌',
-            'recipient_emoji' => $data['recipient_emoji'] ?? '◌',
+            'recipient_emoji' => $data['recipient_emoji'] ?? '🌊',
             'body' => trim($data['body']),
             'bottle_id' => $bottle?->id,
+            'bottle_snippet' => $bottle?->body,
+            'bottle_author' => $bottle ? '匿名のボトル主' : null,
+            'bottle_type' => $bottle ? trim(implode(' · ', array_filter([$bottle->mbti, $bottle->socionics, $bottle->enneagram, $bottle->other_type]))) ?: '匿名ボトル' : null,
         ]);
 
         return response()->json(['message' => $this->present($message, $sender->handle)], 201);
@@ -126,13 +129,16 @@ class DirectMessageController extends Controller
             'sender_emoji' => $message->sender_emoji,
             'recipient_emoji' => $message->recipient_emoji,
             'target_emoji' => $isMine ? $message->recipient_emoji : $message->sender_emoji,
-            'target_type' => '広場の住人',
+            'target_type' => $message->bottle_type ?: '広場の住人',
             'body' => $message->body,
             'created_at' => $message->created_at ? $message->created_at->getTimestamp() * 1000 : null,
-            'read' => $isMine || $message->read_at !== null,
+            'read' => $message->read_at !== null,
             'read_at' => $message->read_at,
             'is_mine' => $isMine,
             'bottle_id' => $message->bottle_id,
+            'bottle_snippet' => $message->bottle_snippet,
+            'bottle_author' => $message->bottle_author,
+            'bottle_type' => $message->bottle_type,
         ];
     }
 }
