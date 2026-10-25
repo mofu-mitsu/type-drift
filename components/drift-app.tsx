@@ -2004,8 +2004,8 @@ export default function DriftApp() {
   ];
 
   const requestDmAiReply = async (target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } }, userText: string) => {
+    const preferred = target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
     try {
-      const preferred = target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [{ author: target.name, character: preferred, body: userText }] }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
