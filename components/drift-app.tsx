@@ -1400,7 +1400,12 @@ export default function DriftApp() {
     if (!api) return;
     const refresh = () => void apiFetch('/api/bottles', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
       const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
-      const remote = rows.map((row: any) => ({ id: Number(row.id), author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: Boolean(row.is_mine), ai: row.is_ai ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle));
+      const remote = rows.map((row: any) => {
+        // API/DBドライバーによって boolean が文字列で返る場合もあるため、Boolean("false") を避ける。
+        const isAi = row.is_ai === true || row.is_ai === "true";
+        const isMine = row.is_mine === true || row.is_mine === "true";
+        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
+      });
       // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
       // NPCには負の固定IDを割り当て、Neon側のIDと衝突させない。
       const npcSeeds = initialBottles
