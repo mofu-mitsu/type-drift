@@ -132,7 +132,16 @@ export default function PlazaPanel({
             } else if (data.type === 'plaza_message' && data.message) {
               const msg: PlazaMessage = data.message;
               setMessages(current => {
-                const filtered = current.filter(item => item.id !== msg.id && !(msg.kind === 'ai' && item.kind === 'ai' && item.author === msg.author && item.body === msg.body && Math.abs(item.createdAt - Date.now()) < 15_000));
+                const now = Date.now();
+                // ローカルで表示したAI返信がWebSocket経由でも届いた場合、
+                // 中継側で本文が切り詰められていても同一キャラの直近返信として重複を抑止。
+                const isDuplicateAiEcho = msg.kind === 'ai' && current.some(item =>
+                  item.kind === 'ai' &&
+                  item.author === msg.author &&
+                  Math.abs(item.createdAt - now) < 2500
+                );
+                if (isDuplicateAiEcho) return current;
+                const filtered = current.filter(item => item.id !== msg.id);
                 return [...filtered, msg].slice(-80);
               });
               // 自分の送信時に sendMessage() 側でゲーム判定・心理テスト判定を行う。
@@ -457,13 +466,10 @@ export default function PlazaPanel({
             }
 
             const isAi = message.kind === 'ai';
-            const avatarEmoji =
-              message.emoji ||
-              (isAi
-                ? message.author.includes('芋虫')
-                  ? '🐛'
-                  : '🥺'
-                : '◌');
+            // キャラクターアイコンは固定。サーバー側のemoji欠落・上書きに影響されない。
+            const avatarEmoji = isAi
+              ? (message.author.includes('芋虫') ? '🐛' : '🥺')
+              : (message.emoji || '◌');
 
             return (
               <article className={`plaza-chat-item plaza-chat-item--${message.kind}`} key={message.id}>
