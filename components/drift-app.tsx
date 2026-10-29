@@ -2020,9 +2020,9 @@ export default function DriftApp() {
   ];
 
   const requestDmAiReply = async (target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } }, userText: string): Promise<boolean> => {
-    const preferred = target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
+    const preferred = target.name.includes("ダーリン") || target.id === "darling" ? "ダーリンちゃん" : "LSI芋虫";
     try {
-      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [{ author: target.name, character: preferred, body: userText }] }) });
+      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, history: [...directMessages.filter(message => message.threadId === (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id)).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body })), { author: nickname || "あなた", character: "user", body: userText }].slice(-12) }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const hasError = !response.ok || data?.source !== "groq";
@@ -2057,7 +2057,8 @@ export default function DriftApp() {
     // Bottle threads and ordinary person-to-person threads are stored in the shared Neon inbox.
     const isSessionKey = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-");
     const isServerThread = target.id.startsWith("dm-") || (target.id.startsWith("bottle-") && !hasMatchingBottle);
-    if (hasMatchingBottle || isSessionKey || isServerThread) {
+    const isAiBottleTarget = Boolean(target.bottleInfo && (target.name.includes("ダーリンちゃん") || target.name.includes("LSI芋虫") || target.bottleInfo.author.includes("ダーリンちゃん") || target.bottleInfo.author.includes("LSI芋虫")));
+    if ((hasMatchingBottle && !isAiBottleTarget) || isSessionKey || (isServerThread && !isAiBottleTarget)) {
       try {
         const payload = hasMatchingBottle
           ? { bottle_id: target.bottleInfo!.id, body, sender_name: myDisplayName, recipient_name: target.name }
