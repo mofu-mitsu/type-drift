@@ -196,3 +196,48 @@
   color:#fff !important; font-weight:700; box-shadow:0 5px 14px rgba(39,119,111,.2) !important;
 }
 .plaza-chat-compose .plaza-chat-send-btn:disabled { background:#b8d9d2 !important; border-color:#a9cec5 !important; color:#fff !important; }
+
+
+/* 個別メッセージ送信：透明ガラスをやめ、入力しやすい固定パネルに */
+.modal-backdrop:has(.dm-send-modal) {
+  position:fixed; inset:0; z-index:1200;
+  display:flex; align-items:center; justify-content:center;
+  padding:18px; overflow-y:auto;
+  background:rgba(34,53,58,.58);
+  -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+.dm-send-modal {
+  box-sizing:border-box; width:min(100%,560px); max-height:calc(100dvh - 36px);
+  overflow-y:auto; overscroll-behavior:contain;
+  padding:26px; border:1px solid #d5e5df; border-radius:24px;
+  background:#fffdf7 !important; color:#283f43;
+  box-shadow:0 24px 80px rgba(22,48,49,.28);
+  -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+.dm-send-modal .dm-send-desc {
+  margin:14px 0; padding:12px 14px; border:1px solid #dce9e3;
+  border-radius:12px; background:#f0f7f2; color:#58716f; line-height:1.7;
+}
+.dm-send-modal .dm-send-textarea {
+  display:block; box-sizing:border-box; width:100%; min-height:180px; max-height:38dvh;
+  resize:vertical; padding:16px; border:1px solid #cbded7; border-radius:15px;
+  background:#fff !important; color:#263c40; font-size:16px; line-height:1.75;
+  box-shadow:inset 0 1px 3px rgba(32,72,65,.05); outline:none;
+  -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+.dm-send-modal .dm-send-textarea:focus { border-color:#4a9e91; box-shadow:0 0 0 3px rgba(74,158,145,.15); }
+.dm-send-modal .dm-send-actions { position:sticky; bottom:-1px; display:flex; gap:10px; padding-top:14px; background:#fffdf7; }
+.dm-send-modal .dm-send-actions button { flex:1; min-height:48px; border-radius:13px; }
+@media(max-width:600px) {
+  .modal-backdrop:has(.dm-send-modal) {
+    align-items:flex-start; padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+  }
+  .dm-send-modal {
+    width:100%; max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px);
+    padding:18px; border-radius:20px; margin:auto 0;
+  }
+  .dm-send-modal .dm-send-modal-header { padding-right:28px; }
+  .dm-send-modal .dm-send-modal-header h3 { font-size:20px; line-height:1.4; }
+  .dm-send-modal .dm-send-textarea { min-height:clamp(120px, 24dvh, 210px); max-height:30dvh; font-size:16px; }
+  .dm-send-modal .dm-send-actions { padding-bottom:env(safe-area-inset-bottom); }
+}
