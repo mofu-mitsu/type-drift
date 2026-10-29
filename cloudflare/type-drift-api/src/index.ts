@@ -145,6 +145,20 @@ export default {
             senderName = currentIsSender ? context.sender_name : context.recipient_name;
             recipientName = currentIsSender ? context.recipient_name : context.sender_name;
             bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+          } else if (bottleId) {
+            // The first DM from a real bottle has no existing thread row yet.
+            const ownerRows = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${bottleId} AND deleted_at IS NULL LIMIT 1`;
+            const owner = ownerRows[0];
+            if (!owner?.guest_key) return json({ message: "bottle owner not found" }, 404, env, request);
+            if (String(owner.guest_key) === key) return json({ message: "cannot message yourself" }, 422, env, request);
+            if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
+            recipientKey = String(owner.guest_key);
+            const ownerType = [owner.socionics, owner.enneagram, owner.mbti, owner.other_type].filter(Boolean).join(" · ");
+            context = {
+              bottle_snippet: owner.body,
+              bottle_author: `匿名の${owner.mbti || owner.socionics || "ボトル主"}`,
+              bottle_type: ownerType,
+            };
           } else if (threadId.startsWith("dm-")) {
             // A locally restored DM thread may exist before its first server row.
             // Recover the other participant from the stable dm-{sorted guest keys} ID.
