@@ -2051,10 +2051,10 @@ export default function DriftApp() {
     const body = text.trim();
     if (!body) return false;
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
-    const isBottleConversation = Boolean(target.bottleInfo);
+    const isBottleConversation = target.id.startsWith("bottle-") && Boolean(target.bottleInfo);
     const myDisplayName = isBottleConversation && !isProfileRevealed ? "匿名のあなた" : (nickname || "匿名のあなた");
     const targetBottleId = target.id.startsWith("bottle-") ? Number(target.id.slice("bottle-".length)) : 0;
-    const hasMatchingBottle = Boolean(target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
+    const hasMatchingBottle = Boolean(target.id.startsWith("bottle-") && target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
 
     // AIキャラクターは広場セッションID（UUID / plaza-...）を持っていても
     // 人間向けのNeon DM APIへ送らない。以前はセッションID判定が先に当たり、
@@ -2258,13 +2258,14 @@ export default function DriftApp() {
     for (const m of directMessages) {
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
-      const otherEmoji = m.targetEmoji || (otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : "🌊");
+      const isBottleThread = threadId.startsWith("bottle-");
+      const otherEmoji = m.targetEmoji || (otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : isBottleThread ? "🌊" : "◌");
       if (!map[threadId]) {
         map[threadId] = {
           targetId: threadId,
           name: otherName,
           emoji: otherEmoji,
-          type: m.targetType,
+          type: threadId.startsWith("bottle-") ? (m.targetType || "ボトルへの返信") : undefined,
           lastMsg: m,
           unread: (!m.isMine && !m.read) ? 1 : 0,
         };
