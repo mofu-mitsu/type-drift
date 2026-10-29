@@ -292,6 +292,7 @@ export default function DriftApp() {
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
   const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean } | null>(null);
+  const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(false);
   const [onlineCount, setOnlineCount] = useState(4);
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
@@ -4115,7 +4116,7 @@ export default function DriftApp() {
                     unread: 0,
                     lastMsg: { isMine: false, body: "", createdAt: Date.now() } as DirectMessage
                   };
-                  const isBottleThread = activeDmThreadId.startsWith("bottle-") || currentThread.name.includes("ボトル");
+                  const isBottleThread = activeDmThreadId.startsWith("bottle-");
                   const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
                   const threadMessages = directMessages.filter(
                     m => (m.threadId === activeDmThreadId) || (!m.threadId && ((m.isMine && m.recipient === currentThread.name) || (!m.isMine && m.sender === currentThread.name)))
@@ -4176,19 +4177,19 @@ export default function DriftApp() {
                                   item.nickname === currentThread.name
                                 );
                                 if (activeDmThreadId === "darling" || currentThread.name.includes("ダーリンちゃん")) {
-                                  setInspectProfile({
+                                  setDmInspectProfile({
                                     id: "darling", name: "ダーリンちゃん", emoji: "🥺",
                                     mbti: "INTP", socionics: "ILI", enneagram: "5w4", psycho: "Psychosophy: LVEF",
                                     overview: "現実に消耗しきっている眠り姫タイプ。世界を抽象構造で捉えるギークアリス。猫なで声でユーザーを「ダーリン♡」と呼ぶFe実験用の仮面を被っている。"
                                   });
                                 } else if (activeDmThreadId === "worm" || currentThread.name.includes("LSI芋虫")) {
-                                  setInspectProfile({
+                                  setDmInspectProfile({
                                     id: "worm", name: "LSI芋虫", emoji: "🐛",
                                     mbti: "INTJ", socionics: "LSI-Ni", enneagram: "5w6", psycho: "Psychosophy: FVLE",
                                     overview: "広場の空間支配と物理境界線の維持を担当する自律防衛オブジェクト。領域確保と境界線の維持を重視する。"
                                   });
                                 } else {
-                                  setInspectProfile({
+                                  setDmInspectProfile({
                                     id: activeDmThreadId,
                                     name: user?.nickname || currentThread.name,
                                     emoji: user?.emoji || currentThread.emoji || "◌",
@@ -4203,6 +4204,22 @@ export default function DriftApp() {
                           )}
                         </div>
                       </div>
+                      {dmInspectProfile && (
+                        <div className="dm-profile-overlay" onClick={() => setDmInspectProfile(null)}>
+                          <div className="dm-profile-modal" onClick={e => e.stopPropagation()}>
+                            <button type="button" className="dm-profile-close" onClick={() => setDmInspectProfile(null)}>閉じる ✕</button>
+                            <div className="profile-inspect-head">
+                              {dmInspectProfile.image ? <img className="profile-inspect-image" src={dmInspectProfile.image} alt="" /> : <span className="profile-inspect-avatar">{dmInspectProfile.emoji}</span>}
+                              <div>
+                                <h3>{dmInspectProfile.name}</h3>
+                                <p className="profile-inspect-types"><strong>MBTI / Socionics:</strong> {dmInspectProfile.mbti || "未設定"} / {dmInspectProfile.socionics || "未設定"}</p>
+                                <p className="profile-inspect-types"><strong>Enneagram:</strong> {dmInspectProfile.enneagram || "未設定"} {dmInspectProfile.psycho ? "(" + dmInspectProfile.psycho + ")" : ""}</p>
+                              </div>
+                            </div>
+                            <div className="dm-profile-overview">{dmInspectProfile.overview}</div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* 📜 会話のきっかけになったボトルカード */}
                       {relatedBottle && relatedBottle.text && (
