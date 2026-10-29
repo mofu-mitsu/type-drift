@@ -2032,68 +2032,76 @@ export default function DriftApp() {
     }
   };
 
-  const sendDirectMessage = (
+  const sendDirectMessage = async (
     target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
-  ) => {
-    if (!text.trim()) return;
+  ): Promise<boolean> => {
+    const body = text.trim();
+    if (!body) return false;
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
     const myDisplayName = isProfileRevealed ? (nickname || "匿名のあなた") : "匿名のあなた";
+    const targetBottleId = target.id.startsWith("bottle-") ? Number(target.id.slice("bottle-".length)) : 0;
+    const hasMatchingBottle = Boolean(target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
 
-    // Bottle conversations are server-backed so the other participant receives the message too.
-    if (target.id.startsWith("bottle-") && target.bottleInfo?.id) {
-      void (async () => {
-        try {
-          const response = await apiFetch("/api/direct-messages", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
-            body: JSON.stringify({ bottle_id: target.bottleInfo!.id, body: text.trim() }),
-          });
-          if (!response.ok) {
-            setPlazaToast(`メッセージを送信できませんでした（${response.status}）`);
-            console.error("[Type Drift DM] bottle message send failed", { status: response.status, detail: await response.clone().text().catch(() => "") });
-            return;
-          }
-
-          const result = await response.json().catch(() => null);
-          const saved = result?.message;
-          if (!saved?.id) {
-            setPlazaToast("メッセージを保存できませんでした");
-            return;
-          }
-
-          const persistedMessage: DirectMessage = {
-            id: `server-dm-${saved.id}`,
-            serverId: Number(saved.id),
-            threadId: String(saved.thread_id || target.id),
-            sender: String(saved.sender_name || myDisplayName),
-            recipient: String(saved.recipient_name || target.name),
-            targetEmoji: target.emoji,
-            targetType: saved.bottle_type || target.type,
-            body: String(saved.body || text.trim()),
-            createdAt: new Date(saved.created_at).getTime() || Date.now(),
-            read: Boolean(saved.read),
-            isMine: true,
-            bottleId: Number(saved.bottle_id || target.bottleInfo!.id),
-            bottleSnippet: saved.bottle_snippet || target.bottleInfo!.text,
-            bottleAuthor: saved.bottle_author || target.bottleInfo!.author,
-            bottleType: saved.bottle_type || target.bottleInfo!.type,
-          };
-
-          setDirectMessages(current => {
-            const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
-            try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
-            return updated;
-          });
-          logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
-          setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
-        } catch (error) {
-          console.error("[Type Drift DM] bottle message send failed", error);
-          setPlazaToast("メッセージの送信に失敗しました");
+    // Bottle threads and ordinary person-to-person threads are stored in the shared Neon inbox.
+    const isSessionKey = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-");
+    const isServerThread = target.id.startsWith("dm-") || (target.id.startsWith("bottle-") && !hasMatchingBottle);
+    if (hasMatchingBottle || isSessionKey || isServerThread) {
+      try {
+        const payload = hasMatchingBottle
+          ? { bottle_id: target.bottleInfo!.id, body, sender_name: myDisplayName, recipient_name: target.name }
+          : isSessionKey
+            ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name }
+            : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name };
+        const response = await apiFetch("/api/direct-messages", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const detail = await response.clone().text().catch(() => "");
+          setPlazaToast(`メッセージを送信できませんでした（${response.status}）`);
+          console.error("[Type Drift DM] message send failed", { status: response.status, detail });
+          return false;
         }
-      })();
-      return;
+
+        const result = await response.json().catch(() => null);
+        const saved = result?.message;
+        if (!saved?.id) {
+          setPlazaToast("メッセージを保存できませんでした");
+          return false;
+        }
+        const persistedMessage: DirectMessage = {
+          id: `server-dm-${saved.id}`,
+          serverId: Number(saved.id),
+          threadId: String(saved.thread_id || target.id),
+          sender: String(saved.sender_name || myDisplayName),
+          recipient: String(saved.recipient_name || target.name),
+          targetEmoji: target.emoji,
+          targetType: saved.bottle_type || target.type,
+          body: String(saved.body || body),
+          createdAt: new Date(saved.created_at).getTime() || Date.now(),
+          read: Boolean(saved.read),
+          isMine: true,
+          bottleId: saved.bottle_id ? Number(saved.bottle_id) : target.bottleInfo?.id,
+          bottleSnippet: saved.bottle_snippet || target.bottleInfo?.text,
+          bottleAuthor: saved.bottle_author || target.bottleInfo?.author,
+          bottleType: saved.bottle_type || target.bottleInfo?.type,
+        };
+        setDirectMessages(current => {
+          const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
+          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+        logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
+        setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
+        return true;
+      } catch (error) {
+        console.error("[Type Drift DM] message send failed", error);
+        setPlazaToast("メッセージの送信に失敗しました。本文は入力欄に残しています");
+        return false;
+      }
     }
 
     const newMsg: DirectMessage = {
@@ -2103,9 +2111,9 @@ export default function DriftApp() {
       recipient: target.name,
       targetEmoji: target.emoji,
       targetType: target.type,
-      body: text.trim(),
+      body,
       createdAt: Date.now(),
-      read: true,
+      read: false,
       isMine: true,
       bottleId: target.bottleInfo?.id,
       bottleSnippet: target.bottleInfo?.text,
@@ -2118,61 +2126,16 @@ export default function DriftApp() {
       try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
       return updated;
     });
-    logActivity("direct_message_sent", { target: target.name, bodyLength: text.trim().length }, { type: "direct_message", id: target.id });
+    logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
     setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
 
-    // AIキャラクターや相手からの自動返信シミュレーション
+    // AIキャラクターのDMだけはAI応答を生成する。実在の広場ユーザーは上のサーバー保存経路を使う。
     if (target.id === "darling" || target.name.includes("ダーリン")) {
-      void requestDmAiReply({ ...target, id: "darling" }, text.trim());
-      return;
-      window.setTimeout(() => {
-        const replyBody = DARLING_DM_REPLIES[Math.floor(Math.random() * DARLING_DM_REPLIES.length)];
-        const replyMsg: DirectMessage = {
-          id: `dm-${Date.now()}`,
-          threadId: "darling",
-          sender: "ダーリンちゃん",
-          recipient: nickname || "あなた",
-          targetEmoji: "🥺",
-          targetType: "AI · ILI",
-          body: replyBody,
-          createdAt: Date.now(),
-          read: false,
-          isMine: false,
-        };
-        setDirectMessages(prev => {
-          const updated = [...prev, replyMsg];
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-        setPlazaToast("💌 ダーリンちゃんから返信が届きました♡");
-      }, 1200);
+      void requestDmAiReply({ ...target, id: "darling" }, body);
     } else if (target.id === "worm" || target.name.includes("芋虫")) {
-      void requestDmAiReply({ ...target, id: "worm" }, text.trim());
-      return;
-      window.setTimeout(() => {
-        const replyBody = WORM_DM_REPLIES[Math.floor(Math.random() * WORM_DM_REPLIES.length)];
-        const replyMsg: DirectMessage = {
-          id: `dm-${Date.now()}`,
-          threadId: "worm",
-          sender: "LSI芋虫",
-          recipient: nickname || "あなた",
-          targetEmoji: "🐛",
-          targetType: "AI · LSI",
-          body: replyBody,
-          createdAt: Date.now(),
-          read: false,
-          isMine: false,
-        };
-        setDirectMessages(prev => {
-          const updated = [...prev, replyMsg];
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-        setPlazaToast("💌 LSI芋虫から暗号パケットを受信しました");
-      }, 1200);
-    } else if (target.id !== "guest" && !target.id.startsWith("bottle-")) {
-      window.dispatchEvent(new CustomEvent("type-drift:dm-send", { detail: { targetSessionKey: target.id, body: text.trim() } }));
+      void requestDmAiReply({ ...target, id: "worm" }, body);
     }
+    return true;
   };
 
   useEffect(() => {
@@ -2498,7 +2461,7 @@ export default function DriftApp() {
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
-  const uploadToCloudinary = async (dataUrl?: string) => { const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; if (!dataUrl) return undefined; if (!cloudName || !preset) { setPlazaToast("画像保存は未設定ですが、本文だけ投稿できます。Cloudinary設定後に画像を保存できます"); return undefined; } const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
+  const uploadToCloudinary = async (dataUrl?: string) => { const cleanEnv = (value?: string) => (value || "").replace(/[\\u200B-\\u200D\\u2060\\uFEFF]/g, "").trim(); const cloudName = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME); const preset = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET); if (!dataUrl) return undefined; if (!cloudName || !preset) { setPlazaToast("画像保存は未設定ですが、本文だけ投稿できます。Cloudinary設定後に画像を保存できます"); return undefined; } const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
   const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
   const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); await apiFetch('/api/question-prompts', { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
@@ -3025,7 +2988,7 @@ export default function DriftApp() {
                 overview: "いま、この広場に接続している匿名の住人。プロフィールの自認は、本人が公開した範囲だけ表示されます。",
               })}
             >
-              {user.emoji || "◌"}<small>{user.nickname}</small>
+              {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", display: "block", margin: "0 auto 3px" }} /> : (user.emoji || "◌")}<small>{user.nickname}</small>
             </div>
           ))}
         </div>
@@ -3326,6 +3289,7 @@ export default function DriftApp() {
 
         <PlazaPanel
           nickname={nickname}
+          profileImage={profileImage}
           externalEmote={externalEmote}
           externalMessage={externalPlazaMessage}
           onToast={setPlazaToast}
