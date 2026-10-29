@@ -2705,7 +2705,7 @@ export default function DriftApp() {
         <button
           type="button"
           className="topbar-menu-btn"
-          onClick={() => setMobileMenuOpen(true)}
+          onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setMobileMenuOpen(true); }}
           title="メニューを開く"
           aria-label="メニュー"
         >
@@ -2819,7 +2819,7 @@ export default function DriftApp() {
               type="button"
               className="drawer-link-item"
               onClick={() => {
-                setGuideOpen(false); setAnnouncementModalOpen(false);
+                setGuideOpen(false);
                 setAnnouncementModalOpen(open => !open);
                 markAnnouncementsAsRead();
                 setMobileMenuOpen(false);
