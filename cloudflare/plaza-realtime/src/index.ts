@@ -4,6 +4,8 @@ export interface Env {
   GROQ_MODEL?: string;
 }
 
+type PlazaUser = { sessionKey: string; nickname: string; emoji: string; avatarUrl?: string };
+
 type PlazaMessage = {
   id: string;
   author: string;
@@ -29,6 +31,7 @@ const clean = (value: unknown, max: number) =>
 export class PlazaRoom {
   private state: DurableObjectState;
   private clients = new Set<WebSocket>();
+  private users = new Map<WebSocket, PlazaUser>();
   private messages: PlazaMessage[] = [];
 
   constructor(state: DurableObjectState) {
@@ -49,12 +52,13 @@ export class PlazaRoom {
     this.clients.add(server);
 
     server.addEventListener("message", event => void this.onMessage(server, event.data));
-    server.addEventListener("close", () => { this.clients.delete(server); this.broadcastPresence(); });
-    server.addEventListener("error", () => { this.clients.delete(server); this.broadcastPresence(); });
+    server.addEventListener("close", () => { this.clients.delete(server); this.users.delete(server); this.broadcastPresence(); });
+    server.addEventListener("error", () => { this.clients.delete(server); this.users.delete(server); this.broadcastPresence(); });
 
     server.send(JSON.stringify({
       type: "plaza_presence",
-      count: this.clients.size,
+      count: this.users.size,
+      users: [...this.users.values()],
       messages: this.messages,
     }));
     this.broadcastPresence();
@@ -72,8 +76,43 @@ export class PlazaRoom {
       const data = JSON.parse(text) as Record<string, unknown>;
       const type = String(data.type || "");
 
-      if (type === "plaza_join" || type === "plaza_leave") {
+      if (type === "plaza_join") {
+        const sessionKey = clean(data.sessionKey, 120);
+        if (!sessionKey) return;
+        const avatarCandidate = clean(data.avatarUrl, 2048);
+        this.users.set(ws, {
+          sessionKey,
+          nickname: clean(data.nickname, MAX_NICKNAME) || "匿名の誰か",
+          emoji: clean(data.emoji, 8) || "◌",
+          ...(avatarCandidate.startsWith("https://") ? { avatarUrl: avatarCandidate } : {}),
+        });
         this.broadcastPresence();
+        return;
+      }
+
+      if (type === "plaza_leave") {
+        this.users.delete(ws);
+        this.broadcastPresence();
+        return;
+      }
+
+      if (type === "plaza_dm") {
+        const targetSessionKey = clean(data.targetSessionKey, 120);
+        const body = clean(data.body, 2000);
+        const sender = this.users.get(ws);
+        const target = [...this.users.entries()].find(([, user]) => user.sessionKey === targetSessionKey);
+        if (!sender || !target || !body) return;
+        const message = {
+          id: crypto.randomUUID(),
+          senderSessionKey: sender.sessionKey,
+          senderName: sender.nickname,
+          senderEmoji: sender.emoji,
+          body,
+          createdAt: Date.now(),
+        };
+        try {
+          if (target[0].readyState === WebSocket.OPEN) target[0].send(JSON.stringify({ type: "plaza_dm", message }));
+        } catch {}
         return;
       }
 
@@ -136,7 +175,8 @@ export class PlazaRoom {
   private broadcastPresence() {
     const payload = JSON.stringify({
       type: "plaza_presence",
-      count: this.clients.size,
+      count: this.users.size,
+      users: [...this.users.values()],
       messages: this.messages,
     });
     for (const ws of this.clients) {

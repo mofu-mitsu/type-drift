@@ -12,10 +12,11 @@ export type PlazaMessage = {
   emoji?: string;
   createdAt: number;
 };
-export type PlazaUser = { sessionKey: string; nickname: string; emoji: string };
+export type PlazaUser = { sessionKey: string; nickname: string; emoji: string; avatarUrl?: string };
 export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
-const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-worm-world.onrender.com';
+const configuredPlazaWorld = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL;
+const WORLD = configuredPlazaWorld && !/onrender\.com/i.test(configuredPlazaWorld) ? configuredPlazaWorld : 'https://type-drift-plaza-realtime.mitsuki-momoka.workers.dev';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
 const NPC_COUNT = 2;
 const EMOTES = ['👋', '✦', '🌊', '💭', '🩷', '✨', '🍵'];
@@ -24,6 +25,7 @@ const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か'
 
 export type PlazaPanelProps = {
   nickname?: string;
+  profileImage?: string | null;
   externalEmote?: { emote: string; label?: string; id: number } | null;
   externalMessage?: { author: string; body: string; kind: 'human' | 'ai'; emoji?: string; id: number } | null;
   onToast?: (message: string) => void;
@@ -54,6 +56,7 @@ const defaultInitialMessages: PlazaMessage[] = [
 
 export default function PlazaPanel({
   nickname = '',
+  profileImage = null,
   externalEmote = null,
   externalMessage = null,
   onToast,
@@ -108,7 +111,7 @@ export default function PlazaPanel({
         wsRef.current = ws;
         ws.onopen = () => {
           setConnected(true);
-          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark }));
+          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, avatarUrl: profileImage?.startsWith('https://') ? profileImage : undefined }));
           presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname) });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
@@ -174,7 +177,7 @@ export default function PlazaPanel({
       presence('leave', { session_key: sessionKeyRef.current });
       wsRef.current = null;
     };
-  }, [nickname]);
+  }, [nickname, profileImage]);
 
   // メッセージ追加時の自動スクロール
   useEffect(() => {

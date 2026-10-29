@@ -23,7 +23,8 @@ const clean = (value: unknown, max: number) => String(value ?? "").trim().slice(
 const originFor = (request?: Request, env?: Env) => {
   const origin = request?.headers.get("Origin") || "";
   const allowed = (env?.ALLOWED_ORIGIN || "https://type-drift.vercel.app").split(",").map((v) => v.trim());
-  return allowed.includes(origin) ? origin : allowed[0];
+  const isProjectPreview = origin.startsWith("https://type-drift-") && origin.endsWith("-mitsukis-projects-83ef3825.vercel.app");
+  return allowed.includes(origin) || isProjectPreview ? origin : allowed[0];
 };
 const guest = (request: Request) => clean(request.headers.get("X-Guest-Key"), 100);
 const bodyOf = async (request: Request): Promise<Record<string, any>> => request.json().catch(() => ({}));
@@ -119,6 +120,52 @@ export default {
         return json({ reply: rows[0], direct_message: directMessage }, 201, env, request);
       }
 
+      if (path === "/api/direct-messages" && method === "POST") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        const b = await bodyOf(request);
+        const text = clean(b.body, 5000);
+        if (!text) return json({ message: "body is required" }, 422, env, request);
+
+        let recipientKey = "";
+        let threadId = "";
+        let senderName = clean(b.sender_name, 24) || "匿名の誰か";
+        let recipientName = clean(b.recipient_name, 24) || "匿名の誰か";
+        let context: any = null;
+        let bottleId: number | null = null;
+
+        if (b.bottle_id || b.thread_id) {
+          bottleId = b.bottle_id ? Number(b.bottle_id) : null;
+          threadId = bottleId ? "bottle-" + bottleId : clean(b.thread_id, 240);
+          if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
+          const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
+          context = lastRows[0] || null;
+          if (!context) return json({ message: "thread not found or forbidden" }, 404, env, request);
+          const currentIsSender = context.sender_guest_key === key;
+          recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
+          senderName = currentIsSender ? context.sender_name : context.recipient_name;
+          recipientName = currentIsSender ? context.recipient_name : context.sender_name;
+          bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+        } else if (b.recipient_session_key) {
+          const sessionKey = clean(b.recipient_session_key, 120);
+          const targetRows = await sql`SELECT guest_key, nickname FROM presence_sessions WHERE session_key=${sessionKey} AND guest_key IS NOT NULL AND last_seen_at > NOW() - INTERVAL '10 minutes' ORDER BY last_seen_at DESC LIMIT 1`;
+          if (!targetRows[0]?.guest_key) return json({ message: "recipient is no longer available" }, 404, env, request);
+          recipientKey = String(targetRows[0].guest_key);
+          if (recipientKey === key) return json({ message: "cannot message yourself" }, 422, env, request);
+          threadId = "dm-" + [key, recipientKey].sort().join("-");
+          recipientName = recipientName !== "匿名の誰か" ? recipientName : clean(targetRows[0].nickname, 24) || "匿名の誰か";
+        } else {
+          return json({ message: "recipient_session_key or thread_id is required" }, 422, env, request);
+        }
+
+        const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,created_at,updated_at)
+          VALUES (${key},${recipientKey},${threadId},${senderName},${recipientName},${text},${bottleId},${context?.bottle_snippet || null},${context?.bottle_author || null},${context?.bottle_type || null},NOW(),NOW()) RETURNING *`;
+        const message = saved[0];
+        return json({ message: {
+          id: message.id, thread_id: message.thread_id, sender_name: message.sender_name, recipient_name: message.recipient_name,
+          body: message.body, created_at: message.created_at, read: false, is_mine: true, bottle_id: message.bottle_id,
+          bottle_snippet: message.bottle_snippet, bottle_author: message.bottle_author, bottle_type: message.bottle_type,
+        } }, 201, env, request);
+      }
       if (path === "/api/direct-messages" && method === "GET") {
         if (!key) return json({ messages: [] }, 200, env, request);
         const rows = await sql`SELECT * FROM direct_messages WHERE sender_guest_key=${key} OR recipient_guest_key=${key} ORDER BY created_at DESC LIMIT 200`;
@@ -126,7 +173,7 @@ export default {
           id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
           body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
           bottle_type: row.bottle_type, created_at: row.created_at,
-          is_mine: row.sender_guest_key === key, read: row.sender_guest_key === key || Boolean(row.read_at),
+          is_mine: row.sender_guest_key === key, read: Boolean(row.read_at),
         })) }, 200, env, request);
       }
 
