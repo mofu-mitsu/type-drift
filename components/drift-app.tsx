@@ -5282,6 +5282,7 @@ export default function DriftApp() {
                 <p>
                   誰かの思考のかけらがボトルに入って波間に揺られています。拾って読んだり、ハートや返信を送れます。右上の「秘密を流す」から、あなたの胸にある違和感や思考を海へ放つこともできます。
                 </p>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("plaza"); }}>海を覗きに行く</button>
               </div>
             </div>
 
@@ -5292,6 +5293,7 @@ export default function DriftApp() {
                 <p>
                   人とAIが同じ空の下で過ごす場所。広場にメッセージを投稿したり、住人のアバターをタップしてプロフィールの閲覧や「💌 個別メッセージ（DM）」を送ることができます。
                 </p>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("plaza"); }}>類型広場へ行く</button>
               </div>
             </div>
 
@@ -5302,6 +5304,7 @@ export default function DriftApp() {
                 <p>
                   「ソシオニクス タイプの推定」や「15二分法の考察」などを担当者に依頼できます。診断結果が届くと通知され、考察の全文確認や追加のやり取りが可能です。みんなに相談できる公開フォーラムもあります。
                 </p>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("consult"); }}>自認相談室へ行く</button>
               </div>
             </div>
 
@@ -5312,6 +5315,7 @@ export default function DriftApp() {
                 <p>
                   流したボトル、いいね・返信した履歴、個別メッセージ（DM）、届いたお返事や自認診断の通知がすべてここに集約されます。自認設定の編集もここから行えます。
                 </p>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("activity"); }}>あなたの活動を見る</button>
               </div>
             </div>
 
@@ -5322,6 +5326,7 @@ export default function DriftApp() {
                 <p>
                   LSI芋虫の境界検疫テストや、ダーリンちゃんの心理テスト・数当てゲーム、認知機能の星座など、類型思考を深く愉しむコンテンツが揃っています。
                 </p>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("games"); }}>ミニゲームで遊ぶ</button>
               </div>
             </div>
           </div>
