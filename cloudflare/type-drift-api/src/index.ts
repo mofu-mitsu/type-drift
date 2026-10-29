@@ -23,7 +23,8 @@ const clean = (value: unknown, max: number) => String(value ?? "").trim().slice(
 const originFor = (request?: Request, env?: Env) => {
   const origin = request?.headers.get("Origin") || "";
   const allowed = (env?.ALLOWED_ORIGIN || "https://type-drift.vercel.app").split(",").map((v) => v.trim());
-  return allowed.includes(origin) ? origin : allowed[0];
+  const isProjectPreview = origin.startsWith("https://type-drift-") && origin.endsWith("-mitsukis-projects-83ef3825.vercel.app");
+  return allowed.includes(origin) || isProjectPreview ? origin : allowed[0];
 };
 const guest = (request: Request) => clean(request.headers.get("X-Guest-Key"), 100);
 const bodyOf = async (request: Request): Promise<Record<string, any>> => request.json().catch(() => ({}));
