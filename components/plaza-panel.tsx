@@ -67,6 +67,7 @@ export default function PlazaPanel({
 }: PlazaPanelProps) {
   const [messages, setMessages] = useState<PlazaMessage[]>(defaultInitialMessages);
   const [presence, setPresence] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<PlazaUser[]>([]);
   const [text, setText] = useState('');
   const [emoteIndex, setEmoteIndex] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -122,7 +123,9 @@ export default function PlazaPanel({
               const count = Number(data.count) || 0;
               setPresence(count);
               onPresenceUpdate?.(count + NPC_COUNT);
-              onPresenceUsers?.(Array.isArray(data.users) ? data.users : []);
+              const users = Array.isArray(data.users) ? data.users as PlazaUser[] : [];
+              setOnlineUsers(users);
+              onPresenceUsers?.(users);
               if (Array.isArray(data.messages) && data.messages.length > 0) {
               setMessages(data.messages);
               }
@@ -477,10 +480,11 @@ export default function PlazaPanel({
             const avatarEmoji = isCharacter
               ? (message.author.includes('芋虫') ? '🐛' : '🥺')
               : (message.emoji || '◌');
+            const profileAvatar = !isCharacter ? onlineUsers.find(user => user.nickname === message.author)?.avatarUrl : undefined;
 
             return (
               <article className={`plaza-chat-item plaza-chat-item--${message.kind}`} key={message.id}>
-                <span className="plaza-chat-avatar">{avatarEmoji}</span>
+                <span className="plaza-chat-avatar">{profileAvatar ? <img src={profileAvatar} alt="" /> : avatarEmoji}</span>
                 <div className="plaza-chat-body">
                   <div className="plaza-chat-meta">
                     <strong>{message.author}</strong>
