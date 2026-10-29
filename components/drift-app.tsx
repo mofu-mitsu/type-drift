@@ -2035,7 +2035,7 @@ export default function DriftApp() {
   const sendDirectMessage = async (
     target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
-  ): Promise<boolean> => {
+  ): Promise<string | false> => {
     const body = text.trim();
     if (!body) return false;
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
@@ -2096,7 +2096,7 @@ export default function DriftApp() {
         });
         logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
         setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
-        return true;
+        return persistedMessage.threadId;
       } catch (error) {
         console.error("[Type Drift DM] message send failed", error);
         setPlazaToast("メッセージの送信に失敗しました。本文は入力欄に残しています");
@@ -2135,7 +2135,7 @@ export default function DriftApp() {
     } else if (target.id === "worm" || target.name.includes("芋虫")) {
       void requestDmAiReply({ ...target, id: "worm" }, body);
     }
-    return true;
+    return target.id;
   };
 
   useEffect(() => {
@@ -5108,9 +5108,10 @@ export default function DriftApp() {
               type="button"
               className="clean-primary-btn"
               disabled={!dmModalText.trim()}
-              onClick={() => {
-                sendDirectMessage(dmModalTarget, dmModalText);
-                setActiveDmThreadId(dmModalTarget.id);
+              onClick={async () => {
+                const sentThreadId = await sendDirectMessage(dmModalTarget, dmModalText);
+                if (!sentThreadId) return;
+                setActiveDmThreadId(sentThreadId);
                 setDmModalTarget(null);
                 setDmModalText("");
                 setActivePage("activity");
