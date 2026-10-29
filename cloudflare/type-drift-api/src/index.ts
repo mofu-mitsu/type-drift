@@ -139,12 +139,32 @@ export default {
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
           const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
           context = lastRows[0] || null;
-          if (!context) return json({ message: "thread not found or forbidden" }, 404, env, request);
-          const currentIsSender = context.sender_guest_key === key;
-          recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
-          senderName = currentIsSender ? context.sender_name : context.recipient_name;
-          recipientName = currentIsSender ? context.recipient_name : context.sender_name;
-          bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+
+          // ボトル主への最初のDMは既存スレッドがまだないため、ボトルから宛先を解決して新規スレッドを作る。
+          if (!context && bottleId) {
+            const ownerRows = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${bottleId} AND deleted_at IS NULL LIMIT 1`;
+            const owner = ownerRows[0];
+            if (!owner?.guest_key) return json({ message: "bottle owner not found" }, 404, env, request);
+            if (String(owner.guest_key) === key) return json({ message: "cannot message yourself" }, 422, env, request);
+            if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
+            recipientKey = String(owner.guest_key);
+            const ownerType = [owner.socionics, owner.enneagram, owner.mbti, owner.other_type].filter(Boolean).join(" · ");
+            context = {
+              bottle_snippet: owner.body,
+              bottle_author: `匿名の${owner.mbti || owner.socionics || "ボトル主"}`,
+              bottle_type: ownerType,
+            };
+          } else if (!context) {
+            return json({ message: "thread not found or forbidden" }, 404, env, request);
+          }
+
+          if (lastRows[0]) {
+            const currentIsSender = context.sender_guest_key === key;
+            recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
+            senderName = currentIsSender ? context.sender_name : context.recipient_name;
+            recipientName = currentIsSender ? context.recipient_name : context.sender_name;
+            bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+          }
         } else if (b.recipient_session_key) {
           const sessionKey = clean(b.recipient_session_key, 120);
           const targetRows = await sql`SELECT guest_key, nickname FROM presence_sessions WHERE session_key=${sessionKey} AND guest_key IS NOT NULL AND last_seen_at > NOW() - INTERVAL '10 minutes' ORDER BY last_seen_at DESC LIMIT 1`;
