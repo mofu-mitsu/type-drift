@@ -17,7 +17,7 @@ type PlazaMessage = {
 
 const MAX_MESSAGES = 80;
 const MAX_NICKNAME = 24;
-const MAX_BODY = 120;
+const MAX_BODY = 10000;
 
 const json = (data: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(data), {
@@ -209,7 +209,7 @@ export default {
       if (!env.GROQ_API_KEY) return json({ replies: [] }, { status: 503 });
 
       const body = await request.json().catch(() => ({})) as { body?: string; history?: PlazaMessage[] };
-      const humanText = clean(body.body, 500);
+      const humanText = clean(body.body, 10000);
       const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
       if (!humanText) return json({ replies: [] });
 
