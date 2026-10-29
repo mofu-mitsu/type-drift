@@ -1205,27 +1205,26 @@ export default function DriftApp() {
 
     // ② A/B心理テストの判定
     if (activeDarlingPsychTest !== null) {
-      const isA = /^A\b|^A[ですかな！!？\s]|^\s*A\s*$/i.test(clean) || clean === 'A' || clean === 'a' || clean === 'Ａ' || clean === 'ａ';
-      const isB = /^B\b|^B[ですかな！!？\s]|^\s*B\s*$/i.test(clean) || clean === 'B' || clean === 'b' || clean === 'Ｂ' || clean === 'ｂ';
+      // 全角英字や「Aを選ぶ」「Bです」なども選択肢として認識する。
+      // 発言全体が選択回答のときだけテンプレートを返し、通常会話を奪わない。
+      const normalizedChoice = clean
+        .replace(/[Ａａ]/g, "A")
+        .replace(/[Ｂｂ]/g, "B")
+        .replace(/[！!？?。．、，]/g, "")
+        .trim();
+      const isA = /^(?:A|A\s*(?:を選ぶ|を選んだ|です|だよ|かな|にする|にします|で))$/i.test(normalizedChoice);
+      const isB = /^(?:B|B\s*(?:を選ぶ|を選んだ|です|だよ|かな|にする|にします|で))$/i.test(normalizedChoice);
 
-      if (isA) {
+      if (isA || isB) {
         const test = activeDarlingPsychTest;
+        const choice = isA ? "A" : "B";
+        const answer = isA ? test.answerA : test.answerB;
+        // 回答済みテストを解除し、次の普通の発言までテンプレートが残らないようにする。
+        setActiveDarlingPsychTest(null);
         setTimeout(() => {
           setExternalPlazaMessage({
             author: "ダーリンちゃん",
-            body: `🔮【心理テスト「${test.title}」の診断結果: A】\n${test.answerA}\n\n……ふふ、ダーリンの深層心理、覗かせてもらっちゃった♡`,
-            kind: "ai",
-            emoji: "🥺",
-            id: Date.now() + 2
-          });
-        }, 600);
-        return true;
-      } else if (isB) {
-        const test = activeDarlingPsychTest;
-        setTimeout(() => {
-          setExternalPlazaMessage({
-            author: "ダーリンちゃん",
-            body: `🔮【心理テスト「${test.title}」の診断結果: B】\n${test.answerB}\n\n……ふふ、ダーリンの深層心理、覗かせてもらっちゃった♡`,
+            body: `🔮【心理テスト「${test.title}」の診断結果: ${choice}】\n${answer}\n\n……ふふ、ダーリンの深層心理、覗かせてもらっちゃった♡`,
             kind: "ai",
             emoji: "🥺",
             id: Date.now() + 2
