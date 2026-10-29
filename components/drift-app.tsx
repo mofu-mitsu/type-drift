@@ -2486,7 +2486,7 @@ export default function DriftApp() {
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch { setPlazaToast("通信エラーで編集できませんでした。"); }
   };
-  const deleteBottle = async (bottle: Bottle) => {
+  const deleteBottleFromCard = async (bottle: Bottle) => {
     if (!bottle.mine || bottle.ai || bottle.id <= 0 || !window.confirm("このボトルを回収（削除）しますか？")) return;
     try {
       const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "DELETE", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
@@ -3980,7 +3980,7 @@ export default function DriftApp() {
                     const userReplies = myRepliesMap[bottle.id] || [];
                     return (
                       <div key={bottle.id} className="v2-replied-card-wrapper">
-                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottle} />
+                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} />
                         {activityTab === "replied" && userReplies.length > 0 && (
                           <div className="v2-my-replies-box">
                             <div className="v2-my-replies-head">
