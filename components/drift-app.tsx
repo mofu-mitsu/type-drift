@@ -1069,7 +1069,7 @@ export default function DriftApp() {
   // チャット発言検知（1〜100ゲームの判定＆心理テストA/B自動返信）
   const handlePlazaUserMessage = (msgBody: string) => {
     const clean = msgBody.trim();
-    if (!clean) return;
+    if (!clean) return true;
 
     // ① ダーリンちゃんの1〜100気分当てゲーム
     if (darlingTargetNumber !== null) {
@@ -1087,7 +1087,7 @@ export default function DriftApp() {
               id: Date.now() + 2
             });
           }, 600);
-          return;
+          return true;
         }
 
         // 「好き」「すき」「愛してる」「あいしてる」「大好き」「だいすき」の告白判定
@@ -1104,7 +1104,7 @@ export default function DriftApp() {
             });
             setPlazaToast("ダーリンちゃんが動揺して罰ゲームが解除されました 😳");
           }, 600);
-          return;
+          return true;
         }
 
         // それ以外の入力（数字や無関係な発言など）はすべてブロック
@@ -1117,7 +1117,7 @@ export default function DriftApp() {
             id: Date.now() + 2
           });
         }, 600);
-        return;
+        return true;
       }
 
       // 全角数字を半角に正規化して判定
@@ -1136,7 +1136,7 @@ export default function DriftApp() {
                 id: Date.now() + 2
               });
             }, 600);
-            return;
+            return true;
           }
 
           if (guess === darlingTargetNumber) {
@@ -1169,7 +1169,7 @@ export default function DriftApp() {
               });
               setPlazaToast(`🎯 気分当てゲーム的中！（試行回数: ${finalCount}回）`);
             }, 600);
-            return;
+            return true;
           } else if (guess < darlingTargetNumber) {
             // 低い（不機嫌・煽り）
             setDarlingGuessCount(prev => prev + 1);
@@ -1182,7 +1182,7 @@ export default function DriftApp() {
                 id: Date.now() + 2
               });
             }, 600);
-            return;
+            return true;
           } else {
             // 高い（ドン引き・冷め＋罰ゲーム発動！）
             setDarlingGuessCount(prev => prev + 1);
@@ -1197,7 +1197,7 @@ export default function DriftApp() {
               });
               setPlazaToast("⚠️ ダーリンちゃんへの愛の告白ロックが発動しました！");
             }, 600);
-            return;
+            return true;
           }
         }
       }
@@ -1219,7 +1219,7 @@ export default function DriftApp() {
             id: Date.now() + 2
           });
         }, 600);
-        return;
+        return true;
       } else if (isB) {
         const test = activeDarlingPsychTest;
         setTimeout(() => {
@@ -1231,7 +1231,7 @@ export default function DriftApp() {
             id: Date.now() + 2
           });
         }, 600);
-        return;
+        return true;
       }
     }
   };
@@ -5201,7 +5201,6 @@ export default function DriftApp() {
             value={dmModalText}
             onChange={e => setDmModalText(e.target.value)}
             placeholder="メッセージを入力…（相手からの返信は「あなたの活動」で確認できます）"
-            maxLength={500}
             autoFocus
           />
           <div className="dm-send-actions">
@@ -5303,7 +5302,7 @@ export default function DriftApp() {
             </label>
           </div>
           <input className="other-type-input" value={identity.otherType} onChange={e => setIdentity({ ...identity, otherType: e.target.value })} placeholder="その他の自認（自由入力）" />
-          <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder={postMode === "poll" ? "アンケートの質問を書く…" : "類型のこと、最近考えていること…"} maxLength={500} autoFocus />
+          <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder={postMode === "poll" ? "アンケートの質問を書く…" : "類型のこと、最近考えていること…"} autoFocus />
           {postMode === "poll" && (
             <div className="poll-draft">
               {pollOptions.map((option, index) => (
@@ -5345,7 +5344,7 @@ export default function DriftApp() {
           <p className="eyebrow">QUESTION BOX</p>
           <h2>みんなへの質問</h2>
           <p>誰かに聞いてみたい問いを置いていくと、次にボトルを書く人の問いの引き出しへ加わります。</p>
-          <textarea value={questionDraft} onChange={event => setQuestionDraft(event.target.value)} placeholder="例：自分と似ている人に聞いてみたいことは？" maxLength={500} autoFocus />
+          <textarea value={questionDraft} onChange={event => setQuestionDraft(event.target.value)} placeholder="例：自分と似ている人に聞いてみたいことは？" autoFocus />
           <div className="question-box-modal__foot"><small>{questionDraft.length} / 500</small><div className="question-box-modal__actions"><button className="secondary-button" type="button" onClick={() => setQuestionBoxOpen(false)}>閉じる</button><button className="primary-button" type="button" onClick={submitQuestion}>質問を流す</button></div></div>
         </div>
       </div>
