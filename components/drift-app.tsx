@@ -2259,7 +2259,8 @@ export default function DriftApp() {
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
       const isBottleThread = threadId.startsWith("bottle-");
-      const otherEmoji = m.targetEmoji || (otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : isBottleThread ? "🌊" : "◌");
+      const plazaUser = plazaUsers.find(item => item.sessionKey === threadId || item.nickname === otherName);
+      const otherEmoji = otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
       if (!map[threadId]) {
         map[threadId] = {
           targetId: threadId,
@@ -2279,7 +2280,7 @@ export default function DriftApp() {
       }
     }
     return Object.values(map).sort((a, b) => b.lastMsg.createdAt - a.lastMsg.createdAt);
-  }, [directMessages]);
+  }, [directMessages, plazaUsers]);
 
   const markThreadAsRead = (threadId: string) => {
     const unreadServerMessages = directMessages.filter(message => message.threadId === threadId && !message.isMine && !message.read && message.serverId);
