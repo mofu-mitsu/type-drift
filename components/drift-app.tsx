@@ -2588,7 +2588,7 @@ export default function DriftApp() {
         <button
           type="button"
           className={`topbar-nav-btn ${activePage === "sea" ? "active" : ""}`}
-          onClick={() => { setActivePage("sea"); setIsPlaying(true); }}
+          onClick={() => { setGuideOpen(false); setActivePage("sea"); setIsPlaying(true); }}
         >
           <span className="topbar-nav-icon"><Waves size={15} /></span>
           <span className="topbar-nav-label">海を覗く</span>
@@ -2597,7 +2597,7 @@ export default function DriftApp() {
         <button
           type="button"
           className={`topbar-nav-btn ${activePage === "plaza" ? "active" : ""}`}
-          onClick={() => setActivePage("plaza")}
+          onClick={() => { setGuideOpen(false); setActivePage("plaza"); }}
         >
           <span className="topbar-nav-icon"><Sparkles size={14} /></span>
           <span className="topbar-nav-label">広場</span>
@@ -2606,7 +2606,7 @@ export default function DriftApp() {
         <button
           type="button"
           className={`topbar-nav-btn ${activePage === "activity" ? "active" : ""}`}
-          onClick={() => setActivePage("activity")}
+          onClick={() => { setGuideOpen(false); setActivePage("activity"); }}
         >
           <span className="topbar-nav-icon">
             <Compass size={16} />
@@ -2629,6 +2629,7 @@ export default function DriftApp() {
           type="button"
           className="topbar-bell-btn"
           onClick={() => {
+            setGuideOpen(false);
             setAnnouncementModalOpen(true);
             markAnnouncementsAsRead();
           }}
@@ -2644,7 +2645,7 @@ export default function DriftApp() {
         <button
           type="button"
           className="topbar-nav-btn"
-          onClick={() => setLoginOpen(true)}
+          onClick={() => { setGuideOpen(false); setLoginOpen(true); }}
         >
           <span className="topbar-nav-icon"><LogIn size={15} /></span>
           <span className="topbar-nav-label">{isAdminLoggedIn ? "マイアカウント" : "ログイン"}</span>
@@ -2716,21 +2717,21 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("sea"); setIsPlaying(true); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("sea"); setIsPlaying(true); setMobileMenuOpen(false); }}
             >
               <Waves size={16} color="#0d9488" /> 海を覗く（ボトル拾い）
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("plaza"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("plaza"); setMobileMenuOpen(false); }}
             >
               <Sparkles size={16} color="#9333ea" /> 類型広場
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("activity"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("activity"); setMobileMenuOpen(false); }}
             >
               <Compass size={16} color="#0284c7" /> 自分の活動・メッセージ
               
