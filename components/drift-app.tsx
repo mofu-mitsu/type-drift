@@ -2051,15 +2051,21 @@ export default function DriftApp() {
     const body = text.trim();
     if (!body) return false;
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
-    const myDisplayName = isProfileRevealed ? (nickname || "匿名のあなた") : "匿名のあなた";
+    const isBottleConversation = Boolean(target.bottleInfo);
+    const myDisplayName = isBottleConversation && !isProfileRevealed ? "匿名のあなた" : (nickname || "匿名のあなた");
     const targetBottleId = target.id.startsWith("bottle-") ? Number(target.id.slice("bottle-".length)) : 0;
     const hasMatchingBottle = Boolean(target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
 
-    // Bottle threads and ordinary person-to-person threads are stored in the shared Neon inbox.
-    const isSessionKey = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-");
+    // AIキャラクターは広場セッションID（UUID / plaza-...）を持っていても
+    // 人間向けのNeon DM APIへ送らない。以前はセッションID判定が先に当たり、
+    // API側の「AI bottle owners are not available for server DM」(422) に落ちていた。
+    const isAiTarget = target.id === "darling" || target.id === "worm" ||
+      /ダーリンちゃん|LSI芋虫/.test(target.name) ||
+      /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.author || "");
+    const isSessionKey = !isAiTarget && (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-"));
     const isServerThread = target.id.startsWith("dm-") || (target.id.startsWith("bottle-") && !hasMatchingBottle);
-    const isAiBottleTarget = Boolean(target.bottleInfo && (target.name.includes("ダーリンちゃん") || target.name.includes("LSI芋虫") || target.bottleInfo.author.includes("ダーリンちゃん") || target.bottleInfo.author.includes("LSI芋虫")));
-    if ((hasMatchingBottle && !isAiBottleTarget) || isSessionKey || (isServerThread && !isAiBottleTarget)) {
+    const isAiBottleTarget = isAiTarget;
+    if (!isAiTarget && ((hasMatchingBottle && !isAiBottleTarget) || isSessionKey || (isServerThread && !isAiBottleTarget))) {
       try {
         const payload = hasMatchingBottle
           ? { bottle_id: target.bottleInfo!.id, body, sender_name: myDisplayName, recipient_name: target.name }
