@@ -2576,7 +2576,7 @@ export default function DriftApp() {
 
   return <main className="site-shell">
     <nav className="topbar">
-      <button className="brand" type="button" onClick={() => setActivePage("home")} title="トップへ戻る">
+      <button className="brand" type="button" onClick={() => { setGuideOpen(false); setActivePage("home"); }} title="トップへ戻る">
         <span className="brand__mark"><Waves size={18} /></span>
         <div className="brand-text-wrap">
           <span className="brand-text-top">type</span>
@@ -2684,7 +2684,7 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("home"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("home"); setMobileMenuOpen(false); }}
             >
               <Home size={16} color="#0d9488" /> トップページ
             </button>
@@ -2739,21 +2739,21 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("consult"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("consult"); setMobileMenuOpen(false); }}
             >
               <span>☁️</span> 自認相談室
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("games"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("games"); setMobileMenuOpen(false); }}
             >
               <span>🐛</span> 芋虫浜（ミニゲーム）
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setActivePage("stars"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setActivePage("stars"); setMobileMenuOpen(false); }}
             >
               <span>✦</span> 認知機能の星座
             </button>
@@ -2779,7 +2779,7 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setLoginOpen(true); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setLoginOpen(true); setMobileMenuOpen(false); }}
             >
               <LogIn size={16} color="#475569" /> {isAdminLoggedIn ? "マイアカウント設定" : "ログイン"}
             </button>
@@ -2820,7 +2820,7 @@ export default function DriftApp() {
             <button
               className="play-button play-button--large"
               type="button"
-              onClick={() => { setIsPlaying(true); setActivePage("sea"); }}
+              onClick={() => { setGuideOpen(false); setIsPlaying(true); setActivePage("sea"); }}
             >
               <span>▶</span> 海を覗く
             </button>
@@ -3325,7 +3325,7 @@ export default function DriftApp() {
                 <h3>芋虫浜</h3>
                 <p>🥬を食べて、他の芋虫を追い越して。<br />オンラインで他のプレイヤーやNPCと遊べる、静かなSnake系ゲーム。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => setActivePage("games")}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("games"); }}>
                 遊ぶ →
               </button>
             </div>
@@ -3337,7 +3337,7 @@ export default function DriftApp() {
                 <h3>認知機能の星座</h3>
                 <p>3つの問いから考え方の癖を眺める小さな観測記録。<br />診断ではなく、思考の星のつながりを遊びながら描きます。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => setActivePage("stars")}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("stars"); }}>
                 観測する →
               </button>
             </div>
@@ -3349,7 +3349,7 @@ export default function DriftApp() {
                 <h3>自認相談室</h3>
                 <p>自分のタイプについての迷いを匿名で相談できます。<br />AIではなく、人間同士で仮説を静かに交換する場所。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => setActivePage("consult")}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("consult"); }}>
                 相談室へ →
               </button>
             </div>
@@ -3361,7 +3361,7 @@ export default function DriftApp() {
                 <h3>ことばのよせ波</h3>
                 <p>前の人の文章に一語・一節だけ続きを足し、広場全体でひとつの作品を作ります。<br />詳しいルールと入力欄は、広場のライブスレッド内にあります。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => setActivePage("chain")}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("chain"); }}>
                 よせ波へ →
               </button>
             </div>
