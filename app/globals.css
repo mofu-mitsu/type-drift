@@ -160,3 +160,15 @@
 }
 .profile-inspect-card button.clean-primary-btn:hover,
 .profile-inspect-card button[class*="primary"]:hover { background:linear-gradient(135deg,#d8f1e8,#fff2d8); }
+
+/* ボトルカードの「編集する」「回収（削除）」を独立したボタンに */
+.bottle-more-wrap { position:relative; display:inline-flex; align-items:center; }
+.bottle-more-wrap .more { display:grid; place-items:center; width:38px; height:38px; border:1px solid #d5e8e1; border-radius:50%; background:rgba(255,255,255,.88); color:#668a85; letter-spacing:2px; cursor:pointer; transition:background .18s,transform .18s; }
+.bottle-more-wrap .more:hover { background:#e9f8f1; transform:translateY(-1px); }
+.bottle-more-menu { position:absolute; right:0; bottom:calc(100% + 9px); z-index:60; display:flex; flex-direction:column; gap:7px; min-width:168px; padding:9px; border:1px solid #d8e9e2; border-radius:16px; background:rgba(255,255,255,.98); box-shadow:0 12px 34px rgba(42,82,75,.16); }
+.bottle-more-menu button { display:flex; align-items:center; width:100%; min-height:42px; padding:10px 13px; border:1px solid #e0eee8; border-radius:11px; background:#f3fbf7; color:#3c6662; text-align:left; font-size:14px; font-weight:650; cursor:pointer; transition:background .16s,border-color .16s; }
+.bottle-more-menu button + button { margin-top:2px; }
+.bottle-more-menu button:hover { border-color:#bddfd3; background:#e4f6ee; }
+.bottle-more-menu button[role="menuitem"]:last-child:not(:first-child) { background:#fff6f1; border-color:#f0ded5; color:#9a6257; }
+.bottle-more-menu button[role="menuitem"]:last-child:not(:first-child):hover { background:#ffebe4; border-color:#e8c7bb; }
+@media(max-width:520px) { .bottle-more-menu { min-width:154px; } .bottle-more-menu button { min-height:44px; } }
