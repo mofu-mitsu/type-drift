@@ -102,3 +102,27 @@
 .plaza-chat-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .plaza-chat-textarea{field-sizing:content;min-height:72px;max-height:38dvh}
 @media(max-width:520px){.bottle-action-backdrop{padding:12px}.bottle-action-modal{border-radius:22px;padding:24px 18px}.bottle-action-actions{display:grid;grid-template-columns:1fr 1fr}.bottle-action-actions button{padding-inline:10px}}
+
+
+/* Type Drift: 長い心理テスト・テンプレート回答を省略せず表示 */
+.plaza-chat-text {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  max-height: none;
+  height: auto;
+  overflow: visible;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+.plaza-chat-body,
+.plaza-chat-item,
+.plaza-live-thread .plaza-chat {
+  min-width: 0;
+}
+.plaza-live-thread .plaza-chat {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
