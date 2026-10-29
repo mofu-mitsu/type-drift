@@ -139,12 +139,25 @@ export default {
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
           const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
           context = lastRows[0] || null;
-          if (!context) return json({ message: "thread not found or forbidden" }, 404, env, request);
-          const currentIsSender = context.sender_guest_key === key;
-          recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
-          senderName = currentIsSender ? context.sender_name : context.recipient_name;
-          recipientName = currentIsSender ? context.recipient_name : context.sender_name;
-          bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+          if (context) {
+            const currentIsSender = context.sender_guest_key === key;
+            recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
+            senderName = currentIsSender ? context.sender_name : context.recipient_name;
+            recipientName = currentIsSender ? context.recipient_name : context.sender_name;
+            bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+          } else if (threadId.startsWith("dm-")) {
+            // A locally restored DM thread may exist before its first server row.
+            // Recover the other participant from the stable dm-{sorted guest keys} ID.
+            const prefix = `dm-${key}-`;
+            const suffix = `-${key}`;
+            if (threadId.startsWith(prefix)) recipientKey = threadId.slice(prefix.length);
+            else if (threadId.endsWith(suffix)) recipientKey = threadId.slice(3, -suffix.length);
+            if (!recipientKey || recipientKey === key) {
+              return json({ message: "thread not found or forbidden" }, 404, env, request);
+            }
+          } else {
+            return json({ message: "thread not found or forbidden" }, 404, env, request);
+          }
         } else if (b.recipient_session_key) {
           const sessionKey = clean(b.recipient_session_key, 120);
           const targetRows = await sql`SELECT guest_key, nickname FROM presence_sessions WHERE session_key=${sessionKey} AND guest_key IS NOT NULL AND last_seen_at > NOW() - INTERVAL '10 minutes' ORDER BY last_seen_at DESC LIMIT 1`;
