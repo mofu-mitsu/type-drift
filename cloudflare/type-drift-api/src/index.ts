@@ -88,6 +88,15 @@ export default {
         return deleted.length ? json({ ok: true }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
       }
 
+      if (bottleMatch && method === "PATCH" && !bottleMatch[2]) {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        const b = await bodyOf(request);
+        const text = clean(b.body, 5000);
+        if (!text) return json({ message: "body is required" }, 422, env, request);
+        const updated = await sql`UPDATE bottles SET body=${text},updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL RETURNING id,body,updated_at`;
+        return updated.length ? json({ bottle: updated[0] }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
+      }
+
       if (bottleMatch && method === "POST" && bottleMatch[2] === "reactions") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         const id = Number(bottleMatch[1]);
@@ -139,12 +148,39 @@ export default {
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
           const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
           context = lastRows[0] || null;
-          if (!context) return json({ message: "thread not found or forbidden" }, 404, env, request);
-          const currentIsSender = context.sender_guest_key === key;
-          recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
-          senderName = currentIsSender ? context.sender_name : context.recipient_name;
-          recipientName = currentIsSender ? context.recipient_name : context.sender_name;
-          bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+          if (context) {
+            const currentIsSender = context.sender_guest_key === key;
+            recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
+            senderName = currentIsSender ? context.sender_name : context.recipient_name;
+            recipientName = currentIsSender ? context.recipient_name : context.sender_name;
+            bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
+          } else if (bottleId) {
+            // The first DM from a real bottle has no existing thread row yet.
+            const ownerRows = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${bottleId} AND deleted_at IS NULL LIMIT 1`;
+            const owner = ownerRows[0];
+            if (!owner?.guest_key) return json({ message: "bottle owner not found" }, 404, env, request);
+            if (String(owner.guest_key) === key) return json({ message: "cannot message yourself" }, 422, env, request);
+            if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
+            recipientKey = String(owner.guest_key);
+            const ownerType = [owner.socionics, owner.enneagram, owner.mbti, owner.other_type].filter(Boolean).join(" · ");
+            context = {
+              bottle_snippet: owner.body,
+              bottle_author: `匿名の${owner.mbti || owner.socionics || "ボトル主"}`,
+              bottle_type: ownerType,
+            };
+          } else if (threadId.startsWith("dm-")) {
+            // A locally restored DM thread may exist before its first server row.
+            // Recover the other participant from the stable dm-{sorted guest keys} ID.
+            const prefix = `dm-${key}-`;
+            const suffix = `-${key}`;
+            if (threadId.startsWith(prefix)) recipientKey = threadId.slice(prefix.length);
+            else if (threadId.endsWith(suffix)) recipientKey = threadId.slice(3, -suffix.length);
+            if (!recipientKey || recipientKey === key) {
+              return json({ message: "thread not found or forbidden" }, 404, env, request);
+            }
+          } else {
+            return json({ message: "thread not found or forbidden" }, 404, env, request);
+          }
         } else if (b.recipient_session_key) {
           const sessionKey = clean(b.recipient_session_key, 120);
           const targetRows = await sql`SELECT guest_key, nickname FROM presence_sessions WHERE session_key=${sessionKey} AND guest_key IS NOT NULL AND last_seen_at > NOW() - INTERVAL '10 minutes' ORDER BY last_seen_at DESC LIMIT 1`;
