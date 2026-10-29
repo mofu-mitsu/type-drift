@@ -88,6 +88,15 @@ export default {
         return deleted.length ? json({ ok: true }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
       }
 
+      if (bottleMatch && method === "PATCH" && !bottleMatch[2]) {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        const b = await bodyOf(request);
+        const text = clean(b.body, 5000);
+        if (!text) return json({ message: "body is required" }, 422, env, request);
+        const updated = await sql`UPDATE bottles SET body=${text},updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL RETURNING id,body,updated_at`;
+        return updated.length ? json({ bottle: updated[0] }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
+      }
+
       if (bottleMatch && method === "POST" && bottleMatch[2] === "reactions") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         const id = Number(bottleMatch[1]);
