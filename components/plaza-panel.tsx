@@ -31,7 +31,7 @@ export type PlazaPanelProps = {
   onToast?: (message: string) => void;
   onPresenceUpdate?: (count: number) => void;
   onPresenceUsers?: (users: PlazaUser[]) => void;
-  onUserMessageSent?: (text: string, author?: string) => void;
+  onUserMessageSent?: (text: string, author?: string) => boolean | void;
   onDirectMessageReceived?: (message: PlazaDirectMessage) => void;
 };
 
@@ -310,8 +310,8 @@ export default function PlazaPanel({
     if (api) void apiFetch('/api/plaza/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ nickname: author, body }) }).catch(() => undefined);
     logActivity('plaza_message', { bodyLength: body.length, author });
     setText('');
-    onUserMessageSent?.(body, author);
-    window.setTimeout(() => void requestAi(body), 350);
+    const handledByLocalGame = onUserMessageSent?.(body, author) === true;
+    if (!handledByLocalGame) window.setTimeout(() => void requestAi(body), 350);
   };
 
   const appendChain = () => {
@@ -496,7 +496,6 @@ export default function PlazaPanel({
           value={text}
           onChange={event => setText(event.target.value)}
           placeholder="広場にひとこと…（改行可能 / 送るボタンで送信）"
-          maxLength={300}
           rows={2}
           className="plaza-chat-textarea"
         />
