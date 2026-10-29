@@ -135,9 +135,9 @@ export default function PlazaPanel({
                 const filtered = current.filter(item => item.id !== msg.id && !(msg.kind === 'ai' && item.kind === 'ai' && item.author === msg.author && item.body === msg.body && Math.abs(item.createdAt - Date.now()) < 15_000));
                 return [...filtered, msg].slice(-80);
               });
-              if (msg.kind === 'human') {
-                onUserMessageSent?.(msg.body, msg.author);
-              }
+              // 自分の送信時に sendMessage() 側でゲーム判定・心理テスト判定を行う。
+              // WebSocket のエコーでも再実行すると、同じ回答テンプレートが二重投稿されるため、
+              // 受信側ではゲーム判定を呼ばない。
               // エモートの場合、トースト通知も出す
               if (msg.kind === 'emote') {
                 const notice = `${msg.author}から ${msg.body} が届きました`;
