@@ -2473,11 +2473,62 @@ export default function DriftApp() {
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
-  const uploadToCloudinary = async (dataUrl?: string) => { const cleanEnv = (value?: string) => (value || "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim(); const cloudName = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME); const preset = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET); if (!dataUrl) return undefined; if (!cloudName || !preset) { setPlazaToast("画像保存は未設定ですが、本文だけ投稿できます。Cloudinary設定後に画像を保存できます"); return undefined; } const form = new FormData(); form.append("file", dataUrl); form.append("upload_preset", preset); const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form }); const raw = await response.text(); if (!response.ok) { let detail = raw; try { detail = JSON.parse(raw)?.error?.message || raw; } catch {} throw new Error(`Cloudinary upload failed (${response.status}): ${detail.slice(0, 240)}`); } let result: { secure_url?: string }; try { result = JSON.parse(raw); } catch { throw new Error("Cloudinary upload failed: invalid response"); } if (!result.secure_url) throw new Error("Cloudinary upload failed: secure_url missing"); return result.secure_url; };
+  const uploadToCloudinary = async (dataUrl?: string) => {
+    const cleanEnv = (value?: string) => (value || "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim();
+    const cloudName = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);
+    const preset = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET);
+    if (!dataUrl) return undefined;
+    if (!cloudName || !preset) {
+      throw new Error("画像をアップロードできませんでした。画像保存の設定が未完了のため、投稿は保存されていません。");
+    }
+    const form = new FormData();
+    form.append("file", dataUrl);
+    form.append("upload_preset", preset);
+    let response: Response;
+    let raw = "";
+    try {
+      response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: form });
+      raw = await response.text();
+    } catch {
+      throw new Error("画像のアップロード中に通信エラーが発生しました。接続を確認してもう一度お試しください。");
+    }
+    if (!response.ok) {
+      let detail = "";
+      try { detail = String(JSON.parse(raw)?.error?.message || ""); } catch {}
+      if (response.status === 413 || /too large|file size|limit/i.test(detail)) {
+        throw new Error("画像をアップロードできませんでした。1枚5MB以内の画像を選んでください。");
+      }
+      throw new Error(`画像のアップロードに失敗しました（HTTP ${response.status}）。画像と本文は投稿されていません。`);
+    }
+    let result: { secure_url?: string };
+    try { result = JSON.parse(raw); } catch {
+      throw new Error("画像の保存結果を確認できませんでした。画像と本文は投稿されていません。");
+    }
+    if (!result.secure_url) throw new Error("画像の保存先を取得できませんでした。画像と本文は投稿されていません。");
+    return result.secure_url;
+  };
   const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
   const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); await apiFetch('/api/question-prompts', { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
-  const readDraftImage = (file: File | undefined) => { if (!file) return; if (!file.type.startsWith("image/")) return; if (file.size > 5 * 1024 * 1024) { setPlazaToast("画像は5MB以内にしてください"); return; } const reader = new FileReader(); reader.onload = () => setDraftImage(String(reader.result)); reader.readAsDataURL(file); };
+  const readDraftImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPlazaToast("画像ファイルを選択してください。");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setDraftImage(undefined);
+      setPlazaToast("画像は1枚5MB以内にしてください。");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setDraftImage(reader.result);
+      else setPlazaToast("画像を読み込めませんでした。別の画像を選んでください。");
+    };
+    reader.onerror = () => setPlazaToast("画像を読み込めませんでした。別の画像を選んでください。");
+    reader.readAsDataURL(file);
+  };
   const guestKey = () => { let key = localStorage.getItem("type-drift-guest-key"); if (!key) { key = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", key); } return key; };
   const sendReply = async () => {
     if (!reply.trim() || !selected) return;
@@ -2576,7 +2627,7 @@ export default function DriftApp() {
 
   return <main className="site-shell">
     <nav className="topbar">
-      <button className="brand" type="button" onClick={() => { setGuideOpen(false); setActivePage("home"); }} title="トップへ戻る">
+      <button className="brand" type="button" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("home"); }} title="トップへ戻る">
         <span className="brand__mark"><Waves size={18} /></span>
         <div className="brand-text-wrap">
           <span className="brand-text-top">type</span>
@@ -2588,7 +2639,7 @@ export default function DriftApp() {
         <button
           type="button"
           className={`topbar-nav-btn ${activePage === "sea" ? "active" : ""}`}
-          onClick={() => { setGuideOpen(false); setActivePage("sea"); setIsPlaying(true); }}
+          onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("sea"); setIsPlaying(true); }}
         >
           <span className="topbar-nav-icon"><Waves size={15} /></span>
           <span className="topbar-nav-label">海を覗く</span>
@@ -2597,7 +2648,7 @@ export default function DriftApp() {
         <button
           type="button"
           className={`topbar-nav-btn ${activePage === "plaza" ? "active" : ""}`}
-          onClick={() => { setGuideOpen(false); setActivePage("plaza"); }}
+          onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("plaza"); }}
         >
           <span className="topbar-nav-icon"><Sparkles size={14} /></span>
           <span className="topbar-nav-label">広場</span>
@@ -2606,7 +2657,7 @@ export default function DriftApp() {
         <button
           type="button"
           className={`topbar-nav-btn ${activePage === "activity" ? "active" : ""}`}
-          onClick={() => { setGuideOpen(false); setActivePage("activity"); }}
+          onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("activity"); }}
         >
           <span className="topbar-nav-icon">
             <Compass size={16} />
@@ -2618,7 +2669,7 @@ export default function DriftApp() {
         <button
           type="button"
           className="topbar-nav-btn"
-          onClick={() => setGuideOpen(true)}
+          onClick={() => { setAnnouncementModalOpen(false); setGuideOpen(open => !open); }}
           title="使い方ガイド"
         >
           <span className="topbar-nav-icon"><HelpCircle size={15} /></span>
@@ -2630,7 +2681,7 @@ export default function DriftApp() {
           className="topbar-bell-btn"
           onClick={() => {
             setGuideOpen(false);
-            setAnnouncementModalOpen(true);
+            setAnnouncementModalOpen(open => !open);
             markAnnouncementsAsRead();
           }}
           title="お知らせ・運営からのお便り"
@@ -2645,7 +2696,7 @@ export default function DriftApp() {
         <button
           type="button"
           className="topbar-nav-btn"
-          onClick={() => { setGuideOpen(false); setLoginOpen(true); }}
+          onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setLoginOpen(true); }}
         >
           <span className="topbar-nav-icon"><LogIn size={15} /></span>
           <span className="topbar-nav-label">{isAdminLoggedIn ? "マイアカウント" : "ログイン"}</span>
@@ -2654,7 +2705,7 @@ export default function DriftApp() {
         <button
           type="button"
           className="topbar-menu-btn"
-          onClick={() => setMobileMenuOpen(true)}
+          onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setMobileMenuOpen(true); }}
           title="メニューを開く"
           aria-label="メニュー"
         >
@@ -2684,7 +2735,7 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("home"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("home"); setMobileMenuOpen(false); }}
             >
               <Home size={16} color="#0d9488" /> トップページ
             </button>
@@ -2717,21 +2768,21 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("sea"); setIsPlaying(true); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("sea"); setIsPlaying(true); setMobileMenuOpen(false); }}
             >
               <Waves size={16} color="#0d9488" /> 海を覗く（ボトル拾い）
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("plaza"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("plaza"); setMobileMenuOpen(false); }}
             >
               <Sparkles size={16} color="#9333ea" /> 類型広場
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("activity"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("activity"); setMobileMenuOpen(false); }}
             >
               <Compass size={16} color="#0284c7" /> 自分の活動・メッセージ
               
@@ -2739,28 +2790,28 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("consult"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("consult"); setMobileMenuOpen(false); }}
             >
               <span>☁️</span> 自認相談室
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("games"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("games"); setMobileMenuOpen(false); }}
             >
               <span>🐛</span> 芋虫浜（ミニゲーム）
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setActivePage("stars"); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("stars"); setMobileMenuOpen(false); }}
             >
               <span>✦</span> 認知機能の星座
             </button>
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(true); setMobileMenuOpen(false); }}
+              onClick={() => { setAnnouncementModalOpen(false); setGuideOpen(open => !open); setMobileMenuOpen(false); }}
             >
               <HelpCircle size={16} color="#0d9488" /> 使い方ガイド
             </button>
@@ -2768,7 +2819,8 @@ export default function DriftApp() {
               type="button"
               className="drawer-link-item"
               onClick={() => {
-                setAnnouncementModalOpen(true);
+                setGuideOpen(false);
+                setAnnouncementModalOpen(open => !open);
                 markAnnouncementsAsRead();
                 setMobileMenuOpen(false);
               }}
@@ -2779,7 +2831,7 @@ export default function DriftApp() {
             <button
               type="button"
               className="drawer-link-item"
-              onClick={() => { setGuideOpen(false); setLoginOpen(true); setMobileMenuOpen(false); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setLoginOpen(true); setMobileMenuOpen(false); }}
             >
               <LogIn size={16} color="#475569" /> {isAdminLoggedIn ? "マイアカウント設定" : "ログイン"}
             </button>
@@ -2820,7 +2872,7 @@ export default function DriftApp() {
             <button
               className="play-button play-button--large"
               type="button"
-              onClick={() => { setGuideOpen(false); setIsPlaying(true); setActivePage("sea"); }}
+              onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setIsPlaying(true); setActivePage("sea"); }}
             >
               <span>▶</span> 海を覗く
             </button>
@@ -3325,7 +3377,7 @@ export default function DriftApp() {
                 <h3>芋虫浜</h3>
                 <p>🥬を食べて、他の芋虫を追い越して。<br />オンラインで他のプレイヤーやNPCと遊べる、静かなSnake系ゲーム。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("games"); }}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("games"); }}>
                 遊ぶ →
               </button>
             </div>
@@ -3337,7 +3389,7 @@ export default function DriftApp() {
                 <h3>認知機能の星座</h3>
                 <p>3つの問いから考え方の癖を眺める小さな観測記録。<br />診断ではなく、思考の星のつながりを遊びながら描きます。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("stars"); }}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("stars"); }}>
                 観測する →
               </button>
             </div>
@@ -3349,7 +3401,7 @@ export default function DriftApp() {
                 <h3>自認相談室</h3>
                 <p>自分のタイプについての迷いを匿名で相談できます。<br />AIではなく、人間同士で仮説を静かに交換する場所。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("consult"); }}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("consult"); }}>
                 相談室へ →
               </button>
             </div>
@@ -3361,7 +3413,7 @@ export default function DriftApp() {
                 <h3>ことばのよせ波</h3>
                 <p>前の人の文章に一語・一節だけ続きを足し、広場全体でひとつの作品を作ります。<br />詳しいルールと入力欄は、広場のライブスレッド内にあります。</p>
               </div>
-              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("chain"); }}>
+              <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("chain"); }}>
                 よせ波へ →
               </button>
             </div>
@@ -5295,7 +5347,7 @@ export default function DriftApp() {
                 <p>
                   誰かの思考のかけらがボトルに入って波間に揺られています。拾って読んだり、ハートや返信を送れます。右上の「秘密を流す」から、あなたの胸にある違和感や思考を海へ放つこともできます。
                 </p>
-                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("plaza"); }}>海を覗きに行く</button>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("plaza"); }}>海を覗きに行く</button>
               </div>
             </div>
 
@@ -5306,7 +5358,7 @@ export default function DriftApp() {
                 <p>
                   人とAIが同じ空の下で過ごす場所。広場にメッセージを投稿したり、住人のアバターをタップしてプロフィールの閲覧や「💌 個別メッセージ（DM）」を送ることができます。
                 </p>
-                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("plaza"); }}>類型広場へ行く</button>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("plaza"); }}>類型広場へ行く</button>
               </div>
             </div>
 
@@ -5317,7 +5369,7 @@ export default function DriftApp() {
                 <p>
                   「ソシオニクス タイプの推定」や「15二分法の考察」などを担当者に依頼できます。診断結果が届くと通知され、考察の全文確認や追加のやり取りが可能です。みんなに相談できる公開フォーラムもあります。
                 </p>
-                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("consult"); }}>自認相談室へ行く</button>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("consult"); }}>自認相談室へ行く</button>
               </div>
             </div>
 
@@ -5328,7 +5380,7 @@ export default function DriftApp() {
                 <p>
                   流したボトル、いいね・返信した履歴、個別メッセージ（DM）、届いたお返事や自認診断の通知がすべてここに集約されます。自認設定の編集もここから行えます。
                 </p>
-                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("activity"); }}>あなたの活動を見る</button>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("activity"); }}>あなたの活動を見る</button>
               </div>
             </div>
 
@@ -5339,7 +5391,7 @@ export default function DriftApp() {
                 <p>
                   LSI芋虫の境界検疫テストや、ダーリンちゃんの心理テスト・数当てゲーム、認知機能の星座など、類型思考を深く愉しむコンテンツが揃っています。
                 </p>
-                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setActivePage("games"); }}>ミニゲームで遊ぶ</button>
+                <button type="button" className="facility-btn" onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setActivePage("games"); }}>ミニゲームで遊ぶ</button>
               </div>
             </div>
           </div>
