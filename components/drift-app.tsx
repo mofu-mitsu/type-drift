@@ -1234,8 +1234,8 @@ export default function DriftApp() {
         return true;
       }
     }
+    return false;
   };
-
   const giftBuri = (target: "darling" | "worm" | "guest") => {
     if (buriCount <= 0) {
       setPlazaToast("ブリを持っていません。海を覗くとたまにブリが釣れます 🐟");
