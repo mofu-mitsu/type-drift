@@ -6,6 +6,20 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
 ]);
 
+// Allow production plus this project's own Vercel preview deployments.
+// Keep the team suffix fixed so unrelated *.vercel.app origins stay blocked.
+function isAllowedOrigin(origin: string | null) {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return url.protocol === "https:" &&
+      /^type-drift-[a-z0-9-]+-mitsukis-projects-83ef3825\.vercel\.app$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 type HistoryItem = {
   author?: string;
   character?: string;
@@ -52,7 +66,7 @@ function parseReply(content: unknown, character: string) {
 
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
-  if (origin && !ALLOWED_ORIGINS.has(origin)) {
+  if (!isAllowedOrigin(origin)) {
     return NextResponse.json({ error: "origin_not_allowed" }, { status: 403 });
   }
 
