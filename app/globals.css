@@ -266,3 +266,7 @@
   .dm-send-modal .dm-send-textarea { min-height: 112px; max-height: 26dvh; }
   .dm-send-modal .dm-send-actions { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+
+/* 広場の住人：設定済みプロフィール画像を匿名記号の代わりに表示 */
+.plaza-chat-avatar img { display:block; width:100%; height:100%; border-radius:inherit; object-fit:cover; }
