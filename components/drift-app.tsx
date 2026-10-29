@@ -4116,10 +4116,10 @@ export default function DriftApp() {
                       {/* 長文対応メッセージ入力欄 */}
                       <div className="dm-v2-input-section">
                         <form
-                          onSubmit={e => {
+                          onSubmit={async e => {
                             e.preventDefault();
                             if (!dmReplyText.trim()) return;
-                            sendDirectMessage(
+                            const sent = await sendDirectMessage(
                               {
                                 id: currentThread.targetId,
                                 name: currentThread.name,
@@ -4129,7 +4129,7 @@ export default function DriftApp() {
                               },
                               dmReplyText
                             );
-                            setDmReplyText("");
+                            if (sent) setDmReplyText("");
                           }}
                           className="dm-v2-textarea-wrap"
                         >
@@ -4143,7 +4143,7 @@ export default function DriftApp() {
                               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                                 e.preventDefault();
                                 if (dmReplyText.trim()) {
-                                  sendDirectMessage(
+                                  void sendDirectMessage(
                                     {
                                       id: currentThread.targetId,
                                       name: currentThread.name,
@@ -4152,12 +4152,11 @@ export default function DriftApp() {
                                       bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                                     },
                                     dmReplyText
-                                  );
-                                  setDmReplyText("");
+                                  ).then(sent => { if (sent) setDmReplyText(""); });
                                 }
                               }
                             }}
-                            placeholder={isBottleThread ? "ボトルの主へメッセージを入力（長文・改行も可能）…" : `${currentThread.name}へメッセージを入力（長文・改行も可能）…`}
+                            placeholder="メッセージを入力（長文・改行も可能）…"
                             maxLength={2000}
                           />
                           <div className="dm-v2-input-footer">
