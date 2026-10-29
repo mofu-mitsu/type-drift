@@ -2059,6 +2059,7 @@ export default function DriftApp() {
     // 人間向けのNeon DM APIへ送らない。以前はセッションID判定が先に当たり、
     // API側の「AI bottle owners are not available for server DM」(422) に落ちていた。
     const isAiTarget = target.id === "darling" || target.id === "worm" ||
+      /^AI(?:\s|·|$)/i.test(target.type || "") ||
       /ダーリンちゃん|LSI芋虫/.test(target.name) ||
       /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.author || "");
     const isSessionKey = !isAiTarget && (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-"));
