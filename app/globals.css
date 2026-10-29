@@ -148,3 +148,15 @@
 @media(max-width:560px) { .dm-profile-modal { padding:20px; border-radius:22px; } .dm-profile-modal .profile-inspect-head { align-items:flex-start; } }
 /* Make the message action button in the bottle/profile card look intentional */
 .dm-send-modal-header .eyebrow { display:inline-block; padding:5px 9px; border-radius:999px; background:rgba(226,246,240,.9); border:1px solid #cfe8e0; color:#438b88; }
+
+/* プロフィールからの「メッセージを送る」を透明な帯にしない */
+.profile-inspect-card button.clean-primary-btn,
+.profile-inspect-card button[class*="primary"] {
+  display:flex; width:100%; align-items:center; justify-content:center; gap:8px;
+  min-height:48px; margin:22px 0 10px; padding:12px 18px;
+  border:1px solid #c5e5dc; border-radius:14px;
+  background:linear-gradient(135deg,#e8f8f1,#fff9e9); color:#356f70;
+  font-weight:700; box-shadow:0 4px 12px rgba(54,116,111,.08); cursor:pointer;
+}
+.profile-inspect-card button.clean-primary-btn:hover,
+.profile-inspect-card button[class*="primary"]:hover { background:linear-gradient(135deg,#d8f1e8,#fff2d8); }
