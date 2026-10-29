@@ -132,15 +132,21 @@ export default function PlazaPanel({
             } else if (data.type === 'plaza_message' && data.message) {
               const msg: PlazaMessage = data.message;
               setMessages(current => {
-                const now = Date.now();
-                // ローカルで表示したAI返信がWebSocket経由でも届いた場合、
-                // 中継側で本文が切り詰められていても同一キャラの直近返信として重複を抑止。
-                const isDuplicateAiEcho = msg.kind === 'ai' && current.some(item =>
-                  item.kind === 'ai' &&
-                  item.author === msg.author &&
-                  Math.abs(item.createdAt - now) < 2500
-                );
-                if (isDuplicateAiEcho) return current;
+                const character = /ダーリンちゃん|LSI芋虫/.test(msg.author);
+                const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+                // AI応答が中継から kind='human' や別IDで再配信されるケースも除外。
+                // 本文が同一、または短縮版が長文の先頭と一致する場合を重複とみなす。
+                const incomingBody = normalize(msg.body);
+                const isDuplicateCharacterEcho = character && current.some(item => {
+                  if (item.author !== msg.author) return false;
+                  if (!/ダーリンちゃん|LSI芋虫/.test(item.author)) return false;
+                  if (Math.abs(item.createdAt - msg.createdAt) > 60_000) return false;
+                  const existingBody = normalize(item.body);
+                  const shorter = existingBody.length <= incomingBody.length ? existingBody : incomingBody;
+                  const longer = existingBody.length > incomingBody.length ? existingBody : incomingBody;
+                  return shorter.length > 35 && longer.startsWith(shorter.slice(0, Math.min(shorter.length, 100)));
+                });
+                if (isDuplicateCharacterEcho) return current;
                 const filtered = current.filter(item => item.id !== msg.id);
                 return [...filtered, msg].slice(-80);
               });
@@ -465,9 +471,10 @@ export default function PlazaPanel({
               );
             }
 
-            const isAi = message.kind === 'ai';
-            // キャラクターアイコンは固定。サーバー側のemoji欠落・上書きに影響されない。
-            const avatarEmoji = isAi
+            const isCharacter = /ダーリンちゃん|LSI芋虫/.test(message.author);
+            const isAi = message.kind === 'ai' || isCharacter;
+            // キャラクター名を優先してアイコンとAIラベルを固定する。
+            const avatarEmoji = isCharacter
               ? (message.author.includes('芋虫') ? '🐛' : '🥺')
               : (message.emoji || '◌');
 
