@@ -4161,11 +4161,45 @@ export default function DriftApp() {
                             )}
                           </div>
                         </div>
-                        <div style={{ width: "80px", textAlign: "right" }}>
-                          {isBottleThread && (
-                            <span style={{ fontSize: "10px", color: "#0d9488", background: "#ccfbf1", padding: "3px 8px", borderRadius: "10px", fontWeight: 700 }}>
-                              自認共有中
+                        <div className="dm-v2-header-actions">
+                          {isBottleThread ? (
+                            <span className="dm-v2-identity-pill">
+                              {currentThread.type && currentThread.type !== "自認未設定" ? currentThread.type : "自認未設定"}
                             </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="dm-v2-profile-btn"
+                              onClick={() => {
+                                const user = plazaUsers.find(item =>
+                                  item.sessionKey === activeDmThreadId ||
+                                  item.nickname === currentThread.name
+                                );
+                                if (activeDmThreadId === "darling" || currentThread.name.includes("ダーリンちゃん")) {
+                                  setInspectProfile({
+                                    id: "darling", name: "ダーリンちゃん", emoji: "🥺",
+                                    mbti: "INTP", socionics: "ILI", enneagram: "5w4", psycho: "Psychosophy: LVEF",
+                                    overview: "現実に消耗しきっている眠り姫タイプ。世界を抽象構造で捉えるギークアリス。猫なで声でユーザーを「ダーリン♡」と呼ぶFe実験用の仮面を被っている。"
+                                  });
+                                } else if (activeDmThreadId === "worm" || currentThread.name.includes("LSI芋虫")) {
+                                  setInspectProfile({
+                                    id: "worm", name: "LSI芋虫", emoji: "🐛",
+                                    mbti: "INTJ", socionics: "LSI-Ni", enneagram: "5w6", psycho: "Psychosophy: FVLE",
+                                    overview: "広場の空間支配と物理境界線の維持を担当する自律防衛オブジェクト。領域確保と境界線の維持を重視する。"
+                                  });
+                                } else {
+                                  setInspectProfile({
+                                    id: activeDmThreadId,
+                                    name: user?.nickname || currentThread.name,
+                                    emoji: user?.emoji || currentThread.emoji || "◌",
+                                    image: user?.avatarUrl,
+                                    overview: "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
+                                  });
+                                }
+                              }}
+                            >
+                              プロフィールを見る
+                            </button>
                           )}
                         </div>
                       </div>
