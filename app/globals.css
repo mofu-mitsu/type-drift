@@ -241,3 +241,28 @@
   .dm-send-modal .dm-send-textarea { min-height:clamp(120px, 24dvh, 210px); max-height:30dvh; font-size:16px; }
   .dm-send-modal .dm-send-actions { padding-bottom:env(safe-area-inset-bottom); }
 }
+
+
+/* DM送信モーダル：モバイルのキーボード表示中も入力欄と送信操作を見失わない */
+.dm-send-modal {
+  width: min(100%, 560px); max-height: min(88dvh, 820px); overflow-y: auto;
+  overscroll-behavior: contain; background: #fffdf7; border: 1px solid #d4e8e2;
+  box-shadow: 0 22px 70px rgba(28,74,76,.24); -webkit-overflow-scrolling: touch;
+}
+.dm-send-modal .dm-send-desc { color: #52696c; line-height: 1.8; }
+.dm-send-modal .dm-send-textarea {
+  display: block; width: 100%; min-height: 130px; max-height: 34dvh; padding: 15px 16px;
+  border: 1px solid #b9d9d2; border-radius: 16px; background: #fffdf8; color: #22383e;
+  font-size: 16px; line-height: 1.7; resize: vertical; scroll-margin-block: 18px;
+}
+.dm-send-modal .dm-send-textarea:focus { border-color: #62b8ac; box-shadow: 0 0 0 3px rgba(98,184,172,.16); outline: none; }
+.dm-send-modal .dm-send-actions { position: sticky; bottom: -1px; display: flex; gap: 10px; padding-top: 12px; background: #fffdf7; }
+.dm-send-modal .dm-send-actions > button { flex: 1; min-height: 48px; }
+@media (max-width: 600px) {
+  .modal-backdrop:has(.dm-send-modal) { place-items: start center; padding: max(10px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); overflow-y: auto; background: rgba(30,61,64,.42); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .dm-send-modal { width: 100%; max-height: 76dvh; margin: 4px 0 12px; padding: 24px 18px 18px; border-radius: 22px; }
+  .dm-send-modal .dm-send-modal-header { padding-right: 28px; }
+  .dm-send-modal .dm-send-modal-header h3 { font-size: 1.25rem; line-height: 1.5; }
+  .dm-send-modal .dm-send-textarea { min-height: 112px; max-height: 26dvh; }
+  .dm-send-modal .dm-send-actions { padding-bottom: env(safe-area-inset-bottom); }
+}
