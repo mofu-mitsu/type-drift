@@ -15,7 +15,8 @@ export type PlazaMessage = {
 export type PlazaUser = { sessionKey: string; nickname: string; emoji: string; avatarUrl?: string };
 export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
-const WORLD = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL || process.env.NEXT_PUBLIC_WORM_WORLD_URL || 'https://type-drift-plaza-realtime.mitsuki-momoka.workers.dev';
+const configuredPlazaWorld = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL;
+const WORLD = configuredPlazaWorld && !/onrender\.com/i.test(configuredPlazaWorld) ? configuredPlazaWorld : 'https://type-drift-plaza-realtime.mitsuki-momoka.workers.dev';
 const WS = `${WORLD.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')}/ws`;
 const NPC_COUNT = 2;
 const EMOTES = ['👋', '✦', '🌊', '💭', '🩷', '✨', '🍵'];
