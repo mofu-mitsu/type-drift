@@ -40,7 +40,8 @@ export class PlazaRoom {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname !== "/ws") return new Response("not found", { status: 404 });
+    const path = url.pathname.replace(/\\/+$/, "") || "/";
+    if (path !== "/ws") return new Response("not found", { status: 404 });
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
@@ -190,8 +191,13 @@ export class PlazaRoom {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const path = url.pathname.replace(/\\/+$/, "") || "/";
 
-    if (url.pathname === "/ws") {
+    if (path === "/" || path === "/health") {
+      return json({ status: "ok", service: "type-drift-plaza-realtime", websocketPath: "/ws" });
+    }
+
+    if (path === "/ws") {
       if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
         return new Response("expected websocket", { status: 426 });
       }
