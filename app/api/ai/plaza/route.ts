@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     mode?: unknown;
     history?: unknown;
   } | null;
-  const body = typeof input?.body === "string" ? input.body.trim().slice(0, 1800) : "";
+  const body = typeof input?.body === "string" ? input.body.trim() : "";
   if (!body) return NextResponse.json({ source: "error", reason: "empty_prompt", model: MODEL }, { status: 422 });
 
   const history = Array.isArray(input?.history)
