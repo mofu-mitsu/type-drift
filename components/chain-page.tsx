@@ -65,7 +65,7 @@ export default function ChainPage({ onBack, onToast }: ChainPageProps) {
     const body = addition.trim();
     if (!body || saving) return;
     if (!api) {
-      onToast('今は言葉を追加できませんでした。少し待ってからもう一度試してみてください。');
+      onToast('保存先APIが設定されていないため、追加できません。');
       return;
     }
     setSaving(true);
@@ -82,7 +82,7 @@ export default function ChainPage({ onBack, onToast }: ChainPageProps) {
       setAddition('');
       onToast('ことばを寄せ波に追加しました 🌊');
     } catch {
-      onToast('波に言葉を届けられませんでした。入力は残してあるので、もう一度試してみてください。');
+      onToast('保存できませんでした。入力内容を残したまま、もう一度お試しください。');
     } finally {
       setSaving(false);
     }
@@ -97,7 +97,7 @@ export default function ChainPage({ onBack, onToast }: ChainPageProps) {
         <p className="eyebrow"><Waves size={14} /> COLLECTIVE WRITING</p>
         <h2 style={{ marginBottom: 10 }}>ことばの寄せ波</h2>
         <p style={{ color: '#71868a', lineHeight: 1.9, fontSize: 13 }}>
-          みんなで言葉をつなぎ、ひとつの文章を少しずつ作っていく場所。今ある文章の続きを考えて、あなたの一文を寄せてみてください。次の誰かが、その先を書いてくれるかもしれません。
+          みんなで少しずつ、ひとつの文章を育てていく場所。追加した言葉はNeonに保存され、別の端末からも読めます。
         </p>
         <div style={{ margin: '24px 0', padding: '24px', minHeight: 150, borderRadius: 18, background: '#fff', border: '1px solid rgba(71,145,143,.14)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: "'Noto Serif JP', serif", fontSize: 18, lineHeight: 2 }}>
           {loading ? '波の向こうから言葉を集めています…' : chain.body}
