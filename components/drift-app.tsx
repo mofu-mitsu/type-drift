@@ -2526,7 +2526,7 @@ export default function DriftApp() {
       if (typeof reader.result === "string") setDraftImage(reader.result);
       else setPlazaToast("画像を読み込めませんでした。別の画像を選んでください。");
     };
-    reader.onerror = () => setPlazaToast("画像を読み込めませんでした。別の画像を選んでください。";
+    reader.onerror = () => setPlazaToast("画像を読み込めませんでした。別の画像を選んでください。");
     reader.readAsDataURL(file);
   };
   const guestKey = () => { let key = localStorage.getItem("type-drift-guest-key"); if (!key) { key = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", key); } return key; };
