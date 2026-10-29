@@ -6,7 +6,7 @@ function isWorkerRoute(path: string, init?: RequestInit) {
   const method = (init?.method || "GET").toUpperCase();
   const pathname = path.split("?", 1)[0].replace(/\/+$/, "") || "/";
   if (pathname === "/api/bottles") return method === "GET" || method === "POST";
-  if (/^\/api\/bottles\/\d+$/.test(pathname)) return method === "DELETE";
+  if (/^\/api\/bottles\/\d+$/.test(pathname)) return method === "DELETE" || method === "PATCH";
   if (/^\/api\/bottles\/\d+\/(reactions|replies|votes)$/.test(pathname)) return method === "GET" || method === "POST";
   if (/^\/api\/replies\/\d+\/reactions$/.test(pathname)) return method === "POST";
   if (pathname === "/api/notifications/unread") return method === "GET";
