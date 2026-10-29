@@ -100,8 +100,9 @@ const constellationQuestions = [
   { text: "迷ったとき、いちばん信頼するものは？", options: ["一貫した原理", "予感と長期的な見通し", "自分の過去の実感", "場にいる人の温度"] },
 ];
 
-function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void }) {
+function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onEdit?: (bottle: Bottle) => void; onDelete?: (bottle: Bottle) => void }) {
   const [poll, setPoll] = useState(bottle.poll);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [voted, setVoted] = useState<number | null>(null);
   const vote = (index: number) => { if (!poll || voted !== null) return; setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); };
   return <article className={`bottle-card ${bottle.color}`}>
@@ -110,7 +111,7 @@ function BottleCard({ bottle, onReact, onOpen }: { bottle: Bottle; onReact: (id:
     <p className="bottle-text">{bottle.text}</p>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
-    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><button type="button" className="more" aria-label="その他">•••</button></div>
+    <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={() => setMoreOpen(open => !open)}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
   </article>;
 }
 
@@ -2473,6 +2474,28 @@ export default function DriftApp() {
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
+  const editBottle = async (bottle: Bottle) => {
+    if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
+    const body = window.prompt("ボトルの本文を編集", bottle.text);
+    if (body === null || !body.trim()) return;
+    try {
+      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body: body.trim() }) });
+      if (!response.ok) { setPlazaToast(response.status === 404 ? "自分のボトルとして確認できず、編集できませんでした。" : `編集に失敗しました（${response.status}）`); return; }
+      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body.trim() } : item));
+      setPlazaToast("ボトルを編集しました。");
+      window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+    } catch { setPlazaToast("通信エラーで編集できませんでした。"); }
+  };
+  const deleteBottle = async (bottle: Bottle) => {
+    if (!bottle.mine || bottle.ai || bottle.id <= 0 || !window.confirm("このボトルを回収（削除）しますか？")) return;
+    try {
+      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "DELETE", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
+      if (!response.ok) { setPlazaToast(response.status === 404 ? "自分のボトルとして確認できず、回収できませんでした。" : `回収に失敗しました（${response.status}）`); return; }
+      setBottles(items => items.filter(item => item.id !== bottle.id));
+      setPlazaToast("ボトルを回収しました。");
+      window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+    } catch { setPlazaToast("通信エラーで回収できませんでした。"); }
+  };
   const uploadToCloudinary = async (dataUrl?: string) => {
     const cleanEnv = (value?: string) => (value || "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim();
     const cloudName = cleanEnv(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);
@@ -3942,7 +3965,7 @@ export default function DriftApp() {
                 </p>
               </div>
 
-              {bottles.filter(b => activityTab === "mine" ? b.mine : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).length === 0 ? (
+              {bottles.filter(b => activityTab === "mine" ? (b.mine && !b.ai && b.id > 0) : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).length === 0 ? (
                 <div className="empty-mine">
                   <span style={{ fontSize: "24px" }}>🌊</span>
                   <p>
@@ -3953,11 +3976,11 @@ export default function DriftApp() {
                 </div>
               ) : (
                 <div className="bottle-grid">
-                  {bottles.filter(b => activityTab === "mine" ? b.mine : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).map(bottle => {
+                  {bottles.filter(b => activityTab === "mine" ? (b.mine && !b.ai && b.id > 0) : activityTab === "liked" ? likedBottleIds.includes(b.id) : repliedBottleIds.includes(b.id)).map(bottle => {
                     const userReplies = myRepliesMap[bottle.id] || [];
                     return (
                       <div key={bottle.id} className="v2-replied-card-wrapper">
-                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} />
+                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottle} />
                         {activityTab === "replied" && userReplies.length > 0 && (
                           <div className="v2-my-replies-box">
                             <div className="v2-my-replies-head">
