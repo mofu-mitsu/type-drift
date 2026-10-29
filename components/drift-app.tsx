@@ -370,6 +370,9 @@ export default function DriftApp() {
   const [darlingGuessCount, setDarlingGuessCount] = useState<number>(0);
   const [darlingPenaltyActive, setDarlingPenaltyActive] = useState<boolean>(false);
   const [activeDarlingPsychTest, setActiveDarlingPsychTest] = useState<{ id: number; title: string; question: string; answerA: string; answerB: string } | null>(null);
+  const [editingBottle, setEditingBottle] = useState<Bottle | null>(null);
+  const [editBottleDraft, setEditBottleDraft] = useState("");
+  const [recoveringBottle, setRecoveringBottle] = useState<Bottle | null>(null);
 
   // 💌 ダイレクトメッセージ (DM) 関連State
   const [directMessages, setDirectMessages] = useState<DirectMessage[]>([
@@ -2479,24 +2482,36 @@ export default function DriftApp() {
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
-  const editBottle = async (bottle: Bottle) => {
+  const editBottle = (bottle: Bottle) => {
     if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
-    const body = window.prompt("ボトルの本文を編集", bottle.text);
-    if (body === null || !body.trim()) return;
+    setEditingBottle(bottle);
+    setEditBottleDraft(bottle.text);
+  };
+  const saveBottleEdit = async () => {
+    if (!editingBottle || !editBottleDraft.trim()) return;
+    const bottle = editingBottle;
+    const body = editBottleDraft.trim();
     try {
-      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body: body.trim() }) });
+      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) });
       if (!response.ok) { setPlazaToast(response.status === 404 ? "自分のボトルとして確認できず、編集できませんでした。" : `編集に失敗しました（${response.status}）`); return; }
-      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body.trim() } : item));
+      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body } : item));
+      setEditingBottle(null);
       setPlazaToast("ボトルを編集しました。");
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch { setPlazaToast("通信エラーで編集できませんでした。"); }
   };
-  const deleteBottleFromCard = async (bottle: Bottle) => {
-    if (!bottle.mine || bottle.ai || bottle.id <= 0 || !window.confirm("このボトルを回収（削除）しますか？")) return;
+  const deleteBottleFromCard = (bottle: Bottle) => {
+    if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
+    setRecoveringBottle(bottle);
+  };
+  const confirmBottleRecovery = async () => {
+    if (!recoveringBottle) return;
+    const bottle = recoveringBottle;
     try {
       const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "DELETE", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
       if (!response.ok) { setPlazaToast(response.status === 404 ? "自分のボトルとして確認できず、回収できませんでした。" : `回収に失敗しました（${response.status}）`); return; }
       setBottles(items => items.filter(item => item.id !== bottle.id));
+      setRecoveringBottle(null);
       setPlazaToast("ボトルを回収しました。");
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch { setPlazaToast("通信エラーで回収できませんでした。"); }
@@ -5352,6 +5367,37 @@ export default function DriftApp() {
           </div>
           <small className="reply-count">{reply.length} / 1000</small>
         </div>
+      </div>
+    )}
+    {editingBottle && (
+      <div className="modal-backdrop bottle-action-backdrop" onClick={() => setEditingBottle(null)}>
+        <section className="bottle-action-modal" role="dialog" aria-modal="true" aria-labelledby="bottle-edit-title" onClick={event => event.stopPropagation()}>
+          <button type="button" className="bottle-action-close" aria-label="閉じる" onClick={() => setEditingBottle(null)}><X size={18} /></button>
+          <span className="bottle-action-eyebrow">BOTTLE EDITOR</span>
+          <h2 id="bottle-edit-title">ボトルを編集</h2>
+          <p>投稿した内容をここで書き換えられるよ。</p>
+          <textarea className="bottle-action-textarea" value={editBottleDraft} onChange={event => setEditBottleDraft(event.target.value)} autoFocus />
+          <div className="bottle-action-count">{editBottleDraft.length} 文字</div>
+          <div className="bottle-action-actions">
+            <button type="button" className="bottle-action-secondary" onClick={() => setEditingBottle(null)}>キャンセル</button>
+            <button type="button" className="bottle-action-primary" disabled={!editBottleDraft.trim()} onClick={() => void saveBottleEdit()}>変更を保存</button>
+          </div>
+        </section>
+      </div>
+    )}
+    {recoveringBottle && (
+      <div className="modal-backdrop bottle-action-backdrop" onClick={() => setRecoveringBottle(null)}>
+        <section className="bottle-action-modal bottle-recovery-modal" role="dialog" aria-modal="true" aria-labelledby="bottle-recovery-title" onClick={event => event.stopPropagation()}>
+          <div className="bottle-recovery-icon">🌊</div>
+          <span className="bottle-action-eyebrow">RECALL BOTTLE</span>
+          <h2 id="bottle-recovery-title">このボトルを回収する？</h2>
+          <p>回収すると広場から削除され、元に戻せないよ。</p>
+          <blockquote className="bottle-recovery-preview">{recoveringBottle.text}</blockquote>
+          <div className="bottle-action-actions">
+            <button type="button" className="bottle-action-secondary" onClick={() => setRecoveringBottle(null)}>やめる</button>
+            <button type="button" className="bottle-action-danger" onClick={() => void confirmBottleRecovery()}>回収する</button>
+          </div>
+        </section>
       </div>
     )}
     {/* ❓ 使い方ガイド（ヘルプモーダル） */}
