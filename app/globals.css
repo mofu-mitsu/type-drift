@@ -172,3 +172,17 @@
 .bottle-more-menu button[role="menuitem"]:last-child:not(:first-child) { background:#fff6f1; border-color:#f0ded5; color:#9a6257; }
 .bottle-more-menu button[role="menuitem"]:last-child:not(:first-child):hover { background:#ffebe4; border-color:#e8c7bb; }
 @media(max-width:520px) { .bottle-more-menu { min-width:154px; } .bottle-more-menu button { min-height:44px; } }
+
+/* 広場の「送る」ボタンに視認性のある背景を付ける */
+.plaza-chat-send-btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:76px; min-height:48px; padding:12px 22px;
+  border:1px solid #2d827a; border-radius:999px;
+  background:linear-gradient(135deg,#438f86 0%,#26776f 100%);
+  color:#fff; font-weight:700; letter-spacing:.04em;
+  box-shadow:0 5px 14px rgba(39,119,111,.18);
+  cursor:pointer; transition:transform .16s ease,box-shadow .16s ease,filter .16s ease;
+}
+.plaza-chat-send-btn:hover:not(:disabled) { filter:brightness(1.06); transform:translateY(-1px); box-shadow:0 7px 18px rgba(39,119,111,.24); }
+.plaza-chat-send-btn:active:not(:disabled) { transform:translateY(0); }
+.plaza-chat-send-btn:disabled { opacity:.55; cursor:not-allowed; box-shadow:none; }
