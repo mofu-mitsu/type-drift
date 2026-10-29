@@ -137,3 +137,14 @@
   .dm-v2-profile-btn { padding:7px 9px; font-size:11px; }
   .dm-v2-identity-pill { max-width:120px; }
 }
+
+/* DM内で完結するプロフィールモーダル */
+.dm-profile-overlay { position:fixed; inset:0; z-index:12000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(30,55,58,.42); backdrop-filter:blur(8px); }
+.dm-profile-modal { position:relative; width:min(680px,100%); max-height:min(82vh,760px); overflow:auto; padding:28px; border:1px solid #d6e9e3; border-radius:28px; background:linear-gradient(135deg,#fff 0%,#f1faf6 100%); box-shadow:0 24px 80px rgba(32,74,75,.22); color:#314b52; }
+.dm-profile-close { display:block; margin:0 0 20px auto; padding:8px 13px; border:1px solid #cbdedb; border-radius:999px; background:#fff; color:#527c80; cursor:pointer; }
+.dm-profile-modal .profile-inspect-head { display:flex; align-items:center; gap:16px; }
+.dm-profile-modal .profile-inspect-head h3 { margin:0 0 8px; font-size:22px; }
+.dm-profile-overview { margin-top:20px; padding:18px; border:1px solid #dce9ed; border-radius:18px; background:#f8fbfc; line-height:1.9; white-space:pre-wrap; overflow-wrap:anywhere; }
+@media(max-width:560px) { .dm-profile-modal { padding:20px; border-radius:22px; } .dm-profile-modal .profile-inspect-head { align-items:flex-start; } }
+/* Make the message action button in the bottle/profile card look intentional */
+.dm-send-modal-header .eyebrow { display:inline-block; padding:5px 9px; border-radius:999px; background:rgba(226,246,240,.9); border:1px solid #cfe8e0; color:#438b88; }
