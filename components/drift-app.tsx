@@ -2302,7 +2302,9 @@ export default function DriftApp() {
           name: otherName,
           emoji: otherEmoji,
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
-          type: threadId.startsWith("bottle-") ? (m.targetType || "ボトルへの返信") : undefined,
+          type: isBottleThread
+            ? (m.targetType || "ボトルへの返信")
+            : ([plazaUser?.mbti, plazaUser?.socionics, plazaUser?.enneagram].filter(Boolean).join(" · ") || undefined),
           lastMsg: m,
           unread: (!m.isMine && !m.read) ? 1 : 0,
         };
@@ -4170,6 +4172,7 @@ export default function DriftApp() {
                   };
                   const isBottleThread = activeDmThreadId.startsWith("bottle-");
                   const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
+                  const activePlazaUser = !isBottleThread ? plazaUsers.find(item => item.sessionKey === activeDmThreadId || item.nickname === currentThread.name) : undefined;
                   const threadMessages = directMessages.filter(
                     m => (m.threadId === activeDmThreadId) || (!m.threadId && ((m.isMine && m.recipient === currentThread.name) || (!m.isMine && m.sender === currentThread.name)))
                   );
@@ -4204,7 +4207,7 @@ export default function DriftApp() {
                           <ChevronLeft size={16} /> トーク一覧
                         </button>
                         <div className="dm-room-title-info">
-                          <span className="dm-room-avatar">{currentThread.avatarUrl ? <img src={currentThread.avatarUrl} alt="" /> : currentThread.emoji}</span>
+                          <span className="dm-room-avatar">{(currentThread.avatarUrl || activePlazaUser?.avatarUrl) ? <img src={(currentThread.avatarUrl || activePlazaUser?.avatarUrl)!} alt="" /> : (currentThread.emoji || activePlazaUser?.emoji || "◌")}</span>
                           <div>
                             <strong>{currentThread.name}</strong>
                             {currentThread.type && (
