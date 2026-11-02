@@ -12,7 +12,11 @@ export type PlazaMessage = {
   emoji?: string;
   createdAt: number;
 };
-export type PlazaUser = { sessionKey: string; nickname: string; emoji: string; avatarUrl?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
+export type PlazaUser = {
+  sessionKey: string; nickname: string; emoji: string; avatarUrl?: string;
+  mbti?: string; socionics?: string; enneagram?: string; otherType?: string;
+  identity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string; other_type?: string };
+};
 export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
 const configuredPlazaWorld = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL;
@@ -125,7 +129,20 @@ export default function PlazaPanel({
               const count = Number(data.count) || 0;
               setPresence(count);
               onPresenceUpdate?.(count + NPC_COUNT);
-              const users = Array.isArray(data.users) ? data.users as PlazaUser[] : [];
+              const users = (Array.isArray(data.users) ? data.users : []).map((raw: any) => {
+                const identity = raw.identity && typeof raw.identity === "object" ? raw.identity : {};
+                return {
+                  ...raw,
+                  sessionKey: String(raw.sessionKey || raw.session_key || ""),
+                  nickname: String(raw.nickname || "匿名の誰か"),
+                  emoji: String(raw.emoji || "◌"),
+                  avatarUrl: raw.avatarUrl || raw.avatar_url || undefined,
+                  mbti: raw.mbti || identity.mbti || "",
+                  socionics: raw.socionics || identity.socionics || "",
+                  enneagram: raw.enneagram || identity.enneagram || "",
+                  otherType: raw.otherType || raw.other_type || identity.otherType || identity.other_type || "",
+                } as PlazaUser;
+              });
               setOnlineUsers(users);
               onPresenceUsers?.(users);
               if (Array.isArray(data.messages) && data.messages.length > 0) {
