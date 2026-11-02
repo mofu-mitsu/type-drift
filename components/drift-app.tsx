@@ -72,10 +72,10 @@ function normalizeDmBody(value: unknown, depth = 0): string {
   if (depth < 5) {
     // JSONオブジェクトだけでなく、JSON文字列として二重エンコードされた本文もほどく。
     const candidates = [source];
-    // Some legacy/API responses contain a JSON object with escaped quotes (e.g. {\\"body\\":\\"text\\"}).
+    // Some legacy/API responses contain a JSON object with escaped quotes (e.g. {\"body\":\"text\"}).
     // Try the unescaped form too, so previously stored wrappers render as plain text.
-    if (source.startsWith("{") && source.includes("\\\\"")) {
-      candidates.push(source.replace(/\\\\+"/g, '"'));
+    if (source.startsWith("{") && source.includes('\\"')) {
+      candidates.push(source.replace(/\\"/g, '"'));
     }
     if ((source.startsWith('"') && source.endsWith('"')) || source.startsWith('\\\\u007b') || source.startsWith('\\\\\\\\{')) {
       try { candidates.push(JSON.parse(source)); } catch {}
