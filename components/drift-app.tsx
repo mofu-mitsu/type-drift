@@ -2322,7 +2322,8 @@ export default function DriftApp() {
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
       const isBottleThread = threadId.startsWith("bottle-");
-      const plazaUser = plazaUsers.find(item => item.sessionKey === threadId || item.nickname === otherName);
+      const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
+        plazaUsers.find(item => item.nickname === otherName && item.nickname !== nickname);
       const otherEmoji = otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
       if (!map[threadId]) {
         map[threadId] = {
@@ -2332,7 +2333,11 @@ export default function DriftApp() {
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
             ? (m.targetType || "ボトルへの返信")
-            : ([plazaUser?.mbti, plazaUser?.socionics, plazaUser?.enneagram].filter(Boolean).join(" · ") || undefined),
+            : ([
+                plazaUser?.mbti || plazaUser?.identity?.mbti,
+                plazaUser?.socionics || plazaUser?.identity?.socionics,
+                plazaUser?.enneagram || plazaUser?.identity?.enneagram,
+              ].filter(Boolean).join(" · ") || undefined),
           lastMsg: m,
           unread: (!m.isMine && !m.read) ? 1 : 0,
         };
