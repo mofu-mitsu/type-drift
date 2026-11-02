@@ -4144,6 +4144,7 @@ export default function DriftApp() {
                     targetId: activeDmThreadId,
                     name: "相手",
                     emoji: "◌",
+                    avatarUrl: undefined,
                     type: undefined,
                     unread: 0,
                     lastMsg: { isMine: false, body: "", createdAt: Date.now() } as DirectMessage
