@@ -295,3 +295,18 @@
 .target-select-list{display:flex;flex-direction:column;gap:12px;max-height:min(44dvh,420px);overflow-y:auto;overscroll-behavior:contain;padding:3px 5px 8px 2px;scrollbar-gutter:stable}
 .target-select-item{flex:0 0 auto;width:100%;text-align:left;transition:transform .16s ease,background .16s ease,border-color .16s ease}
 .target-select-item:hover{transform:translateY(-1px);border-color:#b9ded1;background:#f0faf5}
+
+
+/* ブリ捕獲モーダルの「手元に収める」を明確な主操作ボタンに */
+.buri-modal-close-btn {
+ display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;
+ margin-top:20px;padding:13px 20px;border:1px solid #69ad9d;border-radius:15px;
+ color:#fff;background:linear-gradient(135deg,#54a89a,#287b73);
+ box-shadow:0 8px 20px rgba(40,123,115,.2);font-weight:750;letter-spacing:.04em;cursor:pointer;
+ transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.buri-modal-close-btn::before { content:"✓";display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;color:#317b70;background:#effcf6;font-size:13px; }
+.buri-modal-close-btn:hover { transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 11px 24px rgba(40,123,115,.25); }
+.buri-modal-close-btn:active { transform:translateY(0); }
+.buri-modal-card { border:1px solid #cde6dc; border-radius:26px; background:linear-gradient(145deg,#fffef9,#eff9f2); box-shadow:0 24px 70px rgba(35,82,72,.22); }
+.buri-modal-icon { display:grid;place-items:center;width:82px;height:82px;margin:0 auto 14px;border:1px solid #d6eee4;border-radius:26px;background:linear-gradient(145deg,#f3fff8,#dff4e9);box-shadow:0 8px 20px rgba(64,142,122,.12); }
