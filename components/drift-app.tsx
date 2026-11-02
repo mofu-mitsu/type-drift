@@ -1324,7 +1324,7 @@ export default function DriftApp() {
       setExternalPlazaMessage({
         author: targetName,
         body: chosen,
-        kind: target === "guest" ? "human" : "ai",
+        kind: target === "guest" ? "human" : target.startsWith("player:") ? "system" : "ai",
         emoji,
         id: Date.now() + 1
       });
