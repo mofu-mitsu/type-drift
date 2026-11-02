@@ -2422,10 +2422,24 @@ export default function DriftApp() {
     setPlazaToast("✓ 意見箱とお問い合わせの通知を既読にしました");
   };
 
-  const groupedServerNotifications = (() => {
+  const groupedServerNotifications: Array<{
+    id: number;
+    type: string;
+    entity_id: number | null;
+    message: string;
+    created_at: string;
+    groupedIds?: number[];
+  }> = (() => {
     const reactions = serverNotifications.filter(n => n.type.includes("reaction"));
     const others = serverNotifications.filter(n => !n.type.includes("reaction"));
-    const grouped = reactions.length ? [{
+    const grouped: Array<{
+      id: number;
+      groupedIds: number[];
+      type: string;
+      entity_id: number | null;
+      message: string;
+      created_at: string;
+    }> = reactions.length ? [{
       id: reactions[0].id,
       groupedIds: reactions.map(n => n.id),
       type: "bottle_reaction",
