@@ -1286,7 +1286,7 @@ export default function DriftApp() {
     setExternalPlazaMessage({
       author: "広場の海風",
       body: `🐟 ${sender} が ${targetName} にブリを渡しました！`,
-      kind: "ai",
+      kind: "system",
       emoji: "🌊",
       id: Date.now()
     });
