@@ -293,7 +293,7 @@ export default function DriftApp() {
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
   const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean } | null>(null);
   const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string } | null>(null);
-  const [useSavedIdentity, setUseSavedIdentity] = useState(false);
+  const [useSavedIdentity, setUseSavedIdentity] = useState(true);
   const [onlineCount, setOnlineCount] = useState(4);
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -1565,6 +1565,7 @@ export default function DriftApp() {
         if (typeof state.nickname === "string") setNickname(state.nickname);
         if (typeof state.buriCount === "number") setBuriCount(state.buriCount);
         if (state.profileIdentity) setProfileIdentity({ ...profileIdentity, ...state.profileIdentity });
+        if (typeof state.useSavedIdentity === "boolean") setUseSavedIdentity(state.useSavedIdentity);
         if (typeof state.profileBio === "string") setProfileBio(state.profileBio);
         if (Array.isArray(state.profileLinks)) setProfileLinks(state.profileLinks);
         if (typeof state.profileImage === "string") setProfileImage(state.profileImage);
@@ -2463,9 +2464,10 @@ export default function DriftApp() {
       profileIdentity,
       profileBio,
       profileLinks,
-      profileImage
+      profileImage,
+      useSavedIdentity
     }));
-  }, [storageReady, bottles, likedBottleIds, repliedBottleIds, nickname, buriCount, profileIdentity, profileBio, profileLinks, profileImage]);
+  }, [storageReady, bottles, likedBottleIds, repliedBottleIds, nickname, buriCount, profileIdentity, profileBio, profileLinks, profileImage, useSavedIdentity]);
 
   useEffect(() => {
     if (!storageReady) return;
@@ -2473,6 +2475,17 @@ export default function DriftApp() {
       localStorage.setItem("type-drift-consultation-posts", JSON.stringify(consultationPosts));
     } catch {}
   }, [storageReady, consultationPosts]);
+  // 「自認と合わせる」が有効なら、保存済みプロフィールの自認をボトル投稿用にも同期する。
+  useEffect(() => {
+    if (!useSavedIdentity) return;
+    setIdentity({
+      mbti: profileIdentity.mbti || "",
+      socionics: profileIdentity.socionics || "",
+      enneagram: profileIdentity.enneagram || "",
+      otherType: profileIdentity.otherType || "",
+    });
+  }, [useSavedIdentity, profileIdentity]);
+
   const addProfileLink = () => {
     setProfileLinks(links => [...links, { id: String(Date.now()), title: "", url: "" }]);
     setProfileSaved(false);
