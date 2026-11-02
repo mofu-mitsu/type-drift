@@ -3422,6 +3422,7 @@ export default function DriftApp() {
         <PlazaPanel
           nickname={nickname}
           profileImage={profileImage}
+          profileIdentity={profileIdentity}
           externalEmote={externalEmote}
           externalMessage={externalPlazaMessage}
           onToast={setPlazaToast}
