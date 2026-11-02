@@ -4103,7 +4103,7 @@ export default function DriftApp() {
                           }}
                         >
                           <div className="dm-thread-avatar">
-                            {thread.emoji}
+                            {thread.avatarUrl ? <img src={thread.avatarUrl} alt="" /> : thread.emoji}
                             {thread.unread > 0 && (
                               <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "10px", height: "10px", background: "#ef4444", borderRadius: "50%", border: "2px solid #fff" }} />
                             )}
@@ -4184,7 +4184,7 @@ export default function DriftApp() {
                           <ChevronLeft size={16} /> トーク一覧
                         </button>
                         <div className="dm-room-title-info">
-                          <span style={{ fontSize: "20px" }}>{currentThread.emoji}</span>
+                          <span className="dm-room-avatar">{currentThread.avatarUrl ? <img src={currentThread.avatarUrl} alt="" /> : currentThread.emoji}</span>
                           <div>
                             <strong>{currentThread.name}</strong>
                             {currentThread.type && (
@@ -4299,7 +4299,7 @@ export default function DriftApp() {
                           >
                             {!msg.isMine && (
                               <div className="dm-bubble-avatar">
-                                {currentThread.emoji}
+                                {currentThread.avatarUrl ? <img src={currentThread.avatarUrl} alt="" /> : currentThread.emoji}
                               </div>
                             )}
                             <div className="dm-bubble-content">
