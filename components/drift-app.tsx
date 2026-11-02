@@ -148,7 +148,7 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
   return <article className={`bottle-card ${bottle.color}`}>
     <div className="bottle-card__top"><div className="author"><span className="author__emoji">{bottle.emoji}</span><span><strong>{bottle.author}</strong><small>{bottle.type} · {bottle.mbti}</small></span></div><span className="time">{bottle.time}</span></div>
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
-    <p className="bottle-text">{bottle.text}</p>
+    <p className="bottle-text">{normalizeDmBody(bottle.text)}</p>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
     <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={() => setMoreOpen(open => !open)}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
@@ -4270,10 +4270,10 @@ export default function DriftApp() {
                                     name: user?.nickname || currentThread.name,
                                     emoji: user?.emoji || currentThread.emoji || "◌",
                                     image: user?.avatarUrl || currentThread.avatarUrl,
-                                    mbti: user?.mbti || "",
-                                    socionics: user?.socionics || "",
-                                    enneagram: user?.enneagram || "",
-                                    psycho: user?.otherType || "",
+                                    mbti: user?.mbti || user?.identity?.mbti || "",
+                                    socionics: user?.socionics || user?.identity?.socionics || "",
+                                    enneagram: user?.enneagram || user?.identity?.enneagram || "",
+                                    psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || "",
                                     overview: "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
                                 }
