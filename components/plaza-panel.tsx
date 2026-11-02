@@ -523,6 +523,7 @@ export default function PlazaPanel({
                   <div className="plaza-chat-meta">
                     <strong>{message.author}</strong>
                     {isAi && <small className="ai-tag">AI</small>}
+                    {message.kind === "system" && <small className="plaza-system-tag">SYSTEM</small>}
                   </div>
                   <p className="plaza-chat-text">{message.body}</p>
                   {isAi && message.body.startsWith('エラーが出ちゃったみたい') && (
