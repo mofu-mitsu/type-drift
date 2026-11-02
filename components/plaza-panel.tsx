@@ -8,7 +8,7 @@ export type PlazaMessage = {
   id: string;
   author: string;
   body: string;
-  kind: 'human' | 'ai' | 'emote';
+  kind: 'human' | 'ai' | 'emote' | 'system';
   emoji?: string;
   createdAt: number;
 };
@@ -32,7 +32,7 @@ export type PlazaPanelProps = {
   profileImage?: string | null;
   profileIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
   externalEmote?: { emote: string; label?: string; id: number } | null;
-  externalMessage?: { author: string; body: string; kind: 'human' | 'ai'; emoji?: string; id: number } | null;
+  externalMessage?: { author: string; body: string; kind: 'human' | 'ai' | 'system'; emoji?: string; id: number } | null;
   onToast?: (message: string) => void;
   onPresenceUpdate?: (count: number) => void;
   onPresenceUsers?: (users: PlazaUser[]) => void;
@@ -452,12 +452,20 @@ export default function PlazaPanel({
       emoji: externalMessage.emoji,
       createdAt: Date.now(),
     };
-    setMessages(curr => [...curr, newMsg]);
-    sendRelay({
-      type: 'plaza_message',
-      nickname: externalMessage.author,
-      body: externalMessage.body,
+    setMessages(curr => {
+      const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+      const duplicate = curr.some(item => item.author === newMsg.author &&
+        normalize(item.body) === normalize(newMsg.body) &&
+        Math.abs(item.createdAt - newMsg.createdAt) < 15_000);
+      return duplicate ? curr : [...curr, newMsg].slice(-80);
     });
+    // システム通知はAIに発言させない。NPCの返答はAI専用イベントで中継する。
+    if (externalMessage.kind === 'system') return;
+    if (externalMessage.kind === 'ai') {
+      sendRelay({ type: 'plaza_ai_message', character: externalMessage.author, body: externalMessage.body });
+    } else {
+      sendRelay({ type: 'plaza_message', nickname: externalMessage.author, body: externalMessage.body });
+    }
   }, [externalMessage]);
 
   const currentQuickEmote = EMOTES[emoteIndex % EMOTES.length];
