@@ -303,7 +303,7 @@ export default function DriftApp() {
   const [avatarEmote, setAvatarEmote] = useState<string | null>(null);
   const [externalEmote, setExternalEmote] = useState<{ emote: string; label: string; id: number } | null>(null);
   const [activePlazaSplashes, setActivePlazaSplashes] = useState<Array<{ id: number; icon: string; top: number; left: number; delay: number }>>([]);
-  const [externalPlazaMessage, setExternalPlazaMessage] = useState<{ author: string; body: string; kind: "human" | "ai"; emoji?: string; id: number } | null>(null);
+  const [externalPlazaMessage, setExternalPlazaMessage] = useState<{ author: string; body: string; kind: "human" | "ai" | "system"; emoji?: string; id: number } | null>(null);
   const [buriCount, setBuriCount] = useState<number>(0);
   const [buriCaughtModalOpen, setBuriCaughtModalOpen] = useState(false);
   const [swimmingBuriVisible, setSwimmingBuriVisible] = useState(true);
