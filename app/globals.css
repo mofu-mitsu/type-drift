@@ -310,3 +310,45 @@
 .buri-modal-close-btn:active { transform:translateY(0); }
 .buri-modal-card { border:1px solid #cde6dc; border-radius:26px; background:linear-gradient(145deg,#fffef9,#eff9f2); box-shadow:0 24px 70px rgba(35,82,72,.22); }
 .buri-modal-icon { display:grid;place-items:center;width:82px;height:82px;margin:0 auto 14px;border:1px solid #d6eee4;border-radius:26px;background:linear-gradient(145deg,#f3fff8,#dff4e9);box-shadow:0 8px 20px rgba(64,142,122,.12); }
+
+
+/* モバイルDM：見出しと入力欄を最初から見つけやすくする */
+.dm-send-modal {
+  width:min(100%, 520px);
+  max-height:min(82dvh, 720px);
+  padding:clamp(16px, 4vw, 24px);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.dm-send-modal-header { display:flex; align-items:flex-start; gap:12px; padding-right:28px; }
+.dm-send-modal-header > div { min-width:0; }
+.dm-send-modal-header h3 {
+  margin:10px 0 4px;
+  font-size:clamp(19px, 4.8vw, 25px);
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.dm-send-modal .dm-send-desc { margin:4px 0; padding:10px 12px; line-height:1.55; }
+.dm-send-modal .dm-send-textarea {
+  flex:1 1 auto;
+  min-height:clamp(120px, 22dvh, 200px);
+  max-height:34dvh;
+}
+.dm-send-modal .dm-send-actions {
+  position:sticky;
+  bottom:0;
+  display:flex;
+  gap:10px;
+  padding-top:10px;
+  background:#fffdf7;
+}
+.dm-send-modal .dm-send-actions button { flex:1 1 0; min-width:0; min-height:48px; }
+.target-select-list { max-height:min(50dvh, 460px); overflow-y:auto; overscroll-behavior:contain; }
+@media(max-width:560px) {
+  .modal-backdrop { padding:12px; }
+  .dm-send-modal { width:100%; max-height:84dvh; padding:18px 16px; border-radius:20px; }
+  .dm-send-modal .dm-send-textarea { min-height:125px; max-height:30dvh; }
+  .dm-send-modal .dm-send-actions { gap:8px; }
+  .dm-send-modal .dm-send-actions button { padding:11px 9px; font-size:14px; }
+}
