@@ -274,3 +274,24 @@
 /* DMの広場ユーザー画像：画像設定がある相手は匿名記号より画像を優先 */
 .dm-thread-avatar img,.dm-room-avatar img,.dm-bubble-avatar img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
 .dm-room-avatar{width:34px;height:34px;flex:0 0 34px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden;background:#e8f3f2;font-size:20px}
+
+
+/* 海の操作ボタンを背景になじませつつ、押せる要素として明確に */
+.pick-button,.v2-sea-flow-btn,.question-box-sea-btn,.play-button--large {
+ display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:46px;
+ padding:12px 20px;border:1px solid #b8ddd2;border-radius:999px;color:#286f6a;
+ background:linear-gradient(135deg,#f3fff9 0%,#dff4eb 100%);
+ box-shadow:0 7px 18px rgba(61,132,119,.12);font-weight:700;cursor:pointer;
+ transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.pick-button:hover:not(:disabled),.v2-sea-flow-btn:hover:not(:disabled),.question-box-sea-btn:hover:not(:disabled),.play-button--large:hover:not(:disabled){transform:translateY(-2px);filter:saturate(1.08);box-shadow:0 10px 24px rgba(61,132,119,.19)}
+.pick-button.is-picked{color:#477b70;background:#e8f5ef;border-color:#d1e8df;box-shadow:none}
+.play-button--large{min-height:54px;padding:14px 27px;border-color:#6cb5a3;color:#fff;background:linear-gradient(135deg,#56a99b,#277b73);box-shadow:0 10px 25px rgba(39,119,111,.23)}
+.play-button--large span{display:inline-grid;place-items:center;width:25px;height:25px;border-radius:50%;color:#347f76;background:#f3fff9;font-size:12px}
+
+/* システム通知はチャット発言と区別する */
+.plaza-chat-item--system{margin:8px auto;padding:10px 14px;border:1px solid #dcece5;border-radius:14px;background:linear-gradient(135deg,#f4faf6,#fffaf0);color:#6d8980;text-align:center;font-size:12px;line-height:1.7}
+.plaza-chat-item--system .plaza-chat-text{color:#6d8980;font-size:12px}
+.target-select-list{display:flex;flex-direction:column;gap:12px;max-height:min(44dvh,420px);overflow-y:auto;overscroll-behavior:contain;padding:3px 5px 8px 2px;scrollbar-gutter:stable}
+.target-select-item{flex:0 0 auto;width:100%;text-align:left;transition:transform .16s ease,background .16s ease,border-color .16s ease}
+.target-select-item:hover{transform:translateY(-1px);border-color:#b9ded1;background:#f0faf5}
