@@ -1281,7 +1281,7 @@ export default function DriftApp() {
     }
     return false;
   };
-  const giftBuri = (target: "darling" | "worm" | "guest") => {
+  const giftBuri = (target: "darling" | "worm" | "guest" | `player:${string}`) => {
     if (buriCount <= 0) {
       setPlazaToast("ブリを持っていません。海を覗くとたまにブリが釣れます 🐟");
       return;
@@ -1303,8 +1303,10 @@ export default function DriftApp() {
       emoji = "🐛";
       chosen = BURI_WORM_RESPONSES[Math.floor(Math.random() * BURI_WORM_RESPONSES.length)];
     } else {
-      targetName = "匿名の誰か";
-      emoji = "◇";
+      const playerKey = target.startsWith("player:") ? target.slice("player:".length) : "";
+      const player = playerKey ? plazaUsers.find(user => user.sessionKey === playerKey) : undefined;
+      targetName = player?.nickname || "匿名の誰か";
+      emoji = player?.emoji || "◇";
       chosen = BURI_GUEST_RESPONSES[Math.floor(Math.random() * BURI_GUEST_RESPONSES.length)];
     }
 
@@ -3342,17 +3344,23 @@ export default function DriftApp() {
                     <small>INTJ / LSI-Ni (FVLE) · 1F物理支配・境界線防衛</small>
                   </div>
                 </button>
-                <button
-                  type="button"
-                  className="target-select-item"
-                  onClick={() => giftBuri("guest")}
-                >
-                  <span className="target-emoji">◇</span>
-                  <div className="target-info">
-                    <strong>匿名の誰か（広場のプレイヤー）</strong>
-                    <small>海を眺めている観測者に魚をおすそ分け</small>
-                  </div>
-                </button>
+                {plazaUsers.filter(user => user.nickname && user.sessionKey && user.nickname !== nickname).map(user => (
+                  <button
+                    type="button"
+                    className="target-select-item"
+                    key={user.sessionKey}
+                    onClick={() => giftBuri(`player:${user.sessionKey}`)}
+                  >
+                    <span className="target-emoji">{user.emoji || "◌"}</span>
+                    <div className="target-info">
+                      <strong>{user.nickname}</strong>
+                      <small>{[user.mbti || user.identity?.mbti, user.socionics || user.identity?.socionics, user.enneagram || user.identity?.enneagram].filter(Boolean).join(" / ") || "広場にいる住人"}</small>
+                    </div>
+                  </button>
+                ))}
+                {plazaUsers.filter(user => user.nickname && user.sessionKey && user.nickname !== nickname).length === 0 && (
+                  <p className="clean-modal-lead">今は配れる住人がいません。誰かが広場に来ると、ここに名前が表示されます。</p>
+                )}
               </div>
               <button
                 type="button"
@@ -4282,10 +4290,8 @@ export default function DriftApp() {
                               type="button"
                               className="dm-v2-profile-btn"
                               onClick={() => {
-                                const user = plazaUsers.find(item =>
-                                  item.sessionKey === activeDmThreadId ||
-                                  item.nickname === currentThread.name
-                                );
+                                const user = plazaUsers.find(item => item.sessionKey === activeDmThreadId) ||
+                                  plazaUsers.find(item => item.nickname === currentThread.name && item.nickname !== nickname);
                                 if (activeDmThreadId === "darling" || currentThread.name.includes("ダーリンちゃん")) {
                                   setDmInspectProfile({
                                     id: "darling", name: "ダーリンちゃん", emoji: "🥺",
