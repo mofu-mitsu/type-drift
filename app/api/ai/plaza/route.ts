@@ -63,17 +63,24 @@ function parseReply(content: unknown, character: string, depth = 0): string {
   if (typeof content !== "string") return "";
   const trimmed = content.trim().replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
   if (!trimmed) return "";
-  // Qwen may return JSON as plain text or nest JSON inside body; unwrap instead of showing the wrapper.
+  // Qwen may return JSON as plain text, nested JSON, or an object with escaped quotes.
+  // Normalize these variants before storing the reply in Neon.
   if (depth < 3) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed?.body === "string") return parseReply(parsed.body, character, depth + 1);
-      if (Array.isArray(parsed?.replies)) {
-        const reply = parsed.replies.find((item: { character?: string }) => item?.character === character) || parsed.replies[0];
-        return typeof reply?.body === "string" ? parseReply(reply.body, character, depth + 1) : "";
+    const candidates = [trimmed];
+    if (trimmed.startsWith("{") && trimmed.includes('\\"')) {
+      candidates.push(trimmed.replace(/\\"/g, '"'));
+    }
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        if (typeof parsed?.body === "string") return parseReply(parsed.body, character, depth + 1);
+        if (Array.isArray(parsed?.replies)) {
+          const reply = parsed.replies.find((item: { character?: string }) => item?.character === character) || parsed.replies[0];
+          return typeof reply?.body === "string" ? parseReply(reply.body, character, depth + 1) : "";
+        }
+      } catch {
+        // A plain-text answer is still usable if the model ignored JSON mode.
       }
-    } catch {
-      // A plain-text answer is still usable if the model ignored JSON mode.
     }
   }
   return trimmed;
