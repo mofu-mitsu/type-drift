@@ -59,21 +59,24 @@ LSIのSeは、声を荒らげたり命令口調を連発したりする形では
 `;
 }
 
-function parseReply(content: unknown, character: string) {
+function parseReply(content: unknown, character: string, depth = 0): string {
   if (typeof content !== "string") return "";
-  const trimmed = content.trim();
+  const trimmed = content.trim().replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
   if (!trimmed) return "";
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (typeof parsed?.body === "string") return parsed.body.trim();
-    if (Array.isArray(parsed?.replies)) {
-      const reply = parsed.replies.find((item: { character?: string }) => item?.character === character) || parsed.replies[0];
-      return typeof reply?.body === "string" ? reply.body.trim() : "";
+  // Qwen may return JSON as plain text or nest JSON inside body; unwrap instead of showing the wrapper.
+  if (depth < 3) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed?.body === "string") return parseReply(parsed.body, character, depth + 1);
+      if (Array.isArray(parsed?.replies)) {
+        const reply = parsed.replies.find((item: { character?: string }) => item?.character === character) || parsed.replies[0];
+        return typeof reply?.body === "string" ? parseReply(reply.body, character, depth + 1) : "";
+      }
+    } catch {
+      // A plain-text answer is still usable if the model ignored JSON mode.
     }
-  } catch {
-    // A plain-text answer is still usable if the model ignored JSON mode.
   }
-  return trimmed.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
+  return trimmed;
 }
 
 export async function POST(request: NextRequest) {
