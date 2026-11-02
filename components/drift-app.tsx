@@ -2028,9 +2028,24 @@ export default function DriftApp() {
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const hasError = !response.ok || data?.source !== "groq";
+      const cleanAiBody = (value: unknown, depth = 0): string => {
+        if (typeof value !== "string") return "";
+        const text = value.trim().replace(/^\`\`\`(?:json)?\\s*|\\s*\`\`\`$/g, "");
+        if (depth < 3) {
+          try {
+            const parsed = JSON.parse(text);
+            if (typeof parsed?.body === "string") return cleanAiBody(parsed.body, depth + 1);
+            if (Array.isArray(parsed?.replies)) {
+              const item = parsed.replies.find((entry: { character?: string }) => entry.character === preferred) || parsed.replies[0];
+              if (typeof item?.body === "string") return cleanAiBody(item.body, depth + 1);
+            }
+          } catch {}
+        }
+        return text;
+      };
       const replyBody = hasError
-        ? `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n気になる場合は意見箱へ送ってね。`
-        : String(reply?.body || "返信を受け取れませんでした。もう一度話しかけてください。");
+        ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
+        : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
       logActivity("direct_message_ai_reply", { target: preferred, bodyLength: replyBody.length }, { type: "direct_message", id: target.id });
@@ -2255,7 +2270,7 @@ export default function DriftApp() {
   }, [serverNotificationCount, unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount]);
 
   const dmThreads = useMemo(() => {
-    const map: Record<string, { targetId: string; name: string; emoji: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
+    const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
@@ -2267,6 +2282,7 @@ export default function DriftApp() {
           targetId: threadId,
           name: otherName,
           emoji: otherEmoji,
+          avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: threadId.startsWith("bottle-") ? (m.targetType || "ボトルへの返信") : undefined,
           lastMsg: m,
           unread: (!m.isMine && !m.read) ? 1 : 0,
@@ -4209,7 +4225,11 @@ export default function DriftApp() {
                                     id: activeDmThreadId,
                                     name: user?.nickname || currentThread.name,
                                     emoji: user?.emoji || currentThread.emoji || "◌",
-                                    image: user?.avatarUrl,
+                                    image: user?.avatarUrl || currentThread.avatarUrl,
+                                    mbti: user?.mbti || "",
+                                    socionics: user?.socionics || "",
+                                    enneagram: user?.enneagram || "",
+                                    psycho: user?.otherType || "",
                                     overview: "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
                                 }
