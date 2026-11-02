@@ -379,7 +379,7 @@ export default function DriftApp() {
         const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: String(row.thread_id || `bottle-${row.bottle_id}`),
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
-          targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: String(row.body || ""),
+          targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
@@ -2081,7 +2081,7 @@ export default function DriftApp() {
             }
           } catch {}
         }
-        return text;
+        return normalizeDmBody(text);
       };
       const replyBody = hasError
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
@@ -2725,7 +2725,7 @@ export default function DriftApp() {
       const visit = (row: any, parentId?: number) => {
         const id = Number(row.id);
         if (!Number.isFinite(id)) return;
-        flattened.push({ id, body: String(row.body || ""), parentId, reaction: Number(row.reactions_count || row.reactions?.reduce((sum: number, item: any) => sum + Number(item.level || 0), 0) || 0) });
+        flattened.push({ id, body: normalizeDmBody(row.body || ""), parentId, reaction: Number(row.reactions_count || row.reactions?.reduce((sum: number, item: any) => sum + Number(item.level || 0), 0) || 0) });
         for (const child of Array.isArray(row.children) ? row.children : []) visit(child, id);
       };
       for (const row of Array.isArray(data?.replies) ? data.replies : []) visit(row, row.parent_reply_id ? Number(row.parent_reply_id) : undefined);
