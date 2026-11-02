@@ -197,7 +197,7 @@ export default function PlazaPanel({
       presence('leave', { session_key: sessionKeyRef.current });
       wsRef.current = null;
     };
-  }, [nickname, profileImage]);
+  }, [nickname, profileImage, profileIdentity]);
 
   // メッセージ追加時の自動スクロール
   useEffect(() => {
