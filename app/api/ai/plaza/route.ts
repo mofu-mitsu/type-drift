@@ -117,7 +117,9 @@ export async function POST(request: NextRequest) {
       temperature: 0.7,
       max_tokens: isBottle ? 110 : 240,
       ...(retry ? {} : { reasoning_effort: "none" }),
-      response_format: { type: "json_object" },
+      // QwenのJSON制約検証が失敗するため、QwenにはJSONモードを強制しない。
+      // 返答は下のparseReplyでJSON/プレーンテキストの両方を受け入れる。
+      ...(model.startsWith("qwen/") ? {} : { response_format: { type: "json_object" } }),
       messages: [
         { role: "system" as const, content: retry
           ? `あなたは${character}として自然な日本語で返答する。必ずJSONオブジェクトだけを返す。形式は {"body":"返答本文"}。Markdownコードフェンスや説明は付けない。${system}`
@@ -131,7 +133,7 @@ export async function POST(request: NextRequest) {
     const models = [MODEL, ...(MODEL === "qwen/qwen3.8-27b" ? ["llama-3.3-70b-versatile"] : [])];
     let result: {
       choices?: Array<{ message?: { content?: unknown }; finish_reason?: string }>;
-      error?: { message?: string; code?: string };
+      error?: { message?: string; code?: string; failed_generation?: string };
     } = {};
     let response: Response | null = null;
     let usedModel = MODEL;
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
     if (!response.ok) {
       const reason = String(result.error?.code || `groq_${response.status}`);
-      return NextResponse.json({ source: "error", reason, detail: result.error?.message?.slice(0, 240), model: usedModel }, { status: 502 });
+      return NextResponse.json({ source: "error", reason, detail: result.error?.message?.slice(0, 240), failed_generation: result.error?.failed_generation?.slice(0, 500), model: usedModel }, { status: 502 });
     }
 
     const reply = parseReply(result.choices?.[0]?.message?.content, character);
