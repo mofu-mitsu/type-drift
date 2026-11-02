@@ -57,20 +57,41 @@ type DirectMessage = {
 
 // AI/サーバーが本文をJSON文字列として返した場合も、画面には本文だけを表示する。
 function normalizeDmBody(value: unknown, depth = 0): string {
-  if (typeof value !== "string") return value == null ? "" : String(value);
-  const source = value.trim();
-  if (depth < 4 && (source.startsWith("{") || source.startsWith("\\u007b") || source.startsWith("\\\\{"))) {
-    try {
-      const parsed = JSON.parse(source);
-      if (typeof parsed?.body === "string") return normalizeDmBody(parsed.body, depth + 1);
-      if (typeof parsed?.content === "string") return normalizeDmBody(parsed.content, depth + 1);
-      if (typeof parsed?.message === "string") return normalizeDmBody(parsed.message, depth + 1);
-      if (Array.isArray(parsed?.replies)) {
-        const item = parsed.replies.find((entry: { body?: unknown }) => typeof entry?.body === "string") || parsed.replies[0];
-        if (typeof item?.body === "string") return normalizeDmBody(item.body, depth + 1);
-      }
-    } catch {}
+  if (value == null) return "";
+  if (typeof value !== "string") {
+    if (typeof value === "object") {
+      const record = value as { body?: unknown; content?: unknown; message?: unknown; replies?: unknown };
+      if (typeof record.body === "string") return normalizeDmBody(record.body, depth + 1);
+      if (typeof record.content === "string") return normalizeDmBody(record.content, depth + 1);
+      if (typeof record.message === "string") return normalizeDmBody(record.message, depth + 1);
+    }
+    return String(value);
   }
+
+  let source = value.trim();
+  if (depth < 5) {
+    // JSONオブジェクトだけでなく、JSON文字列として二重エンコードされた本文もほどく。
+    const candidates = [source];
+    if ((source.startsWith('"') && source.endsWith('"')) || source.startsWith('\\\\u007b') || source.startsWith('\\\\\\\\{')) {
+      try { candidates.push(JSON.parse(source)); } catch {}
+    }
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string") continue;
+      const text = candidate.trim();
+      if (!text.startsWith("{") || !text.endsWith("}")) continue;
+      try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed?.body === "string") return normalizeDmBody(parsed.body, depth + 1);
+        if (typeof parsed?.content === "string") return normalizeDmBody(parsed.content, depth + 1);
+        if (typeof parsed?.message === "string") return normalizeDmBody(parsed.message, depth + 1);
+        if (Array.isArray(parsed?.replies)) {
+          const item = parsed.replies.find((entry: { body?: unknown }) => typeof entry?.body === "string") || parsed.replies[0];
+          if (typeof item?.body === "string") return normalizeDmBody(item.body, depth + 1);
+        }
+      } catch {}
+    }
+  }
+  // JSON文字列内に残った改行エスケープも表示用の改行へ戻す。
   return source.replace(/\\\\n/g, "\n").replace(/\\\\r/g, "\r").replace(/\\\\t/g, "\t");
 }
 
