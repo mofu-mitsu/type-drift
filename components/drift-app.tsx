@@ -2430,7 +2430,7 @@ export default function DriftApp() {
   const groupedServerNotifications: Array<{
     id: number;
     type: string;
-    entity_id: number | null;
+    entity_id: string | number | null;
     message: string;
     created_at: string;
     groupedIds?: number[];
@@ -2441,7 +2441,7 @@ export default function DriftApp() {
       id: number;
       groupedIds: number[];
       type: string;
-      entity_id: number | null;
+      entity_id: string | number | null;
       message: string;
       created_at: string;
     }> = reactions.length ? [{
