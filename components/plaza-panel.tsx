@@ -12,7 +12,7 @@ export type PlazaMessage = {
   emoji?: string;
   createdAt: number;
 };
-export type PlazaUser = { sessionKey: string; nickname: string; emoji: string; avatarUrl?: string };
+export type PlazaUser = { sessionKey: string; nickname: string; emoji: string; avatarUrl?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
 export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
 const configuredPlazaWorld = process.env.NEXT_PUBLIC_PLAZA_REALTIME_URL;
@@ -26,6 +26,7 @@ const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か'
 export type PlazaPanelProps = {
   nickname?: string;
   profileImage?: string | null;
+  profileIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
   externalEmote?: { emote: string; label?: string; id: number } | null;
   externalMessage?: { author: string; body: string; kind: 'human' | 'ai'; emoji?: string; id: number } | null;
   onToast?: (message: string) => void;
@@ -57,6 +58,7 @@ const defaultInitialMessages: PlazaMessage[] = [
 export default function PlazaPanel({
   nickname = '',
   profileImage = null,
+  profileIdentity,
   externalEmote = null,
   externalMessage = null,
   onToast,
@@ -112,7 +114,7 @@ export default function PlazaPanel({
         wsRef.current = ws;
         ws.onopen = () => {
           setConnected(true);
-          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, avatarUrl: profileImage?.startsWith('https://') ? profileImage : undefined }));
+          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, avatarUrl: profileImage?.startsWith('https://') ? profileImage : undefined, identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', otherType: profileIdentity.otherType || '' } : undefined }));
           presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname) });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
