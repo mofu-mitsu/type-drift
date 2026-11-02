@@ -55,6 +55,25 @@ type DirectMessage = {
   isAiError?: boolean;
 };
 
+// AI/サーバーが本文をJSON文字列として返した場合も、画面には本文だけを表示する。
+function normalizeDmBody(value: unknown, depth = 0): string {
+  if (typeof value !== "string") return value == null ? "" : String(value);
+  const source = value.trim();
+  if (depth < 4 && (source.startsWith("{") || source.startsWith("\\u007b") || source.startsWith("\\\\{"))) {
+    try {
+      const parsed = JSON.parse(source);
+      if (typeof parsed?.body === "string") return normalizeDmBody(parsed.body, depth + 1);
+      if (typeof parsed?.content === "string") return normalizeDmBody(parsed.content, depth + 1);
+      if (typeof parsed?.message === "string") return normalizeDmBody(parsed.message, depth + 1);
+      if (Array.isArray(parsed?.replies)) {
+        const item = parsed.replies.find((entry: { body?: unknown }) => typeof entry?.body === "string") || parsed.replies[0];
+        if (typeof item?.body === "string") return normalizeDmBody(item.body, depth + 1);
+      }
+    } catch {}
+  }
+  return source.replace(/\\\\n/g, "\n").replace(/\\\\r/g, "\r").replace(/\\\\t/g, "\t");
+}
+
 type Announcement = {
   id: string;
   date: string;
@@ -2195,7 +2214,7 @@ export default function DriftApp() {
         recipient: nickname || "あなた",
         targetEmoji: message.senderEmoji || "◌",
         targetType: "広場の住人",
-        body: message.body,
+        body: normalizeDmBody(message.body),
         createdAt: message.createdAt || Date.now(),
         read: false,
         isMine: false,
@@ -4124,7 +4143,7 @@ export default function DriftApp() {
                               </span>
                             </div>
                             <p className="dm-thread-snippet">
-                              {thread.lastMsg.isMine ? "あなた: " : ""}{thread.lastMsg.body}
+                              {thread.lastMsg.isMine ? "あなた: " : ""}{normalizeDmBody(thread.lastMsg.body)}
                             </p>
                           </div>
                           {thread.unread > 0 && (
@@ -4304,7 +4323,7 @@ export default function DriftApp() {
                               </div>
                             )}
                             <div className="dm-bubble-content">
-                              {msg.body}
+                              {normalizeDmBody(msg.body)}
                               {msg.isAiError && <button type="button" className="dm-ai-error-report" onClick={() => window.dispatchEvent(new CustomEvent("type-drift:open-feedback", { detail: { category: "AIエラー", body: `[AI応答エラー]\n${msg.body}` } }))}>このエラーを意見箱へ送る</button>}
                             </div>
                             <div className="dm-bubble-meta">
