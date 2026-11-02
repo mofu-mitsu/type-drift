@@ -169,6 +169,13 @@ export default function PlazaPanel({
                   return shorter.length > 35 && longer.startsWith(shorter.slice(0, Math.min(shorter.length, 100)));
                 });
                 if (isDuplicateCharacterEcho) return current;
+                const isDuplicateMessage = current.some(item => {
+                  if (item.id === msg.id) return true;
+                  if (item.author !== msg.author || item.kind !== msg.kind) return false;
+                  if (Math.abs(item.createdAt - msg.createdAt) > 12_000) return false;
+                  return normalize(item.body) === incomingBody;
+                });
+                if (isDuplicateMessage) return current;
                 const filtered = current.filter(item => item.id !== msg.id);
                 return [...filtered, msg].slice(-80);
               });
