@@ -2422,9 +2422,24 @@ export default function DriftApp() {
     setPlazaToast("✓ 意見箱とお問い合わせの通知を既読にしました");
   };
 
-  const markServerNotificationsRead = async (types?: string[], notificationId?: number) => {
+  const groupedServerNotifications = (() => {
+    const reactions = serverNotifications.filter(n => n.type.includes("reaction"));
+    const others = serverNotifications.filter(n => !n.type.includes("reaction"));
+    const grouped = reactions.length ? [{
+      id: reactions[0].id,
+      groupedIds: reactions.map(n => n.id),
+      type: "bottle_reaction",
+      entity_id: null,
+      message: `ボトルに${reactions.length}件のいいねが届きました`,
+      created_at: reactions.reduce((latest, n) => n.created_at > latest ? n.created_at : latest, reactions[0].created_at),
+    }] : [];
+    return [...others, ...grouped].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  })();
+
+  const markServerNotificationsRead = async (types?: string[], notificationId?: number, notificationIds?: number[]) => {
     const api = process.env.NEXT_PUBLIC_API_URL;
-    const targets = serverNotifications.filter(n => (!types || types.includes(n.type)) && (notificationId === undefined || n.id === notificationId));
+    const idSet = notificationIds ? new Set(notificationIds) : null;
+    const targets = serverNotifications.filter(n => (!types || types.includes(n.type)) && (idSet ? idSet.has(n.id) : notificationId === undefined || n.id === notificationId));
     if (!api || targets.length === 0) return;
     const results = await Promise.all(targets.map(async n => {
       try {
@@ -4042,7 +4057,7 @@ export default function DriftApp() {
                     <button type="button" onClick={markAllNotificationsAsRead}>すべて既読</button>
                   </div>
                   <div className="activity-notification-feed__list">
-                    {serverNotifications.map(notification => (
+                    {groupedServerNotifications.map(notification => (
                       <article className="activity-notification-card" key={notification.id}>
                         <span className="activity-notification-card__icon" aria-hidden="true">
                           {notification.type.includes("reaction") ? "♡" : notification.type.includes("reply") ? "↩" : "✦"}
@@ -4051,7 +4066,7 @@ export default function DriftApp() {
                           <p>{notification.message}</p>
                           <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" })}</time>
                         </div>
-                        <button type="button" onClick={() => void markServerNotificationsRead(undefined, notification.id)} aria-label="この通知を既読にする">既読</button>
+                        <button type="button" onClick={() => void markServerNotificationsRead(undefined, notification.id, "groupedIds" in notification ? notification.groupedIds : undefined)} aria-label="この通知を既読にする">既読</button>
                       </article>
                     ))}
                   </div>
