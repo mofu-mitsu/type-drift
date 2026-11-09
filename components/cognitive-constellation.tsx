@@ -160,6 +160,7 @@ export default function CognitiveConstellation({ onExit, onSendToBottle }: Props
 
   // トースト・共有完了通知
   const [toastMsg, setToastMsg] = useState("");
+  const [savedHoroscopeImage, setSavedHoroscopeImage] = useState("");
 
   // 時間帯計算
   useEffect(() => {
@@ -617,6 +618,7 @@ export default function CognitiveConstellation({ onExit, onSendToBottle }: Props
 
     // 画像ダウンロード
     const dataUrl = canvas.toDataURL("image/png");
+    setSavedHoroscopeImage(dataUrl);
     const link = document.createElement("a");
     link.download = `type-drift-horoscope-${Date.now()}.png`;
     link.href = dataUrl;
@@ -890,6 +892,13 @@ export default function CognitiveConstellation({ onExit, onSendToBottle }: Props
               </button>
             </div>
           </div>
+
+          {savedHoroscopeImage && (
+            <div className="horoscope-save-preview">
+              <p>画像を長押しして保存することもできます 📱</p>
+              <img src={savedHoroscopeImage} alt="思考宇宙のホロスコープ画像。長押しで保存できます" draggable={false} />
+            </div>
+          )}
 
           {selectedBody && (
             <div className="celestial-detail-box">
