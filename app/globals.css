@@ -666,3 +666,58 @@
   .public-profile-type strong { font-size: .95rem; }
   .public-profile-person { gap: .8rem; }
 }
+
+
+/* Polls: readable choices, visible vote totals and soft wave styling */
+.poll-box{display:flex;flex-direction:column;gap:8px;margin:16px 0;padding:14px;border:1px solid #cce8e1;border-radius:18px;background:linear-gradient(145deg,rgba(246,255,251,.96),rgba(240,247,255,.96));box-shadow:0 8px 22px rgba(57,128,122,.07)}
+.poll-box__heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px;color:#377e77;font-size:12px;font-weight:750}
+.poll-box__heading small{padding:3px 8px;border-radius:999px;background:#e1f4ed;color:#4f8980}
+.poll-option{display:flex;flex-direction:column;align-items:stretch;gap:7px;width:100%;min-width:0;padding:12px 13px;border:1px solid #d8e8e4;border-radius:13px;background:#fff;color:#38565a;text-align:left;transition:background .16s,border-color .16s,transform .16s}
+.poll-option:not(:disabled):hover{border-color:#79c1b1;background:#f6fffb;transform:translateY(-1px)}
+.poll-option.selected{border-color:#61ad9e;background:#e9f8f1}
+.poll-option:disabled{cursor:default;opacity:1}
+.poll-option__label{overflow-wrap:anywhere;font-size:13px;font-weight:650}
+.poll-option__result{display:flex;align-items:center;gap:10px}
+.poll-option__bar{height:6px;flex:1;overflow:hidden;border-radius:99px;background:#e9f0ef}
+.poll-option__bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#7dcbb6,#77b9d4)}
+.poll-option__result small{flex:0 0 auto;color:#64817e;font-size:10px}
+.poll-box__thanks{margin:2px 0 0;color:#579589;font-size:11px;text-align:center}
+.poll-draft{display:grid;gap:8px}
+.poll-draft input{width:100%;min-width:0;padding:11px 12px;border:1px solid #cfe3dc;border-radius:12px;background:#fff;color:#29484a}
+.poll-draft button{justify-self:start;padding:9px 12px;border:1px dashed #9acfc0;border-radius:11px;background:#f3fcf7;color:#367f73;font-size:12px}
+/* Compact, responsive identity card and DM thread rows */
+.activity-v2-identity-card{min-width:0;flex-wrap:wrap;gap:12px}
+.v2-identity-left{display:flex;align-items:center;gap:12px;flex:1 1 260px;min-width:0}
+.v2-identity-texts{display:flex;flex-direction:column;flex:1 1 auto;min-width:0;gap:4px}
+.v2-identity-main-name{max-width:100%;font-size:clamp(14px,2.2vw,18px);line-height:1.45;overflow-wrap:normal;word-break:keep-all}
+.v2-identity-sub{display:block;max-width:100%;line-height:1.55;overflow-wrap:anywhere;word-break:normal}
+.v2-identity-edit-btn,.v2-identity-share-btn{flex:0 0 auto}
+.dm-v2-thread-item{min-width:0;gap:10px}
+.dm-v2-thread-item>*{min-width:0}
+.dm-v2-thread-item .dm-thread-name,.dm-v2-thread-item strong{overflow-wrap:anywhere;word-break:normal}
+.dm-v2-thread-item [style*="width: 210px"],.dm-v2-thread-item [style*="width:210px"]{width:auto!important;flex:1 1 110px}
+.dm-v2-thread-item [style*="width: 240px"],.dm-v2-thread-item [style*="width:240px"]{width:auto!important;flex:1 1 120px}
+.dm-v2-thread-item [style*="whiteSpace: nowrap"]{white-space:normal!important}
+@media(max-width:600px){
+ .activity-v2-identity-card{display:flex;align-items:flex-start;padding:16px!important}
+ .v2-identity-left{flex-basis:100%;align-items:flex-start}
+ .v2-planet-avatar{flex:0 0 40px}
+ .v2-identity-main-name{font-size:15px;word-break:keep-all}
+ .v2-identity-sub{font-size:12px}
+ .v2-identity-edit-btn,.v2-identity-share-btn{margin-left:0!important}
+ .dm-v2-thread-item{display:flex;flex-wrap:wrap;align-items:center;padding:14px!important}
+ .dm-v2-thread-item .dm-thread-avatar,.dm-v2-thread-item [class*="avatar"]{flex:0 0 42px}
+ .dm-v2-thread-item .dm-thread-name{flex:1 1 120px;min-width:0}
+ .dm-v2-thread-item button{max-width:100%;white-space:normal}
+ .poll-box{padding:11px}
+}
+/* Consultation publishing controls */
+.consult-publish-options{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px;padding:13px 15px;border:1px solid #d6eae3;border-radius:15px;background:linear-gradient(135deg,#f3fcf7,#f4f7ff)}
+.consult-publish-options label{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.78);color:#426b68;font-size:13px;font-weight:650}
+.consult-publish-options input{width:17px;height:17px;accent-color:#4eaa98}
+.consult-publish-options small{color:#8aa6a0;font-size:10px;font-weight:500}
+@media(max-width:560px){.consult-publish-options{display:grid;grid-template-columns:1fr;gap:7px}.consult-publish-options label{min-width:0;flex-wrap:wrap}}
+/* Decorative ocean wave accent for the sea and poll surfaces */
+.bottle-stream{isolation:isolate}
+.bottle-stream::before,.bottle-stream::after{pointer-events:none}
+.bottle-card .poll-box:before{content:"";display:block;height:3px;width:42px;border-radius:99px;background:linear-gradient(90deg,#83cbb8,#a6d9e8);margin-bottom:2px}
