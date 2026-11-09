@@ -51,6 +51,8 @@ class DirectMessageController extends Controller
                     'bottle_author' => $message->bottle_author,
                     'bottle_type' => $message->bottle_type,
                     'sender_identity' => $this->senderIdentity($message),
+                    'sender_profile' => $message->sender_profile ?: $this->profileSnapshot($message->sender_user_id, $message->sender_guest_key),
+                    'recipient_profile' => $message->recipient_profile ?: $this->profileSnapshot($message->recipient_user_id, $message->recipient_guest_key),
                 ];
             });
 
@@ -118,6 +120,10 @@ class DirectMessageController extends Controller
             'bottle_snippet' => $lastMessage->bottle_snippet ?: $bottle->body,
             'bottle_author' => $lastMessage->bottle_author ?: '匿名のボトル主',
             'bottle_type' => $lastMessage->bottle_type ?: '匿名ボトル',
+            'sender_profile' => $this->profileSnapshot($userId, $lookupKey),
+            'recipient_profile' => ($isCurrentSender
+                ? ($lastMessage->recipient_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey))
+                : ($lastMessage->sender_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey))),
         ]);
 
         if ($recipientUserId || $recipientGuestKey) {
@@ -144,11 +150,44 @@ class DirectMessageController extends Controller
             'bottle_author' => $message->bottle_author,
             'bottle_type' => $message->bottle_type,
             'sender_identity' => $this->senderIdentity($message),
+            'sender_profile' => $message->sender_profile ?: $this->profileSnapshot($userId, $lookupKey),
+            'recipient_profile' => $message->recipient_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey),
         ]], 201);
+    }
+
+    private function profileSnapshot(?int $userId, ?string $guestKey): array
+    {
+        $profile = Profile::query()
+            ->when($userId, fn ($query) => $query->where('user_id', $userId))
+            ->when(!$userId && $guestKey, fn ($query) => $query->where('guest_key', $guestKey))
+            ->first();
+
+        if (!$profile) return [];
+
+        return [
+            'nickname' => $profile->nickname ?: '',
+            'mbti' => $profile->mbti ?: '',
+            'socionics' => $profile->socionics ?: '',
+            'enneagram' => $profile->enneagram ?: '',
+            'otherType' => $profile->other_type ?: '',
+            'bio' => $profile->bio ?: '',
+            'links' => $profile->links ?: [],
+            'profileImageUrl' => $profile->profile_image_url ?: '',
+        ];
     }
 
     private function senderIdentity(DirectMessage $message): array
     {
+        $snapshot = $message->sender_profile ?: [];
+        if (!empty($snapshot)) {
+            return [
+                'mbti' => $snapshot['mbti'] ?? '',
+                'socionics' => $snapshot['socionics'] ?? '',
+                'enneagram' => $snapshot['enneagram'] ?? '',
+                'other_type' => $snapshot['otherType'] ?? $snapshot['other_type'] ?? '',
+            ];
+        }
+
         $profile = Profile::query()
             ->when($message->sender_user_id, fn ($query) => $query->where('user_id', $message->sender_user_id))
             ->when(!$message->sender_user_id && $message->sender_guest_key, fn ($query) => $query->where('guest_key', $message->sender_guest_key))
