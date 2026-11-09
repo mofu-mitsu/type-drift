@@ -31,6 +31,100 @@ const bodyOf = async (request: Request): Promise<Record<string, any>> => request
 const nullable = (value: unknown) => clean(value, 300) || null;
 const fail = (error: unknown) => { console.error("type-drift-api fallback error", error); };
 
+const AI_ACTORS = [
+  { key: "ai:darling", name: "ダーリンちゃん", emoji: "🥺" },
+  { key: "ai:lsi-worm", name: "LSI芋虫", emoji: "🐛" },
+] as const;
+
+async function runScheduledAiEngagement(env: Env) {
+  if (!env.DATABASE_URL) return;
+  const sql = neon(env.DATABASE_URL);
+  await sql`CREATE TABLE IF NOT EXISTS ai_engagements (
+    bottle_id BIGINT NOT NULL,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (bottle_id, actor, action)
+  )`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_engagements_one_reply_per_bottle
+    ON ai_engagements (bottle_id) WHERE action = 'reply'`;
+
+  const posts = await sql`
+    SELECT b.id, b.body, b.guest_key, b.created_at
+    FROM bottles b
+    WHERE b.deleted_at IS NULL AND COALESCE(b.is_ai, FALSE) = FALSE
+      AND b.created_at > NOW() - INTERVAL '7 days'
+    ORDER BY b.created_at DESC LIMIT 40
+  `;
+
+  for (const post of posts as Array<{ id: number; body: string; guest_key: string | null }>) {
+    const body = String(post.body || "");
+    if (!body.trim()) continue;
+
+    // いいねは返信より高確率。各AIキャラは同じ投稿へ一度だけ反応する。
+    for (const actor of AI_ACTORS) {
+      if (Math.random() >= 0.58) continue;
+      const alreadyLiked = await sql`SELECT 1 FROM reactions WHERE bottle_id = ${post.id} AND guest_key = ${actor.key} LIMIT 1`;
+      if (alreadyLiked.length) continue;
+      const claim = await sql`INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
+        VALUES (${post.id}, ${actor.key}, 'like', NOW()) ON CONFLICT DO NOTHING RETURNING bottle_id`;
+      if (!claim.length) continue;
+      await sql`INSERT INTO reactions (bottle_id, guest_key, level, created_at, updated_at)
+        VALUES (${post.id}, ${actor.key}, 1, NOW(), NOW()) ON CONFLICT DO NOTHING`;
+      if (post.guest_key) {
+        await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at)
+          VALUES (${post.guest_key}, 'bottle_reaction', ${String(post.id)}, ${actor.emoji + " " + actor.name + "があなたのボトルにいいねしました。"}, NOW(), NOW())`;
+      }
+    }
+
+    const darlingAt = Math.min(...["ダーリンちゃん", "ダーリン", "🥺"].map(term => body.indexOf(term)).filter(index => index >= 0), Number.MAX_SAFE_INTEGER);
+    const wormAt = Math.min(...["LSI芋虫", "LSI", "🐛"].map(term => body.indexOf(term)).filter(index => index >= 0), Number.MAX_SAFE_INTEGER);
+    let chosen = darlingAt < wormAt ? AI_ACTORS[0] : wormAt < darlingAt ? AI_ACTORS[1] : null;
+    const existingAiReply = await sql`SELECT 1 FROM replies WHERE bottle_id = ${post.id}
+      AND guest_key IN ('ai:darling', 'ai:lsi-worm') AND deleted_at IS NULL LIMIT 1`;
+    if (existingAiReply.length) continue;
+    // 名指し投稿は対象キャラが必ず返信。その他は一定確率でどちらか一人が返信する。
+    if (!chosen) {
+      if (Math.random() >= 0.08) continue;
+      chosen = Math.random() < 0.5 ? AI_ACTORS[0] : AI_ACTORS[1];
+    }
+
+    try {
+      const prompt = [
+        "次のユーザーの匿名ボトル投稿に対して、あなた自身の口調で自然な返信を一つ書いてください。",
+        "投稿の内容に具体的に触れ、定型的な挨拶や過剰な称賛は避けてください。返信本文だけを返してください。",
+        "投稿本文：",
+        body.slice(0, 2500),
+      ].join("\n");
+      const response = await fetch("https://type-drift.vercel.app/api/ai/plaza", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: prompt, character: chosen.name, mode: "reply" }),
+      });
+      if (!response.ok) continue;
+      const payload = await response.json() as { replies?: Array<{ character?: string; body?: string }> };
+      const replyBody = String(payload.replies?.find(item => item.character === chosen?.name)?.body || payload.replies?.[0]?.body || "").trim().slice(0, 1500);
+      if (!replyBody) continue;
+
+      // 部分ユニーク制約で、同じ投稿へのAI返信は全キャラ合計でも一件だけ。
+      const inserted = await sql`WITH claimed AS (
+          INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
+          VALUES (${post.id}, ${chosen.key}, 'reply', NOW())
+          ON CONFLICT DO NOTHING RETURNING bottle_id
+        )
+        INSERT INTO replies (bottle_id, guest_key, body, parent_reply_id, created_at, updated_at)
+        SELECT ${post.id}, ${chosen.key}, ${replyBody}, NULL, NOW(), NOW() FROM claimed
+        RETURNING id`;
+      if (inserted.length && post.guest_key) {
+        await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at)
+          VALUES (${post.guest_key}, 'bottle_reply', ${String(post.id)}, ${chosen.emoji + " " + chosen.name + "からボトルに返信が届きました。"}, NOW(), NOW())`;
+      }
+    } catch (error) {
+      console.error("[Type Drift AI engagement] reply failed", { bottleId: post.id, character: chosen.name, error: String(error) });
+    }
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") return json({}, 204, env, request);
@@ -66,6 +160,8 @@ export default {
             (SELECT COUNT(*)::int FROM replies r WHERE r.bottle_id=b.id AND r.deleted_at IS NULL) AS replies_count,
             (SELECT COALESCE(SUM(rx.level),0)::int FROM reactions rx WHERE rx.bottle_id=b.id) AS reactions_sum_level,
             COALESCE((SELECT rx.level FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key=${key || null} ORDER BY rx.id DESC LIMIT 1),0)::int AS reaction_level,
+            (SELECT COALESCE(array_agg(CASE rx.guest_key WHEN 'ai:darling' THEN '🥺 ダーリンちゃん' WHEN 'ai:lsi-worm' THEN '🐛 LSI芋虫' END), ARRAY[]::text[])
+              FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key IN ('ai:darling','ai:lsi-worm') AND rx.level > 0) AS ai_likers,
             (b.guest_key = ${key || null}) AS is_mine
           FROM bottles b WHERE b.deleted_at IS NULL AND (${mbti}::text IS NULL OR LOWER(b.mbti)=${mbti})
             AND (${soc}::text IS NULL OR LOWER(b.socionics)=${soc}) AND (${q}::text IS NULL OR b.body ILIKE '%'||${q}||'%')
@@ -447,6 +543,9 @@ export default {
       fail(error);
       return json({ error: "database error" }, 500, env, request);
     }
+  },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduledAiEngagement(env));
   },
 };
 
