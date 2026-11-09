@@ -179,9 +179,25 @@ class BottleController extends Controller
 
     public function profile(Request $request)
     {
-        abort_unless($request->user(), 401);
-        $data = $request->validate(['nickname' => ['nullable', 'string', 'max:80'], 'mbti' => ['nullable', 'string', 'max:8'], 'socionics' => ['nullable', 'string', 'max:12'], 'enneagram' => ['nullable', 'string', 'max:20'], 'other_type' => ['nullable', 'string', 'max:300'], 'bio' => ['nullable', 'string', 'max:1000'], 'links' => ['nullable', 'array'], 'profile_image_url' => ['nullable', 'url', 'max:2048']]);
-        $profile = Profile::updateOrCreate(['user_id' => $request->user()->id], $data);
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        abort_unless($userId || $guestKey, 422, 'A guest key is required.');
+
+        $data = $request->validate([
+            'nickname' => ['nullable', 'string', 'max:80'],
+            'mbti' => ['nullable', 'string', 'max:8'],
+            'socionics' => ['nullable', 'string', 'max:12'],
+            'enneagram' => ['nullable', 'string', 'max:20'],
+            'other_type' => ['nullable', 'string', 'max:300'],
+            'bio' => ['nullable', 'string', 'max:1000'],
+            'links' => ['nullable', 'array'],
+            'profile_image_url' => ['nullable', 'url', 'max:2048'],
+        ]);
+
+        $profile = Profile::updateOrCreate(
+            $userId ? ['user_id' => $userId] : ['guest_key' => $guestKey],
+            [...$data, 'user_id' => $userId, 'guest_key' => $guestKey]
+        );
         return response()->json(['profile' => $profile]);
     }
 
