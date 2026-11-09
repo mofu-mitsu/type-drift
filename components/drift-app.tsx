@@ -3398,7 +3398,7 @@ export default function DriftApp() {
         </div>
         <p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p>
         <div className="bottle-grid">
-          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} />)}
+          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} />)}
         </div>
       </section>
     )}
