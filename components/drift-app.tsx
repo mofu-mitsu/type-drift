@@ -4376,7 +4376,7 @@ export default function DriftApp() {
                 <IconV2LikeChat size={28} />
               </div>
               <span className="v2-nav-label">いいねしたボトル</span>
-              {Number(serverNotificationCounts.bottle_reaction || 0) > 0 && <span className="tab-pill-badge activity-count-badge">{Number(serverNotificationCounts.bottle_reaction || 0)}</span>}
+              
               <span className="v2-nav-arrow">→</span>
             </button>
 
