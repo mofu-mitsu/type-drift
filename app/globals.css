@@ -753,3 +753,12 @@
  .dm-thread-badge{display:inline-block;font-size:11px;padding:3px 7px;border-radius:9px}
  .dm-tools-trigger span{display:none}
 }
+
+
+.bottle-edit-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.bottle-edit-fields>label{display:grid;gap:5px;min-width:0;color:#64817c;font-size:12px;font-weight:650}
+.bottle-edit-fields input{width:100%;min-width:0;box-sizing:border-box;border:1px solid #d8e7e2;border-radius:10px;background:#fbfefd;padding:10px 11px;color:#354e4a;font:inherit;font-weight:400}
+.bottle-edit-wide{grid-column:1/-1}
+.bottle-edit-poll{display:grid;gap:8px;padding:12px;border:1px solid #dcebe5;border-radius:12px;background:#f6fbf9}
+.bottle-edit-poll button{justify-self:start;border:1px solid #c8e3d9;border-radius:9px;background:white;color:#467d70;padding:7px 10px}
+@media(max-width:560px){.bottle-edit-fields{grid-template-columns:minmax(0,1fr)}.bottle-edit-wide{grid-column:auto}}
