@@ -338,7 +338,7 @@ export default function DriftApp() {
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
   const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean } | null>(null);
-  const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string } | null>(null);
+  const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; links?: Array<{ id: string; title: string; url: string }> } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(true);
   const [onlineCount, setOnlineCount] = useState(4);
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>(() => {
@@ -4362,7 +4362,8 @@ export default function DriftApp() {
                                     socionics: user?.socionics || user?.identity?.socionics || "",
                                     enneagram: user?.enneagram || user?.identity?.enneagram || "",
                                     psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || "",
-                                    overview: "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
+                                    links: user?.links || [],
+                                    overview: user?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
                                 }
                               }}
@@ -4385,6 +4386,7 @@ export default function DriftApp() {
                               </div>
                             </div>
                             <div className="dm-profile-overview">{dmInspectProfile.overview}</div>
+                            {dmInspectProfile.links?.filter(link => link.title && link.url.startsWith("https://")).map(link => <a key={link.id || link.url} className="dm-profile-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>)}
                           </div>
                         </div>
                       )}
