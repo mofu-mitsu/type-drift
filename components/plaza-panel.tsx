@@ -110,7 +110,8 @@ export default function PlazaPanel({
   useEffect(() => {
     let alive = true;
     const api = process.env.NEXT_PUBLIC_API_URL;
-    sessionKeyRef.current = typeof crypto !== 'undefined' ? crypto.randomUUID() : `plaza-${Date.now()}`;
+    // Reuse the visitor key across reconnects so one visitor is not duplicated.
+    sessionKeyRef.current = getGuestKey() || (typeof crypto !== 'undefined' ? crypto.randomUUID() : `plaza-${Date.now()}`);
     const guestMark = GUEST_MARKS[Math.floor(Math.random() * GUEST_MARKS.length)];
     let heartbeat: number | null = null;
     const presence = (path: string, payload: Record<string, unknown>) => {
@@ -234,7 +235,7 @@ export default function PlazaPanel({
       presence('leave', { session_key: sessionKeyRef.current });
       wsRef.current = null;
     };
-  }, [nickname, profileImage, profileIdentity]);
+  }, [nickname, profileImage, profileIdentity, profileBio, profileLinks]);
 
   // メッセージ追加時の自動スクロール
   useEffect(() => {
