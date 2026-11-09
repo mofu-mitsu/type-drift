@@ -2341,9 +2341,13 @@ export default function DriftApp() {
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
             ? ([
-                ...(m.isMine ? [m.bottleType] : [
-                  m.senderIdentity ? [m.senderIdentity.mbti, m.senderIdentity.socionics, m.senderIdentity.enneagram].filter(Boolean).join(" · ") : "",
-                ]),
+                ...(m.isMine
+                  ? [profileIdentity.mbti, profileIdentity.socionics, profileIdentity.enneagram]
+                  : [
+                      m.senderIdentity?.mbti || plazaUser?.mbti || plazaUser?.identity?.mbti,
+                      m.senderIdentity?.socionics || plazaUser?.socionics || plazaUser?.identity?.socionics,
+                      m.senderIdentity?.enneagram || plazaUser?.enneagram || plazaUser?.identity?.enneagram,
+                    ]),
               ].filter(Boolean).join(" · ") || "匿名のボトル主へのトーク")
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
