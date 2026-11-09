@@ -2209,7 +2209,8 @@ export default function DriftApp() {
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
     const isBottleConversation = target.id.startsWith("bottle-") && Boolean(target.bottleInfo);
     const myDisplayName = isBottleConversation && !isProfileRevealed ? "匿名のあなた" : (nickname || "匿名のあなた");
-    const targetBottleId = target.id.startsWith("bottle-") ? Number(target.id.slice("bottle-".length)) : 0;
+    const targetBottleMatch = target.id.match(/^bottle-(\d+)/);
+    const targetBottleId = targetBottleMatch ? Number(targetBottleMatch[1]) : 0;
     const hasMatchingBottle = Boolean(target.id.startsWith("bottle-") && target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
     const targetUser = plazaUsers.find(item => item.sessionKey === target.id) ||
       plazaUsers.find(item => item.nickname === target.name && item.nickname !== nickname) ||
@@ -2483,7 +2484,7 @@ export default function DriftApp() {
     for (const thread of threads) {
       if (!thread.targetId.startsWith("bottle-")) continue;
       const last = thread.lastMsg;
-      const bottleId = last.bottleId || Number(thread.targetId.replace("bottle-", ""));
+      const bottleId = last.bottleId || Number(thread.targetId.match(/^bottle-(\d+)/)?.[1] || 0);
       const originalBottle = bottles.find(bottle => bottle.id === bottleId);
       const originalBottleIdentity = [
         originalBottle?.mbti,
@@ -4596,7 +4597,7 @@ export default function DriftApp() {
                               </div>
                             </div>
                             <div className="dm-profile-overview">{dmInspectProfile.overview}</div>
-                            {dmInspectProfile.links?.filter(link => link.title && link.url.startsWith("https://")).map(link => <a key={link.id || link.url} className="dm-profile-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.title} ↗</a>)}
+                            {dmInspectProfile.links?.filter(link => link.title && /^https?:\/\//i.test(link.url)).map(link => <a key={link.id || link.url} className="dm-profile-link" href={link.url} target="_blank" rel="noopener noreferrer"><span className="dm-profile-link-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 14 21 3M14 3h7v7M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span><span className="dm-profile-link-text">{link.title}</span><span className="dm-profile-link-arrow" aria-hidden="true">↗</span></a>)}
                           </div>
                         </div>
                       )}
