@@ -63,6 +63,8 @@ export default function PlazaPanel({
   nickname = '',
   profileImage = null,
   profileIdentity,
+  profileBio = '',
+  profileLinks = [],
   externalEmote = null,
   externalMessage = null,
   onToast,
