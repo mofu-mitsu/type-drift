@@ -51,6 +51,7 @@ type DirectMessage = {
   bottleSnippet?: string;
   bottleAuthor?: string;
   bottleType?: string;
+  senderIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
   serverId?: number;
   isAiError?: boolean;
 };
@@ -391,6 +392,10 @@ export default function DriftApp() {
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
+          senderIdentity: row.sender_identity && typeof row.sender_identity === "object" ? {
+            mbti: row.sender_identity.mbti || "", socionics: row.sender_identity.socionics || "",
+            enneagram: row.sender_identity.enneagram || "", otherType: row.sender_identity.otherType || row.sender_identity.other_type || "",
+          } : undefined,
         }));
         setDirectMessages(current => {
           const merged = [...current];
@@ -2335,7 +2340,11 @@ export default function DriftApp() {
           emoji: otherEmoji,
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
-            ? "匿名のボトル主へのトーク"
+            ? ([
+                ...(m.isMine ? [m.bottleType] : [
+                  m.senderIdentity ? [m.senderIdentity.mbti, m.senderIdentity.socionics, m.senderIdentity.enneagram].filter(Boolean).join(" · ") : "",
+                ]),
+              ].filter(Boolean).join(" · ") || "匿名のボトル主へのトーク")
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
                 plazaUser?.socionics || plazaUser?.identity?.socionics,
