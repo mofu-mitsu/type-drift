@@ -149,7 +149,7 @@ const constellationQuestions = [
 ];
 
 function BottleTextWithLinks({ text }: { text: string }) {
-  const matches = Array.from(text.matchAll(/https?:\\/\\/[^\\s<>"']+/g));
+  const matches = Array.from(text.matchAll(/https?:\/\/[^\s<>"']+/g));
   const urls = matches.map(match => match[0].replace(/[),.!?。、「」』】]+$/g, "")).filter(Boolean);
   const previewUrl = urls[0] || "";
   const [preview, setPreview] = useState<{ url: string; title: string; description: string; image: string | null } | null>(null);
@@ -163,7 +163,7 @@ function BottleTextWithLinks({ text }: { text: string }) {
       .catch(() => { if (!cancelled) setPreview(null); });
     return () => { cancelled = true; };
   }, [previewUrl]);
-  const parts = text.split(/(https?:\\/\\/[^\\s<>"']+)/g);
+  const parts = text.split(/(https?:\/\/[^\s<>"']+)/g);
   return <>
     <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
       {parts.map((part, index) => {
