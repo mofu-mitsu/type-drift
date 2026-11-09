@@ -155,8 +155,14 @@ export default {
           bottleId = b.bottle_id ? Number(b.bottle_id) : null;
           threadId = bottleId ? "bottle-" + bottleId : clean(b.thread_id, 240);
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
-          const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
+          // A bottle is a conversation starter, not a shared DM room.
+          // Find an existing conversation for this exact guest and bottle; otherwise
+          // the first message below gets a participant-specific thread ID.
+          const lastRows = bottleId
+            ? await sql`SELECT * FROM direct_messages WHERE bottle_id=${bottleId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`
+            : await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
           context = lastRows[0] || null;
+          if (context?.thread_id) threadId = String(context.thread_id);
           if (context) {
             const currentIsSender = context.sender_guest_key === key;
             recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
@@ -171,6 +177,7 @@ export default {
             if (String(owner.guest_key) === key) return json({ message: "cannot message yourself" }, 422, env, request);
             if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
             recipientKey = String(owner.guest_key);
+            threadId = `bottle-${bottleId}-${key}`;
             const ownerType = [owner.mbti, owner.socionics, owner.enneagram, owner.other_type].filter(Boolean).join(" · ");
             const ownerProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${String(owner.guest_key)} LIMIT 1`;
             const savedOwnerProfile = ownerProfileRows[0] || {};
