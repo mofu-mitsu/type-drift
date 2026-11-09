@@ -111,6 +111,13 @@ class BottleController extends Controller
                 'bottle_snippet' => $bottle->body,
                 'bottle_author' => '匿名のボトル主',
                 'bottle_type' => $bottleType ?: '匿名ボトル',
+                'sender_profile' => $this->profileSnapshot($userId, $guestKey),
+                'recipient_profile' => array_merge([
+                    'mbti' => $bottle->mbti ?: '',
+                    'socionics' => $bottle->socionics ?: '',
+                    'enneagram' => $bottle->enneagram ?: '',
+                    'otherType' => $bottle->other_type ?: '',
+                ], $this->profileSnapshot($bottle->user_id, $bottle->guest_key)),
             ]);
         }
 
@@ -216,6 +223,28 @@ class BottleController extends Controller
             'guest_key' => $request->user() ? null : $request->header('X-Guest-Key'),
         ]);
         return response()->json(['message' => $message], 201);
+    }
+
+
+    private function profileSnapshot(?int $userId, ?string $guestKey): array
+    {
+        $profile = Profile::query()
+            ->when($userId, fn ($query) => $query->where('user_id', $userId))
+            ->when(!$userId && $guestKey, fn ($query) => $query->where('guest_key', $guestKey))
+            ->first();
+
+        if (!$profile) return [];
+
+        return [
+            'nickname' => $profile->nickname ?: '',
+            'mbti' => $profile->mbti ?: '',
+            'socionics' => $profile->socionics ?: '',
+            'enneagram' => $profile->enneagram ?: '',
+            'otherType' => $profile->other_type ?: '',
+            'bio' => $profile->bio ?: '',
+            'links' => $profile->links ?: [],
+            'profileImageUrl' => $profile->profile_image_url ?: '',
+        ];
     }
 
     private function notifyOwner(?int $ownerId, ?string $ownerGuestKey, string $type, string $entityId, string $message, ?int $actorId, ?string $actorGuestKey): void
