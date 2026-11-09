@@ -349,7 +349,10 @@ export default function DriftApp() {
   // DM相手のプロフィールはオンライン中に取得して端末へキャッシュし、退室後も表示できるようにする。
   const [dmProfileCache, setDmProfileCache] = useState<Record<string, PlazaUser>>({});
   const [dmHiddenAt, setDmHiddenAt] = useState<Record<string, number>>({});
-  const [dmSortMode, setDmSortMode] = useState<"recent" | "oldest" | "unread">("recent");
+  const [dmSortMode, setDmSortMode] = useState<"recent" | "oldest" | "unread" | "manual">("recent");
+  const [dmOrder, setDmOrder] = useState<string[]>([]);
+  const [dmShowHidden, setDmShowHidden] = useState(false);
+  const [draggingDmId, setDraggingDmId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
@@ -441,7 +444,9 @@ export default function DriftApp() {
       const hiddenRaw = localStorage.getItem("type-drift-dm-hidden-at");
       if (hiddenRaw) setDmHiddenAt(JSON.parse(hiddenRaw));
       const sortRaw = localStorage.getItem("type-drift-dm-sort-mode");
-      if (sortRaw === "recent" || sortRaw === "oldest" || sortRaw === "unread") setDmSortMode(sortRaw);
+      if (sortRaw === "recent" || sortRaw === "oldest" || sortRaw === "unread" || sortRaw === "manual") setDmSortMode(sortRaw);
+      const orderRaw = localStorage.getItem("type-drift-dm-order");
+      if (orderRaw) setDmOrder(JSON.parse(orderRaw));
     } catch {}
   }, []);
 
@@ -2448,7 +2453,7 @@ export default function DriftApp() {
     return count;
   }, [serverNotificationCount, unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount]);
 
-  const dmThreads = useMemo(() => {
+  const dmAllThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
@@ -2522,12 +2527,34 @@ export default function DriftApp() {
         ? (originalBottleIdentity || messageIdentity || last.bottleType || thread.type || "ボトル主への返信")
         : (messageIdentity || originalBottleIdentity || last.bottleType || thread.type || "匿名の誰か");
     }
-    return threads.filter(thread => !(dmHiddenAt[thread.targetId] && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId])).sort((a, b) => {
+    return threads.sort((a, b) => {
+      if (dmSortMode === "manual") {
+        const ai = dmOrder.indexOf(a.targetId);
+        const bi = dmOrder.indexOf(b.targetId);
+        if (ai >= 0 || bi >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+      }
       if (dmSortMode === "oldest") return a.lastMsg.createdAt - b.lastMsg.createdAt;
       if (dmSortMode === "unread") return b.unread - a.unread || b.lastMsg.createdAt - a.lastMsg.createdAt;
       return b.lastMsg.createdAt - a.lastMsg.createdAt;
     });
-  }, [directMessages, plazaUsers, bottles, dmProfileCache, dmHiddenAt, dmSortMode]);
+  }, [directMessages, plazaUsers, bottles, dmProfileCache, dmSortMode, dmOrder]);
+
+  const dmThreads = useMemo(() => dmAllThreads.filter(thread => !(dmHiddenAt[thread.targetId] && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId])), [dmAllThreads, dmHiddenAt]);
+  const dmHiddenThreads = useMemo(() => dmAllThreads.filter(thread => Boolean(dmHiddenAt[thread.targetId]) && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId]), [dmAllThreads, dmHiddenAt]);
+
+  const reorderDmThread = (fromId: string, toId: string) => {
+    if (!fromId || fromId === toId) return;
+    const ids = dmThreads.map(thread => thread.targetId);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, fromId);
+    const next = [...ids, ...dmOrder.filter(id => !ids.includes(id))];
+    setDmOrder(next);
+    setDmSortMode("manual");
+    try { localStorage.setItem("type-drift-dm-order", JSON.stringify(next)); localStorage.setItem("type-drift-dm-sort-mode", "manual"); } catch {}
+  };
 
   const markThreadAsRead = (threadId: string) => {
     const unreadServerMessages = directMessages.filter(message => message.threadId === threadId && !message.isMine && !message.read && message.serverId);
@@ -4422,8 +4449,22 @@ export default function DriftApp() {
                       <strong style={{ fontSize: "15px", color: "#1e293b" }}>トーク一覧</strong>
                       <span style={{ fontSize: "11px", color: "#64748b", background: "#e2e8f0", padding: "1px 6px", borderRadius: "10px" }}>{dmThreads.length}</span>
                     </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b" }}>並び替え <select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ border: "1px solid #dbe4ee", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option></select></label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b" }}>並び替え <select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread" | "manual"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ border: "1px solid #dbe4ee", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option><option value="manual">自由並び</option></select></label>
+                    <button type="button" onClick={() => setDmShowHidden(value => !value)} style={{ marginLeft: "auto", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 9px", background: dmShowHidden ? "#fce7f3" : "#fff", color: "#9d174d", fontSize: "11px", cursor: "pointer" }}>非表示リスト {dmHiddenThreads.length}件 {dmShowHidden ? "▲" : "▼"}</button>
                   </div>
+
+                  {dmShowHidden && (
+                    <div style={{ padding: "10px 14px", background: "#fff7fb", borderBottom: "1px solid #fce7f3" }}>
+                      <strong style={{ display: "block", fontSize: "12px", color: "#9d174d", marginBottom: "8px" }}>非表示にしたトーク</strong>
+                      {dmHiddenThreads.length === 0 ? <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>非表示のトークはありません。</p> : dmHiddenThreads.map(thread => (
+                        <div key={thread.targetId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 0", borderTop: "1px solid #fce7f3" }}>
+                          <span style={{ fontSize: "20px" }}>{thread.avatarUrl ? <img src={thread.avatarUrl} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} /> : thread.emoji}</span>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: "12px", color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{thread.name}</span>
+                          <button type="button" onClick={() => { const next = { ...dmHiddenAt }; delete next[thread.targetId]; setDmHiddenAt(next); try { localStorage.setItem("type-drift-dm-hidden-at", JSON.stringify(next)); } catch {} }} style={{ border: "1px solid #f9a8d4", borderRadius: "7px", padding: "5px 9px", background: "#fff", color: "#9d174d", fontSize: "11px", cursor: "pointer", flexShrink: 0 }}>復元</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {dmThreads.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "48px 20px", color: "#94a3b8" }}>
@@ -4440,6 +4481,12 @@ export default function DriftApp() {
                         <div
                           key={thread.targetId}
                           className="dm-v2-thread-item"
+                          draggable
+                          onDragStart={event => { setDraggingDmId(thread.targetId); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", thread.targetId); }}
+                          onDragOver={event => { if (draggingDmId) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
+                          onDrop={event => { event.preventDefault(); const fromId = event.dataTransfer.getData("text/plain") || draggingDmId; if (fromId) reorderDmThread(fromId, thread.targetId); setDraggingDmId(null); }}
+                          onDragEnd={() => setDraggingDmId(null)}
+                          style={{ cursor: draggingDmId === thread.targetId ? "grabbing" : "grab", opacity: draggingDmId === thread.targetId ? 0.55 : 1 }}
                           onClick={() => {
                             setActiveDmThreadId(thread.targetId);
                             markThreadAsRead(thread.targetId);
