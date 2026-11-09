@@ -341,10 +341,9 @@ export default function DriftApp() {
   const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; links?: Array<{ id: string; title: string; url: string }> } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(true);
   const [onlineCount, setOnlineCount] = useState(4);
-  const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>(() => {
-    if (typeof window === "undefined") return [];
-    try { const saved = localStorage.getItem("type-drift-plaza-profiles"); return saved ? JSON.parse(saved) as PlazaUser[] : []; } catch { return []; }
-  });
+  // 広場の住人は現在のpresence応答だけを表示する。localStorageの過去セッションを復元すると、
+  // 退室済みの自分や古いプロフィールが「幽霊」のように残り、住人が増殖して見える。
+  const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
@@ -3429,7 +3428,8 @@ export default function DriftApp() {
                   </div>
                   <p className="profile-inspect-types">
                     <strong>MBTI / Socionics:</strong> {inspectProfile.mbti} / {inspectProfile.socionics}<br />
-                    <strong>Enneagram:</strong> {inspectProfile.enneagram} {inspectProfile.psycho ? `(${inspectProfile.psycho})` : ""}
+                    <strong>Enneagram:</strong> {inspectProfile.enneagram || "未設定"}<br />
+                    <strong>Other:</strong> {inspectProfile.psycho || "未設定"}
                   </p>
                 </div>
               </div>
@@ -3558,28 +3558,29 @@ export default function DriftApp() {
           onPresenceUpdate={setOnlineCount}
           onPresenceUsers={(users) => {
             setPlazaUsers(current => {
-              const merged = new Map<string, PlazaUser>();
-              for (const user of current) if (user.sessionKey) merged.set(user.sessionKey, user);
+              const previousBySession = new Map(current.filter(user => user.sessionKey).map(user => [user.sessionKey, user]));
+              const latest = new Map<string, PlazaUser>();
               for (const user of users) {
-                const previous = merged.get(user.sessionKey);
-                merged.set(user.sessionKey, {
+                if (!user.sessionKey) continue;
+                const previous = previousBySession.get(user.sessionKey);
+                latest.set(user.sessionKey, {
                   ...previous, ...user,
-                  mbti: user.mbti || previous?.mbti || "",
-                  socionics: user.socionics || previous?.socionics || "",
-                  enneagram: user.enneagram || previous?.enneagram || "",
-                  otherType: user.otherType || previous?.otherType || "",
+                  mbti: user.mbti || user.identity?.mbti || previous?.mbti || previous?.identity?.mbti || "",
+                  socionics: user.socionics || user.identity?.socionics || previous?.socionics || previous?.identity?.socionics || "",
+                  enneagram: user.enneagram || user.identity?.enneagram || previous?.enneagram || previous?.identity?.enneagram || "",
+                  otherType: user.otherType || user.identity?.otherType || user.identity?.other_type || previous?.otherType || previous?.identity?.otherType || previous?.identity?.other_type || "",
                   identity: {
                     ...(previous?.identity || {}), ...(user.identity || {}),
                     mbti: user.mbti || user.identity?.mbti || previous?.mbti || previous?.identity?.mbti || "",
                     socionics: user.socionics || user.identity?.socionics || previous?.socionics || previous?.identity?.socionics || "",
                     enneagram: user.enneagram || user.identity?.enneagram || previous?.enneagram || previous?.identity?.enneagram || "",
-                    otherType: user.otherType || user.identity?.otherType || previous?.otherType || previous?.identity?.otherType || "",
-                  }
+                    otherType: user.otherType || user.identity?.otherType || user.identity?.other_type || previous?.otherType || previous?.identity?.otherType || previous?.identity?.other_type || "",
+                  },
+                  bio: user.bio ?? previous?.bio ?? "",
+                  links: user.links ?? previous?.links ?? [],
                 });
               }
-              const next = Array.from(merged.values());
-              try { localStorage.setItem("type-drift-plaza-profiles", JSON.stringify(next)); } catch {}
-              return next;
+              return Array.from(latest.values());
             });
           }}
           onUserMessageSent={handlePlazaUserMessage}
