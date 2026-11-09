@@ -53,7 +53,7 @@ type DirectMessage = {
   bottleType?: string;
   senderIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
   senderProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id: string; title: string; url: string }>; emoji?: string };
-  recipientProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id?: string; title: string; url: string }>; emoji?: string };
+  recipientProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id: string; title: string; url: string }>; emoji?: string };
   serverId?: number;
   isAiError?: boolean;
 };
