@@ -9,8 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('direct_messages', function (Blueprint $table) {
-            $table->unsignedBigInteger('sender_user_id')->nullable()->index();
-            $table->unsignedBigInteger('recipient_user_id')->nullable()->index();
+            if (!Schema::hasColumn('direct_messages', 'sender_user_id')) {
+                $table->unsignedBigInteger('sender_user_id')->nullable()->index();
+            }
+            if (!Schema::hasColumn('direct_messages', 'recipient_user_id')) {
+                $table->unsignedBigInteger('recipient_user_id')->nullable()->index();
+            }
         });
     }
 
