@@ -167,7 +167,7 @@ function BottleTextWithLinks({ text }: { text: string }) {
   return <>
     <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
       {parts.map((part, index) => {
-        if (!/^https?:\\/\\//i.test(part)) return <span key={index}>{part}</span>;
+        if (!/^https?:\/\//i.test(part)) return <span key={index}>{part}</span>;
         const cleanUrl = part.replace(/[),.!?。、「」』】]+$/g, "");
         const suffix = part.slice(cleanUrl.length);
         return <span key={index}><a href={cleanUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#9d4edd", textDecoration: "underline" }}>{cleanUrl}</a>{suffix}</span>;
