@@ -196,6 +196,10 @@ export default {
         const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,created_at,updated_at)
           VALUES (${key},${recipientKey},${threadId},${senderName},${recipientName},${text},${bottleId},${context?.bottle_snippet || null},${context?.bottle_author || null},${context?.bottle_type || null},NOW(),NOW()) RETURNING *`;
         const message = saved[0];
+        if (recipientKey && recipientKey !== key) {
+          await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at)
+            VALUES (${recipientKey},'direct_message',${threadId},'個別メッセージが届きました。',NOW(),NOW())`;
+        }
         return json({ message: {
           id: message.id, thread_id: message.thread_id, sender_name: message.sender_name, recipient_name: message.recipient_name,
           body: message.body, created_at: message.created_at, read: false, is_mine: true, bottle_id: message.bottle_id,
