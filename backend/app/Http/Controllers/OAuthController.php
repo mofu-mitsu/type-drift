@@ -29,7 +29,8 @@ class OAuthController extends Controller
                 'access_type' => 'online',
                 'prompt' => 'select_account',
             ]);
-            return redirect('https://accounts.google.com/o/oauth2/v2/auth?'.$query);
+            return redirect('https://accounts.google.com/o/oauth2/v2/auth?'.$query)
+                ->withCookie(cookie('type_drift_oauth_state_google', Crypt::encryptString($state), 10, '/api/auth', null, true, true, false, 'none'));
         }
 
         if ($provider === 'x') {
@@ -45,7 +46,9 @@ class OAuthController extends Controller
                 'code_challenge' => $challenge,
                 'code_challenge_method' => 'S256',
             ]);
-            return redirect('https://twitter.com/i/oauth2/authorize?'.$query);
+            return redirect('https://twitter.com/i/oauth2/authorize?'.$query)
+                ->withCookie(cookie('type_drift_oauth_state_x', Crypt::encryptString($state), 10, '/api/auth', null, true, true, false, 'none'))
+                ->withCookie(cookie('type_drift_oauth_verifier_x', Crypt::encryptString($verifier), 10, '/api/auth', null, true, true, false, 'none'));
         }
 
         abort(404);
@@ -53,7 +56,9 @@ class OAuthController extends Controller
 
     public function callback(Request $request, string $provider): RedirectResponse
     {
-        $expected = session()->pull("oauth_state_{$provider}");
+        $encryptedState = $request->cookie("type_drift_oauth_state_{$provider}");
+        try { $expected = $encryptedState ? Crypt::decryptString($encryptedState) : session()->pull("oauth_state_{$provider}"); }
+        catch (\\Throwable $exception) { $expected = null; }
         abort_unless($expected && hash_equals($expected, (string) $request->string('state')), 419, 'OAuth state mismatch.');
 
         try {
@@ -73,10 +78,14 @@ class OAuthController extends Controller
             Auth::login($user, true);
             $request->session()->regenerate();
 
-            return redirect(rtrim(config('app.frontend_url'), '/').'/?login=success');
+            return redirect(rtrim(config('app.frontend_url'), '/').'/?login=success')
+                ->withCookie(cookie('type_drift_oauth_state_'.$provider, '', -1, '/api/auth', null, true, true, false, 'none'))
+                ->withCookie(cookie('type_drift_oauth_verifier_x', '', -1, '/api/auth', null, true, true, false, 'none'));
         } catch (RuntimeException $exception) {
             Log::warning('OAuth callback failed', ['provider' => $provider, 'message' => $exception->getMessage()]);
-            return redirect(rtrim(config('app.frontend_url'), '/').'/?login=error');
+            return redirect(rtrim(config('app.frontend_url'), '/').'/?login=error')
+                ->withCookie(cookie('type_drift_oauth_state_'.$provider, '', -1, '/api/auth', null, true, true, false, 'none'))
+                ->withCookie(cookie('type_drift_oauth_verifier_x', '', -1, '/api/auth', null, true, true, false, 'none'));
         }
     }
 
@@ -110,6 +119,14 @@ class OAuthController extends Controller
         ];
     }
 
+    private function readXVerifierCookie(): ?string
+    {
+        $encrypted = request()->cookie('type_drift_oauth_verifier_x');
+        if (!$encrypted) return session()->pull('oauth_x_verifier');
+        try { return Crypt::decryptString($encrypted); }
+        catch (\\Throwable $exception) { return null; }
+    }
+
     private function xProfile(string $code): array
     {
         $token = Http::asForm()->withBasicAuth(config('services.x.client_id'), config('services.x.client_secret'))
@@ -117,7 +134,7 @@ class OAuthController extends Controller
                 'code' => $code,
                 'grant_type' => 'authorization_code',
                 'redirect_uri' => config('services.x.redirect'),
-                'code_verifier' => session()->pull('oauth_x_verifier'),
+                'code_verifier' => $this->readXVerifierCookie(),
             ])->throw()->json();
         $profile = Http::withToken($token['access_token'])->get('https://api.x.com/2/users/me?user.fields=name,username')->throw()->json('data');
         return [
