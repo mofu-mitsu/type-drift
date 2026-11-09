@@ -122,6 +122,8 @@ export default function ConsultationRoom({
   const [authorName, setAuthorName] = useState(userNickname || "");
   const [authorType, setAuthorType] = useState(userTypeString || "");
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "secret">("secret");
+  const [anonymousAuthor, setAnonymousAuthor] = useState(true);
+  const [publishIdentity, setPublishIdentity] = useState(true);
   const [mbti, setMbti] = useState("");
   const [socionics, setSocionics] = useState("");
   const [enneagram, setEnneagram] = useState("");
@@ -556,6 +558,10 @@ export default function ConsultationRoom({
                 <span className="step-num">1</span>
                 <h4>基本情報</h4>
               </div>
+              {activeTab === "forum" && <div className="consult-publish-options">
+                <label><input type="checkbox" checked={anonymousAuthor} onChange={e => setAnonymousAuthor(e.target.checked)} /> 匿名で投稿する <small>最初から匿名</small></label>
+                <label><input type="checkbox" checked={publishIdentity} onChange={e => setPublishIdentity(e.target.checked)} /> 自認を公開する</label>
+              </div>}
               <div className="consult-grid-fields">
                 <div className="consult-field">
                   <label>ニックネーム</label>
