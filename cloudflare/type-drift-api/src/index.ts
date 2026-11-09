@@ -120,9 +120,18 @@ export default {
         const owner = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${id} AND deleted_at IS NULL`;
         let directMessage = null;
         if (owner[0]?.guest_key && owner[0].guest_key !== key && !owner[0].is_ai) {
-          const type = [owner[0].socionics, owner[0].enneagram, owner[0].mbti, owner[0].other_type].filter(Boolean).join(" · ");
-          const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,created_at,updated_at)
-            VALUES (${key},${owner[0].guest_key},${`bottle-${id}`},'匿名の誰か','波間に漂うボトルの主（匿名）',${text},${id},${owner[0].body},${type ? `匿名の${owner[0].mbti || owner[0].socionics || "誰か"}` : "匿名のボトル主"},${type},NOW(),NOW()) RETURNING *`;
+          const type = [owner[0].mbti, owner[0].socionics, owner[0].enneagram, owner[0].other_type].filter(Boolean).join(" · ");
+          const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
+          const ownerProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${owner[0].guest_key} LIMIT 1`;
+          const senderProfile = senderProfileRows[0] || {};
+          const recipientProfile = ownerProfileRows[0] || {
+            mbti: owner[0].mbti || "", socionics: owner[0].socionics || "",
+            enneagram: owner[0].enneagram || "", other_type: owner[0].other_type || "",
+          };
+          const senderSnapshot = JSON.stringify(senderProfile);
+          const recipientSnapshot = JSON.stringify(recipientProfile);
+          const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
+            VALUES (${key},${owner[0].guest_key},${`bottle-${id}`},'匿名の誰か','波間に漂うボトルの主（匿名）',${text},${id},${owner[0].body},${type ? `匿名の${owner[0].mbti || owner[0].socionics || "誰か"}` : "匿名のボトル主"},${type},${senderSnapshot}::jsonb,${recipientSnapshot}::jsonb,NOW(),NOW()) RETURNING *`;
           directMessage = saved[0];
           await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${owner[0].guest_key},'bottle_reply',${String(id)},'あなたのボトルに返信が届きました。',NOW(),NOW())`;
         }
@@ -193,8 +202,12 @@ export default {
           return json({ message: "recipient_session_key or thread_id is required" }, 422, env, request);
         }
 
-        const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,created_at,updated_at)
-          VALUES (${key},${recipientKey},${threadId},${senderName},${recipientName},${text},${bottleId},${context?.bottle_snippet || null},${context?.bottle_author || null},${context?.bottle_type || null},NOW(),NOW()) RETURNING *`;
+        const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
+        const recipientProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${recipientKey} LIMIT 1`;
+        const senderSnapshot = JSON.stringify(senderProfileRows[0] || {});
+        const recipientSnapshot = JSON.stringify(recipientProfileRows[0] || { nickname: recipientName });
+        const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
+          VALUES (${key},${recipientKey},${threadId},${senderName},${recipientName},${text},${bottleId},${context?.bottle_snippet || null},${context?.bottle_author || null},${context?.bottle_type || null},${senderSnapshot}::jsonb,${recipientSnapshot}::jsonb,NOW(),NOW()) RETURNING *`;
         const message = saved[0];
         if (recipientKey && recipientKey !== key) {
           await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at)
@@ -204,23 +217,46 @@ export default {
           id: message.id, thread_id: message.thread_id, sender_name: message.sender_name, recipient_name: message.recipient_name,
           body: message.body, created_at: message.created_at, read: false, is_mine: true, bottle_id: message.bottle_id,
           bottle_snippet: message.bottle_snippet, bottle_author: message.bottle_author, bottle_type: message.bottle_type,
+          sender_profile: message.sender_profile || {}, recipient_profile: message.recipient_profile || {},
+          sender_identity: { mbti: message.sender_profile?.mbti || "", socionics: message.sender_profile?.socionics || "", enneagram: message.sender_profile?.enneagram || "", other_type: message.sender_profile?.other_type || "" },
         } }, 201, env, request);
       }
       if (path === "/api/direct-messages" && method === "GET") {
         if (!key) return json({ messages: [] }, 200, env, request);
-        const rows = await sql`SELECT dm.*, p.mbti AS sender_mbti, p.socionics AS sender_socionics,
-            p.enneagram AS sender_enneagram, p.other_type AS sender_other_type
+        const rows = await sql`SELECT dm.*,
+            sp.nickname AS live_sender_nickname, sp.mbti AS live_sender_mbti, sp.socionics AS live_sender_socionics,
+            sp.enneagram AS live_sender_enneagram, sp.other_type AS live_sender_other_type, sp.bio AS live_sender_bio,
+            sp.links AS live_sender_links, sp.profile_image_url AS live_sender_image,
+            rp.nickname AS live_recipient_nickname, rp.mbti AS live_recipient_mbti, rp.socionics AS live_recipient_socionics,
+            rp.enneagram AS live_recipient_enneagram, rp.other_type AS live_recipient_other_type, rp.bio AS live_recipient_bio,
+            rp.links AS live_recipient_links, rp.profile_image_url AS live_recipient_image
           FROM direct_messages dm
-          LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key)
+          LEFT JOIN profiles sp ON (sp.guest_key = dm.sender_guest_key OR ('user:' || sp.user_id::text) = dm.sender_guest_key)
+          LEFT JOIN profiles rp ON (rp.guest_key = dm.recipient_guest_key OR ('user:' || rp.user_id::text) = dm.recipient_guest_key)
           WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key}
           ORDER BY dm.created_at DESC LIMIT 200`;
-        return json({ messages: rows.reverse().map((row: any) => ({
-          id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
-          body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
-          bottle_type: row.bottle_type, created_at: row.created_at,
-          sender_identity: { mbti: row.sender_mbti || "", socionics: row.sender_socionics || "", enneagram: row.sender_enneagram || "", other_type: row.sender_other_type || "" },
-          is_mine: row.sender_guest_key === key, read: Boolean(row.read_at),
-        })) }, 200, env, request);
+        return json({ messages: rows.reverse().map((row: any) => {
+          const senderProfile = row.sender_profile || {
+            nickname: row.live_sender_nickname || row.sender_name || "", mbti: row.live_sender_mbti || "",
+            socionics: row.live_sender_socionics || "", enneagram: row.live_sender_enneagram || "",
+            other_type: row.live_sender_other_type || "", bio: row.live_sender_bio || "",
+            links: row.live_sender_links || [], profile_image_url: row.live_sender_image || "",
+          };
+          const recipientProfile = row.recipient_profile || {
+            nickname: row.live_recipient_nickname || row.recipient_name || "", mbti: row.live_recipient_mbti || "",
+            socionics: row.live_recipient_socionics || "", enneagram: row.live_recipient_enneagram || "",
+            other_type: row.live_recipient_other_type || "", bio: row.live_recipient_bio || "",
+            links: row.live_recipient_links || [], profile_image_url: row.live_recipient_image || "",
+          };
+          return {
+            id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
+            body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
+            bottle_type: row.bottle_type, created_at: row.created_at,
+            sender_profile: senderProfile, recipient_profile: recipientProfile,
+            sender_identity: { mbti: senderProfile.mbti || "", socionics: senderProfile.socionics || "", enneagram: senderProfile.enneagram || "", other_type: senderProfile.other_type || senderProfile.otherType || "" },
+            is_mine: row.sender_guest_key === key, read: Boolean(row.read_at),
+          };
+        }) }, 200, env, request);
       }
 
       if (directMessageReadMatch && method === "POST") {
