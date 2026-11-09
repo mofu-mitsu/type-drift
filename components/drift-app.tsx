@@ -1642,29 +1642,33 @@ export default function DriftApp() {
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
-    const refresh = () => void apiFetch('/api/bottles', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(response => response.ok ? response.json() : null).then(data => {
-      const rows = Array.isArray(data?.bottles?.data) ? data.bottles.data : [];
+    const refresh = () => void (async () => {
+      const headers = { "X-Guest-Key": getGuestKey() };
+      const firstResponse = await apiFetch('/api/bottles?page=1', { credentials: "include", headers });
+      if (!firstResponse.ok) return;
+      const firstData = await firstResponse.json();
+      const firstRows = Array.isArray(firstData?.bottles?.data) ? firstData.bottles.data : [];
+      const lastPage = Math.min(20, Math.max(1, Number(firstData?.bottles?.last_page) || 1));
+      const remaining = await Promise.all(Array.from({ length: lastPage - 1 }, (_, index) => apiFetch(`/api/bottles?page=${index + 2}`, { credentials: "include", headers }).then(response => response.ok ? response.json() : null).catch(() => null)));
+      const rows = [...firstRows, ...remaining.flatMap(data => Array.isArray(data?.bottles?.data) ? data.bottles.data : [])];
       const remote = rows.map((row: any) => {
         // API/DBドライバーによって boolean が文字列で返る場合もあるため、Boolean("false") を避ける。
         const isAi = row.is_ai === true || row.is_ai === "true";
         const isMine = row.is_mine === true || row.is_mine === "true";
-        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
+        const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
+        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
       });
       // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
-      // NPCには負の固定IDを割り当て、Neon側のIDと衝突させない。
-      const npcSeeds = initialBottles
-        .filter(item => Boolean(item.ai))
-        .map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
+      const npcSeeds = initialBottles.filter(item => Boolean(item.ai)).map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
       const unique = new Map<number, Bottle>();
       for (const item of npcSeeds) unique.set(item.id, item);
       for (const item of remote) unique.set(item.id, item);
       setBottles([...unique.values()].sort((a, b) => {
-        // ユーザーの投稿を先頭に並べ、固定の初期NPC投稿はその後ろに置く。
         if (a.id < 0 && b.id >= 0) return 1;
         if (a.id >= 0 && b.id < 0) return -1;
         return 0;
       }));
-    }).catch(() => undefined);
+    })().catch(() => undefined);
     const timer = window.setInterval(refresh, 3000);
     const immediateRefresh = () => refresh();
     window.addEventListener("type-drift:refresh-bottles", immediateRefresh);
