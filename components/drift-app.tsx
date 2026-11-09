@@ -52,7 +52,7 @@ type DirectMessage = {
   bottleAuthor?: string;
   bottleType?: string;
   senderIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
-  senderProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id?: string; title: string; url: string }>; emoji?: string };
+  senderProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id: string; title: string; url: string }>; emoji?: string };
   recipientProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id?: string; title: string; url: string }>; emoji?: string };
   serverId?: number;
   isAiError?: boolean;
@@ -2221,6 +2221,20 @@ export default function DriftApp() {
           bottleSnippet: saved.bottle_snippet || target.bottleInfo?.text,
           bottleAuthor: saved.bottle_author || target.bottleInfo?.author,
           bottleType: saved.bottle_type || target.bottleInfo?.type,
+          senderIdentity: saved.sender_identity && typeof saved.sender_identity === "object" ? {
+            mbti: saved.sender_identity.mbti || "", socionics: saved.sender_identity.socionics || "",
+            enneagram: saved.sender_identity.enneagram || "", otherType: saved.sender_identity.otherType || saved.sender_identity.other_type || "",
+          } : { mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType },
+          senderProfile: saved.sender_profile && typeof saved.sender_profile === "object" ? {
+            ...saved.sender_profile,
+            otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || "",
+            profileImageUrl: saved.sender_profile.profileImageUrl || saved.sender_profile.profile_image_url || "",
+          } : { nickname, ...profileIdentity, bio: profileBio, profileImageUrl: profileImage, links: profileLinks },
+          recipientProfile: saved.recipient_profile && typeof saved.recipient_profile === "object" ? {
+            ...saved.recipient_profile,
+            otherType: saved.recipient_profile.otherType || saved.recipient_profile.other_type || "",
+            profileImageUrl: saved.recipient_profile.profileImageUrl || saved.recipient_profile.profile_image_url || "",
+          } : undefined,
         };
         setDirectMessages(current => {
           const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
@@ -2791,6 +2805,23 @@ export default function DriftApp() {
           createdAt: new Date(saved.created_at).getTime() || Date.now(), read: false, isMine: true,
           bottleId: Number(saved.bottle_id || selected.id), bottleSnippet: saved.bottle_snippet || selected.text,
           bottleAuthor: saved.bottle_author || selected.author, bottleType: saved.bottle_type || selected.type,
+          senderIdentity: saved.sender_profile && typeof saved.sender_profile === "object" ? {
+            mbti: saved.sender_profile.mbti || "", socionics: saved.sender_profile.socionics || "",
+            enneagram: saved.sender_profile.enneagram || "", otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || "",
+          } : { mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType },
+          senderProfile: saved.sender_profile && typeof saved.sender_profile === "object" ? {
+            ...saved.sender_profile,
+            otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || "",
+            profileImageUrl: saved.sender_profile.profileImageUrl || saved.sender_profile.profile_image_url || "",
+          } : { nickname, ...profileIdentity, bio: profileBio, profileImageUrl: profileImage, links: profileLinks },
+          recipientProfile: saved.recipient_profile && typeof saved.recipient_profile === "object" ? {
+            ...saved.recipient_profile,
+            otherType: saved.recipient_profile.otherType || saved.recipient_profile.other_type || "",
+            profileImageUrl: saved.recipient_profile.profileImageUrl || saved.recipient_profile.profile_image_url || "",
+          } : {
+            mbti: selected.mbti, socionics: selected.socionics, enneagram: selected.enneagram,
+            otherType: selected.otherType, bio: "", links: [],
+          },
         };
         setDirectMessages(current => {
           const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
