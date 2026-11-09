@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('profiles', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);
+            $table->unsignedBigInteger('user_id')->nullable()->change();
+            $table->string('guest_key', 100)->nullable()->unique();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('profiles', function (Blueprint $table) {
+            $table->whereNotNull('guest_key')->delete();
+            $table->dropUnique(['guest_key']);
+            $table->dropColumn('guest_key');
+            $table->unsignedBigInteger('user_id')->nullable(false)->change();
+            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+        });
+    }
+};
