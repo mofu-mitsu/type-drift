@@ -527,7 +527,9 @@ export default function PlazaPanel({
             const avatarEmoji = isCharacter
               ? (message.author.includes('芋虫') ? '🐛' : '🥺')
               : (message.emoji || '◌');
-            const profileAvatar = !isCharacter ? onlineUsers.find(user => user.nickname === message.author)?.avatarUrl : undefined;
+            const messageProfile = !isCharacter ? onlineUsers.find(user => user.nickname === message.author) : undefined;
+            const profileAvatar = messageProfile?.avatarUrl;
+            const profileType = [messageProfile?.mbti || messageProfile?.identity?.mbti, messageProfile?.socionics || messageProfile?.identity?.socionics, messageProfile?.enneagram || messageProfile?.identity?.enneagram].filter(Boolean).join(" · ");
 
             return (
               <article className={`plaza-chat-item plaza-chat-item--${message.kind}`} key={message.id}>
@@ -536,6 +538,8 @@ export default function PlazaPanel({
                   <div className="plaza-chat-meta">
                     <strong>{message.author}</strong>
                     {isAi && <small className="ai-tag">AI</small>}
+                    {profileType && <small className="plaza-profile-type">{profileType}</small>}
+                    {messageProfile?.links?.filter(link => link.title && link.url.startsWith("https://")).map(link => <a key={link.id || link.url} className="plaza-profile-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.title}</a>)}
                     {message.kind === "system" && <small className="plaza-system-tag">SYSTEM</small>}
                   </div>
                   <p className="plaza-chat-text">{message.body}</p>
