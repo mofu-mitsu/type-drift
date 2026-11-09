@@ -4024,16 +4024,21 @@ export default function DriftApp() {
                   onClick={async () => {
                     let savedLocally = false;
                     try {
-                      const uploadedImage = profileImage?.startsWith("data:") ? await uploadToCloudinary(profileImage) : profileImage || undefined;
-                      if (uploadedImage) setProfileImage(uploadedImage);
-                      // まず端末へ保存。APIがオフラインでも自認・プロフィールは失われない。
+                      // 画像アップロードやAPI通信より先に、文字情報を端末へ保存する。
+                      // オフライン時も自認・プロフィールはそのまま残る。
                       const previousState = JSON.parse(localStorage.getItem("type-drift-state") || "{}");
                       localStorage.setItem("type-drift-state", JSON.stringify({
                         ...previousState, nickname, profileIdentity, profileBio, profileLinks,
-                        profileImage: uploadedImage || profileImage, useSavedIdentity
+                        profileImage, useSavedIdentity
                       }));
                       savedLocally = true;
                       setProfileSaved(true);
+                      const uploadedImage = profileImage?.startsWith("data:") ? await uploadToCloudinary(profileImage) : profileImage || undefined;
+                      if (uploadedImage) {
+                        setProfileImage(uploadedImage);
+                        const latestState = JSON.parse(localStorage.getItem("type-drift-state") || "{}");
+                        localStorage.setItem("type-drift-state", JSON.stringify({ ...latestState, profileImage: uploadedImage }));
+                      }
                       const api = process.env.NEXT_PUBLIC_API_URL;
                       if (!api) throw new Error("profile API is not configured");
                       const response = await apiFetch("/api/profile", {
