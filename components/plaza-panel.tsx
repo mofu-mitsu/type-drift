@@ -120,8 +120,8 @@ export default function PlazaPanel({
         wsRef.current = ws;
         ws.onopen = () => {
           setConnected(true);
-          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, avatarUrl: profileImage?.startsWith('https://') ? profileImage : undefined, identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', otherType: profileIdentity.otherType || '' } : undefined }));
-          presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname), identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', other_type: profileIdentity.otherType || '' } : { mbti: '', socionics: '', enneagram: '', other_type: '' } });
+          ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, avatarUrl: profileImage?.startsWith('https://') ? profileImage : undefined, identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', otherType: profileIdentity.otherType || '' } : undefined, bio: profileBio, links: profileLinks }));
+          presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname), identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', other_type: profileIdentity.otherType || '' } : { mbti: '', socionics: '', enneagram: '', other_type: '' }, bio: profileBio, links: profileLinks });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
         ws.onmessage = event => {
@@ -143,6 +143,9 @@ export default function PlazaPanel({
                   socionics: raw.socionics || identity.socionics || "",
                   enneagram: raw.enneagram || identity.enneagram || "",
                   otherType: raw.otherType || raw.other_type || identity.otherType || identity.other_type || "",
+                  identity: { mbti: raw.mbti || identity.mbti || "", socionics: raw.socionics || identity.socionics || "", enneagram: raw.enneagram || identity.enneagram || "", otherType: raw.otherType || raw.other_type || identity.otherType || identity.other_type || "" },
+                  bio: raw.bio || "",
+                  links: Array.isArray(raw.links) ? raw.links : [],
                 } as PlazaUser;
               });
               // Multiple tabs or reconnecting sockets can report the same session more than once.
