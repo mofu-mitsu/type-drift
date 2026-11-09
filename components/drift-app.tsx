@@ -337,7 +337,7 @@ export default function DriftApp() {
   const [consultationPosts, setConsultationPosts] = useState<ConsultationPost[]>(INITIAL_CONSULTATION_POSTS);
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
-  const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean } | null>(null);
+  const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean; links?: Array<{ id: string; title: string; url: string }> } | null>(null);
   const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; links?: Array<{ id: string; title: string; url: string }> } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(true);
   const [onlineCount, setOnlineCount] = useState(4);
@@ -3232,7 +3232,13 @@ export default function DriftApp() {
                 id: user.sessionKey,
                 name: user.nickname || "匿名の誰か",
                 emoji: user.emoji || "◌",
-                overview: "いま、この広場に接続している匿名の住人。プロフィールの自認は、本人が公開した範囲だけ表示されます。",
+                mbti: user.mbti || user.identity?.mbti || "",
+                socionics: user.socionics || user.identity?.socionics || "",
+                enneagram: user.enneagram || user.identity?.enneagram || "",
+                psycho: user.otherType || user.identity?.otherType || user.identity?.other_type || "",
+                overview: user.bio || user.profileBio || "この住人は、まだ自己紹介を公開していません。",
+                image: user.avatarUrl,
+                links: Array.isArray(user.links) ? user.links : [],
               })}
             >
               {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", display: "block", margin: "0 auto 3px" }} /> : (user.emoji || "◌")}<small>{user.nickname}</small>
@@ -3433,11 +3439,11 @@ export default function DriftApp() {
                 <p>{inspectProfile.overview}</p>
               </div>
 
-              {inspectProfile.isSelf && profileLinks.length > 0 && (
+              {((inspectProfile.isSelf ? profileLinks : inspectProfile.links) || []).filter(l => l.url?.startsWith("https://")).length > 0 && (
                 <div className="profile-inspect-links">
                   <label>登録リンク</label>
                   <div className="profile-links-chip-list">
-                    {profileLinks.map(l => (
+                    {((inspectProfile.isSelf ? profileLinks : inspectProfile.links) || []).filter(l => l.url?.startsWith("https://")).map(l => (
                       <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer" className="profile-chip-link">
                         {l.title || l.url} <ArrowUpRight size={12} />
                       </a>
