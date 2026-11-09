@@ -152,13 +152,14 @@ export default {
         let bottleId: number | null = null;
 
         if (b.bottle_id || b.thread_id) {
-          bottleId = b.bottle_id ? Number(b.bottle_id) : null;
-          threadId = bottleId ? "bottle-" + bottleId : clean(b.thread_id, 240);
+          const requestedThreadId = clean(b.thread_id, 240);
+          const legacyBottleMatch = !b.bottle_id ? requestedThreadId.match(/^bottle-(\d+)$/) : null;
+          bottleId = b.bottle_id ? Number(b.bottle_id) : legacyBottleMatch ? Number(legacyBottleMatch[1]) : null;
+          threadId = bottleId ? (requestedThreadId.match(/^bottle-\d+-/) ? requestedThreadId : "bottle-" + bottleId) : requestedThreadId;
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
-          // A bottle is a conversation starter, not a shared DM room.
-          // Find an existing conversation for this exact guest and bottle; otherwise
-          // the first message below gets a participant-specific thread ID.
-          const lastRows = bottleId
+          // Bottle threads are per participant pair. Never reuse the legacy shared
+          // "bottle-{id}" room for new messages from unrelated guests.
+          const lastRows = bottleId && !requestedThreadId.match(/^bottle-\d+-/)
             ? await sql`SELECT * FROM direct_messages WHERE bottle_id=${bottleId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`
             : await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
           context = lastRows[0] || null;
@@ -170,14 +171,15 @@ export default {
             recipientName = currentIsSender ? context.recipient_name : context.sender_name;
             bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
           } else if (bottleId) {
-            // The first DM from a real bottle has no existing thread row yet.
+            // First message for this participant pair. Even when the client only
+            // knows the old "bottle-{id}" ID, create a separate thread for this guest.
             const ownerRows = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${bottleId} AND deleted_at IS NULL LIMIT 1`;
             const owner = ownerRows[0];
             if (!owner?.guest_key) return json({ message: "bottle owner not found" }, 404, env, request);
             if (String(owner.guest_key) === key) return json({ message: "cannot message yourself" }, 422, env, request);
             if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
             recipientKey = String(owner.guest_key);
-            threadId = `bottle-${bottleId}-${key}`;
+            if (!requestedThreadId.match(/^bottle-\d+-/)) threadId = `bottle-${bottleId}-${key}`;
             const ownerType = [owner.mbti, owner.socionics, owner.enneagram, owner.other_type].filter(Boolean).join(" · ");
             const ownerProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${String(owner.guest_key)} LIMIT 1`;
             const savedOwnerProfile = ownerProfileRows[0] || {};
@@ -258,17 +260,29 @@ export default {
           WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key}
           ORDER BY dm.created_at DESC LIMIT 200`;
         return json({ messages: rows.reverse().map((row: any) => {
-          const senderProfile = row.sender_profile || {
-            nickname: row.live_sender_nickname || row.sender_name || "", mbti: row.live_sender_mbti || "",
-            socionics: row.live_sender_socionics || "", enneagram: row.live_sender_enneagram || "",
-            other_type: row.live_sender_other_type || "", bio: row.live_sender_bio || "",
-            links: row.live_sender_links || [], profile_image_url: row.live_sender_image || "",
+          const senderSnapshot = row.sender_profile && typeof row.sender_profile === "object" ? row.sender_profile : {};
+          const recipientSnapshot = row.recipient_profile && typeof row.recipient_profile === "object" ? row.recipient_profile : {};
+          // Snapshot objects may exist but contain empty strings. Fill each blank field
+          // from the live profile join instead of letting an empty JSON object mask it.
+          const senderProfile = {
+            nickname: senderSnapshot.nickname || row.live_sender_nickname || row.sender_name || "",
+            mbti: senderSnapshot.mbti || row.live_sender_mbti || "",
+            socionics: senderSnapshot.socionics || row.live_sender_socionics || "",
+            enneagram: senderSnapshot.enneagram || row.live_sender_enneagram || "",
+            other_type: senderSnapshot.other_type || senderSnapshot.otherType || row.live_sender_other_type || "",
+            bio: senderSnapshot.bio || row.live_sender_bio || "",
+            links: Array.isArray(senderSnapshot.links) && senderSnapshot.links.length ? senderSnapshot.links : (row.live_sender_links || []),
+            profile_image_url: senderSnapshot.profile_image_url || senderSnapshot.profileImageUrl || row.live_sender_image || "",
           };
-          const recipientProfile = row.recipient_profile || {
-            nickname: row.live_recipient_nickname || row.recipient_name || "", mbti: row.live_recipient_mbti || "",
-            socionics: row.live_recipient_socionics || "", enneagram: row.live_recipient_enneagram || "",
-            other_type: row.live_recipient_other_type || "", bio: row.live_recipient_bio || "",
-            links: row.live_recipient_links || [], profile_image_url: row.live_recipient_image || "",
+          const recipientProfile = {
+            nickname: recipientSnapshot.nickname || row.live_recipient_nickname || row.recipient_name || "",
+            mbti: recipientSnapshot.mbti || row.live_recipient_mbti || "",
+            socionics: recipientSnapshot.socionics || row.live_recipient_socionics || "",
+            enneagram: recipientSnapshot.enneagram || row.live_recipient_enneagram || "",
+            other_type: recipientSnapshot.other_type || recipientSnapshot.otherType || row.live_recipient_other_type || "",
+            bio: recipientSnapshot.bio || row.live_recipient_bio || "",
+            links: Array.isArray(recipientSnapshot.links) && recipientSnapshot.links.length ? recipientSnapshot.links : (row.live_recipient_links || []),
+            profile_image_url: recipientSnapshot.profile_image_url || recipientSnapshot.profileImageUrl || row.live_recipient_image || "",
           };
           return {
             id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
