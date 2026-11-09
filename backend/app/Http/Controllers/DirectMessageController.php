@@ -64,6 +64,8 @@ class DirectMessageController extends Controller
         $data = $request->validate([
             'bottle_id' => ['required', 'integer', 'exists:bottles,id'],
             'body' => ['required', 'string', 'max:5000'],
+            'sender_profile' => ['sometimes', 'array'],
+            'recipient_profile' => ['sometimes', 'array'],
         ]);
 
         $userId = $request->user()?->id;
@@ -120,10 +122,14 @@ class DirectMessageController extends Controller
             'bottle_snippet' => $lastMessage->bottle_snippet ?: $bottle->body,
             'bottle_author' => $lastMessage->bottle_author ?: '匿名のボトル主',
             'bottle_type' => $lastMessage->bottle_type ?: '匿名ボトル',
-            'sender_profile' => $this->profileSnapshot($userId, $lookupKey),
-            'recipient_profile' => ($isCurrentSender
-                ? ($lastMessage->recipient_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey))
-                : ($lastMessage->sender_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey))),
+            'sender_profile' => !empty($data['sender_profile'])
+                ? $data['sender_profile']
+                : $this->profileSnapshot($userId, $lookupKey),
+            'recipient_profile' => !empty($data['recipient_profile'])
+                ? $data['recipient_profile']
+                : ($isCurrentSender
+                    ? ($lastMessage->recipient_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey))
+                    : ($lastMessage->sender_profile ?: $this->profileSnapshot($recipientUserId, $recipientGuestKey))),
         ]);
 
         if ($recipientUserId || $recipientGuestKey) {
