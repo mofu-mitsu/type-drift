@@ -171,11 +171,20 @@ export default {
             if (String(owner.guest_key) === key) return json({ message: "cannot message yourself" }, 422, env, request);
             if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
             recipientKey = String(owner.guest_key);
-            const ownerType = [owner.socionics, owner.enneagram, owner.mbti, owner.other_type].filter(Boolean).join(" · ");
+            const ownerType = [owner.mbti, owner.socionics, owner.enneagram, owner.other_type].filter(Boolean).join(" · ");
+            const ownerProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${String(owner.guest_key)} LIMIT 1`;
+            const savedOwnerProfile = ownerProfileRows[0] || {};
             context = {
               bottle_snippet: owner.body,
               bottle_author: `匿名の${owner.mbti || owner.socionics || "ボトル主"}`,
               bottle_type: ownerType,
+              recipient_profile: {
+                ...savedOwnerProfile,
+                mbti: owner.mbti || savedOwnerProfile.mbti || "",
+                socionics: owner.socionics || savedOwnerProfile.socionics || "",
+                enneagram: owner.enneagram || savedOwnerProfile.enneagram || "",
+                other_type: owner.other_type || savedOwnerProfile.other_type || "",
+              },
             };
           } else if (threadId.startsWith("dm-")) {
             // A locally restored DM thread may exist before its first server row.
@@ -205,7 +214,11 @@ export default {
         const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
         const recipientProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${recipientKey} LIMIT 1`;
         const senderProfile = b.sender_profile && typeof b.sender_profile === "object" ? b.sender_profile : (senderProfileRows[0] || {});
-        const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (recipientProfileRows[0] || { nickname: recipientName });
+        const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object"
+          ? b.recipient_profile
+          : (context?.recipient_profile && typeof context.recipient_profile === "object"
+            ? context.recipient_profile
+            : (recipientProfileRows[0] || { nickname: recipientName }));
         const senderSnapshot = JSON.stringify(senderProfile);
         const recipientSnapshot = JSON.stringify(recipientProfile);
         const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
