@@ -314,9 +314,18 @@ export default {
       if (bottleMatch && method === "PATCH" && !bottleMatch[2]) {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         const b = await bodyOf(request);
-        const text = clean(b.body, 5000);
+        const currentRows = await sql`SELECT id,body,mbti,socionics,enneagram,other_type,image_url,poll_options FROM bottles WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL LIMIT 1`;
+        if (!currentRows.length) return json({ error: "not_found_or_forbidden" }, 404, env, request);
+        const current = currentRows[0];
+        const text = b.body === undefined ? String(current.body || "") : clean(b.body, 5000);
         if (!text) return json({ message: "body is required" }, 422, env, request);
-        const updated = await sql`UPDATE bottles SET body=${text},updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL RETURNING id,body,updated_at`;
+        const mbti = b.mbti === undefined ? current.mbti : clean(b.mbti, 40) || null;
+        const socionics = b.socionics === undefined ? current.socionics : clean(b.socionics, 40) || null;
+        const enneagram = b.enneagram === undefined ? current.enneagram : clean(b.enneagram, 40) || null;
+        const otherType = b.other_type === undefined ? current.other_type : clean(b.other_type, 160) || null;
+        const imageUrl = b.image_url === undefined ? current.image_url : clean(b.image_url, 2000) || null;
+        const pollOptions = b.poll_options === undefined ? current.poll_options : (Array.isArray(b.poll_options) && b.poll_options.length ? JSON.stringify(b.poll_options.map((item: unknown) => clean(item, 120)).filter(Boolean).slice(0, 6)) : null);
+        const updated = await sql`UPDATE bottles SET body=${text},mbti=${mbti},socionics=${socionics},enneagram=${enneagram},other_type=${otherType},image_url=${imageUrl},poll_options=${pollOptions}::jsonb,updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL RETURNING id,body,mbti,socionics,enneagram,other_type,image_url,poll_options,updated_at`;
         return updated.length ? json({ bottle: updated[0] }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
       }
 
