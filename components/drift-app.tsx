@@ -2533,8 +2533,14 @@ export default function DriftApp() {
       const profileMessage = messages.find(message => message.isMine ? Boolean(message.recipientProfile?.profileImageUrl || message.recipientProfile?.emoji || message.recipientProfile?.mbti || message.recipientProfile?.nickname) : Boolean(message.senderProfile?.profileImageUrl || message.senderProfile?.emoji || message.senderProfile?.mbti || message.senderProfile?.nickname));
       const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
       const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
-      thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
-      thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
+      if (thread.targetId.startsWith("bottle-")) {
+        // ボトル経由のDMは相手のプロフィール画像ではなく、海のアイコンで統一する。
+        thread.avatarUrl = undefined;
+        thread.emoji = "🌊";
+      } else {
+        thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
+        thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
+      }
       if (!thread.type || thread.type === "広場の住人") {
         const identity = [savedProfile?.mbti, savedProfile?.socionics, savedProfile?.enneagram, savedProfile?.otherType].filter(Boolean).join(" · ");
         thread.type = identity || thread.type;
@@ -4487,7 +4493,7 @@ export default function DriftApp() {
                       <strong style={{ fontSize: "15px", color: "#1e293b" }}>トーク一覧</strong>
                       <span style={{ fontSize: "11px", color: "#64748b", background: "#e2e8f0", padding: "1px 6px", borderRadius: "10px" }}>{dmThreads.length}</span>
                     </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b" }}>並び替え <select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread" | "manual"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ border: "1px solid #dbe4ee", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option><option value="manual">自由並び</option></select></label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b" }}>並び替え <select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread" | "manual"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ border: "1px solid #dbe4ee", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option><option value="manual">自由並び</option></select></label>{dmSortMode === "manual" && <span style={{ fontSize: 11, color: "#8b7ca8", whiteSpace: "nowrap" }}>↕ 行を長押しして移動</span>}
                     <button type="button" onClick={() => setDmShowHidden(value => !value)} style={{ marginLeft: "auto", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 9px", background: dmShowHidden ? "#fce7f3" : "#fff", color: "#9d174d", fontSize: "11px", cursor: "pointer" }}>非表示リスト {dmHiddenThreads.length}件 {dmShowHidden ? "▲" : "▼"}</button>
                   </div>
 
