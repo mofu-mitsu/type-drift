@@ -415,6 +415,7 @@ export default function DriftApp() {
   const [dmSortMode, setDmSortMode] = useState<"recent" | "oldest" | "unread" | "manual">("recent");
   const [dmOrder, setDmOrder] = useState<string[]>([]);
   const [dmShowHidden, setDmShowHidden] = useState(false);
+  const [dmToolsOpen, setDmToolsOpen] = useState(false);
   const [draggingDmId, setDraggingDmId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
@@ -4520,8 +4521,14 @@ export default function DriftApp() {
                       <strong style={{ fontSize: "15px", color: "#1e293b" }}>トーク一覧</strong>
                       <span style={{ fontSize: "11px", color: "#64748b", background: "#e2e8f0", padding: "1px 6px", borderRadius: "10px" }}>{dmThreads.length}</span>
                     </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b" }}>並び替え <select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread" | "manual"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ border: "1px solid #dbe4ee", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option><option value="manual">自由並び</option></select></label>{dmSortMode === "manual" && <span style={{ fontSize: 11, color: "#8b7ca8", whiteSpace: "nowrap" }}>↕ 行を長押しして移動</span>}
-                    <button type="button" onClick={() => setDmShowHidden(value => !value)} style={{ marginLeft: "auto", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 9px", background: dmShowHidden ? "#fce7f3" : "#fff", color: "#9d174d", fontSize: "11px", cursor: "pointer" }}>非表示リスト {dmHiddenThreads.length}件 {dmShowHidden ? "▲" : "▼"}</button>
+                    <div className="dm-tools-wrap" style={{ marginLeft: "auto", position: "relative" }}>
+                      <button type="button" className="dm-tools-trigger" aria-label="トーク一覧の操作メニュー" aria-expanded={dmToolsOpen} onClick={() => setDmToolsOpen(value => !value)} style={{ display: "flex", alignItems: "center", gap: 7, border: "1px solid #d5e5e1", borderRadius: 12, padding: "8px 11px", background: dmToolsOpen ? "#eaf7f3" : "#fff", color: "#3e7770", cursor: "pointer" }}><Menu size={17} /><span style={{ fontSize: 12 }}>一覧の操作</span></button>
+                      {dmToolsOpen && <div className="dm-tools-menu" style={{ position: "absolute", right: 0, top: "calc(100% + 7px)", zIndex: 30, width: 220, padding: 12, border: "1px solid #dce9e5", borderRadius: 14, background: "#fff", boxShadow: "0 12px 30px #355d501c", display: "grid", gap: 10 }}>
+                        <label style={{ display: "grid", gap: 5, fontSize: 12, color: "#64748b" }}>並び替え<select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread" | "manual"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ width: "100%", border: "1px solid #dbe4ee", borderRadius: 9, padding: "8px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option><option value="manual">自由並び</option></select></label>
+                        {dmSortMode === "manual" && <p style={{ margin: 0, fontSize: 11, color: "#8b7ca8" }}>三本線をつかんで並び替え</p>}
+                        <button type="button" onClick={() => setDmShowHidden(value => !value)} style={{ border: "1px solid #e2e8f0", borderRadius: 9, padding: "8px", background: dmShowHidden ? "#fce7f3" : "#fff", color: "#9d174d", fontSize: 12, cursor: "pointer" }}>非表示リスト {dmHiddenThreads.length}件 {dmShowHidden ? "▲" : "▼"}</button>
+                      </div>}
+                    </div>
                   </div>
 
                   {dmShowHidden && (
