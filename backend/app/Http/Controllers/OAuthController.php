@@ -58,7 +58,7 @@ class OAuthController extends Controller
     {
         $encryptedState = $request->cookie("type_drift_oauth_state_{$provider}");
         try { $expected = $encryptedState ? Crypt::decryptString($encryptedState) : session()->pull("oauth_state_{$provider}"); }
-        catch (\\Throwable $exception) { $expected = null; }
+        catch (\Throwable $exception) { $expected = null; }
         abort_unless($expected && hash_equals($expected, (string) $request->string('state')), 419, 'OAuth state mismatch.');
 
         try {
@@ -124,7 +124,7 @@ class OAuthController extends Controller
         $encrypted = request()->cookie('type_drift_oauth_verifier_x');
         if (!$encrypted) return session()->pull('oauth_x_verifier');
         try { return Crypt::decryptString($encrypted); }
-        catch (\\Throwable $exception) { return null; }
+        catch (\Throwable $exception) { return null; }
     }
 
     private function xProfile(string $code): array
