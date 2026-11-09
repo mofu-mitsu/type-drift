@@ -239,6 +239,38 @@ export default {
         return json({ bottles: { data: rows, current_page: page, last_page: Math.max(1, Math.ceil(Number(totalRows[0]?.total || 0) / 20)), total: Number(totalRows[0]?.total || 0) } }, 200, env, request);
       }
 
+      if (bottleMatch && bottleMatch[2] === "votes" && method === "GET") {
+        await sql`CREATE TABLE IF NOT EXISTS bottle_poll_votes (
+          id BIGSERIAL PRIMARY KEY, bottle_id BIGINT NOT NULL REFERENCES bottles(id) ON DELETE CASCADE,
+          guest_key TEXT NOT NULL, option_index INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (bottle_id, guest_key)
+        )`;
+        const counts = await sql`SELECT option_index, COUNT(*)::int AS votes FROM bottle_poll_votes
+          WHERE bottle_id = ${Number(bottleMatch[1])} GROUP BY option_index ORDER BY option_index`;
+        const mine = key ? await sql`SELECT option_index FROM bottle_poll_votes WHERE bottle_id = ${Number(bottleMatch[1])} AND guest_key = ${key} LIMIT 1` : [];
+        return json({ counts, myVote: mine.length ? Number(mine[0].option_index) : null }, 200, env, request);
+      }
+
+      if (bottleMatch && bottleMatch[2] === "votes" && method === "POST") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        const b = await bodyOf(request);
+        const optionIndex = Number(b.option_index);
+        if (!Number.isInteger(optionIndex) || optionIndex < 0) return json({ error: "invalid_option" }, 422, env, request);
+        await sql`CREATE TABLE IF NOT EXISTS bottle_poll_votes (
+          id BIGSERIAL PRIMARY KEY, bottle_id BIGINT NOT NULL REFERENCES bottles(id) ON DELETE CASCADE,
+          guest_key TEXT NOT NULL, option_index INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (bottle_id, guest_key)
+        )`;
+        const bottleRows = await sql`SELECT poll_options FROM bottles WHERE id = ${Number(bottleMatch[1])} AND deleted_at IS NULL LIMIT 1`;
+        const options = bottleRows[0]?.poll_options;
+        if (!Array.isArray(options) || optionIndex >= options.length) return json({ error: "invalid_poll_option" }, 422, env, request);
+        await sql`INSERT INTO bottle_poll_votes (bottle_id, guest_key, option_index) VALUES (${Number(bottleMatch[1])}, ${key}, ${optionIndex})
+          ON CONFLICT (bottle_id, guest_key) DO UPDATE SET option_index = EXCLUDED.option_index, created_at = NOW()`;
+        const counts = await sql`SELECT option_index, COUNT(*)::int AS votes FROM bottle_poll_votes
+          WHERE bottle_id = ${Number(bottleMatch[1])} GROUP BY option_index ORDER BY option_index`;
+        return json({ ok: true, counts }, 200, env, request);
+      }
+
       if (path === "/api/bottles" && method === "POST") {
         const b = await bodyOf(request);
         if (!key || !clean(b.body, 5000)) return json({ message: "A guest key and body are required." }, 422, env, request);
