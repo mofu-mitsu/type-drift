@@ -148,6 +148,42 @@ const constellationQuestions = [
   { text: "迷ったとき、いちばん信頼するものは？", options: ["一貫した原理", "予感と長期的な見通し", "自分の過去の実感", "場にいる人の温度"] },
 ];
 
+function BottleTextWithLinks({ text }: { text: string }) {
+  const matches = Array.from(text.matchAll(/https?:\\/\\/[^\\s<>"']+/g));
+  const urls = matches.map(match => match[0].replace(/[),.!?。、「」』】]+$/g, "")).filter(Boolean);
+  const previewUrl = urls[0] || "";
+  const [preview, setPreview] = useState<{ url: string; title: string; description: string; image: string | null } | null>(null);
+  useEffect(() => {
+    if (!previewUrl) { setPreview(null); return; }
+    let cancelled = false;
+    setPreview(null);
+    fetch(`/api/ogp?url=${encodeURIComponent(previewUrl)}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (!cancelled && data?.title) setPreview(data); })
+      .catch(() => { if (!cancelled) setPreview(null); });
+    return () => { cancelled = true; };
+  }, [previewUrl]);
+  const parts = text.split(/(https?:\\/\\/[^\\s<>"']+)/g);
+  return <>
+    <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+      {parts.map((part, index) => {
+        if (!/^https?:\\/\\//i.test(part)) return <span key={index}>{part}</span>;
+        const cleanUrl = part.replace(/[),.!?。、「」』】]+$/g, "");
+        const suffix = part.slice(cleanUrl.length);
+        return <span key={index}><a href={cleanUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#9d4edd", textDecoration: "underline" }}>{cleanUrl}</a>{suffix}</span>;
+      })}
+    </span>
+    {preview && <a href={preview.url} target="_blank" rel="noopener noreferrer" aria-label={`リンクを開く：${preview.title}`} style={{ display: "flex", flexDirection: "column", gap: 0, marginTop: 10, border: "1px solid #eadcf5", borderRadius: 12, overflow: "hidden", textDecoration: "none", color: "inherit", background: "rgba(255,255,255,.72)" }}>
+      {preview.image && <img src={preview.image} alt="" loading="lazy" referrerPolicy="no-referrer" style={{ display: "block", width: "100%", maxHeight: 190, objectFit: "cover" }} />}
+      <span style={{ display: "flex", flexDirection: "column", gap: 4, padding: "10px 12px" }}>
+        <strong style={{ fontSize: 13, lineHeight: 1.45 }}>{preview.title}</strong>
+        {preview.description && <span style={{ fontSize: 12, lineHeight: 1.5, color: "#6b6470", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{preview.description}</span>}
+        <span style={{ fontSize: 10, color: "#9d4edd", overflowWrap: "anywhere" }}>{new URL(preview.url).hostname} ↗</span>
+      </span>
+    </a>}
+  </>;
+}
+
 function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onEdit?: (bottle: Bottle) => void; onDelete?: (bottle: Bottle) => void }) {
   const [poll, setPoll] = useState(bottle.poll);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -156,7 +192,7 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
   return <article className={`bottle-card ${bottle.color}`}>
     <div className="bottle-card__top"><div className="author"><span className="author__emoji">{bottle.emoji}</span><span><strong>{bottle.author}</strong><small>{bottle.type} · {bottle.mbti}</small></span></div><span className="time">{bottle.time}</span></div>
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
-    <p className="bottle-text">{normalizeDmBody(bottle.text)}</p>
+    <div className="bottle-text"><BottleTextWithLinks text={normalizeDmBody(bottle.text)} /></div>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
     <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={() => setMoreOpen(open => !open)}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
