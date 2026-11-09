@@ -4422,15 +4422,20 @@ export default function DriftApp() {
                                     overview: "広場の空間支配と物理境界線の維持を担当する自律防衛オブジェクト。領域確保と境界線の維持を重視する。"
                                   });
                                 } else {
+                                  // DM履歴に保存された「相手から届いたメッセージ」の自認も使う。
+                                  // オフラインで広場のpresence情報がなくても、閲覧者自身の自認を相手へ流用しない。
+                                  const messageIdentity = directMessages.find(item =>
+                                    item.threadId === activeDmThreadId && !item.isMine && item.senderIdentity
+                                  )?.senderIdentity;
                                   setDmInspectProfile({
                                     id: activeDmThreadId,
                                     name: user?.nickname || currentThread.name,
                                     emoji: user?.emoji || currentThread.emoji || "◌",
                                     image: user?.avatarUrl || currentThread.avatarUrl,
-                                    mbti: user?.mbti || user?.identity?.mbti || "",
-                                    socionics: user?.socionics || user?.identity?.socionics || "",
-                                    enneagram: user?.enneagram || user?.identity?.enneagram || "",
-                                    psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || "",
+                                    mbti: user?.mbti || user?.identity?.mbti || messageIdentity?.mbti || "",
+                                    socionics: user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
+                                    enneagram: user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
+                                    psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
                                     links: user?.links || [],
                                     overview: user?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
