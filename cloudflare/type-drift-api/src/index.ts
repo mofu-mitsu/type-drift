@@ -204,8 +204,10 @@ export default {
 
         const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
         const recipientProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${recipientKey} LIMIT 1`;
-        const senderSnapshot = JSON.stringify(senderProfileRows[0] || {});
-        const recipientSnapshot = JSON.stringify(recipientProfileRows[0] || { nickname: recipientName });
+        const senderProfile = b.sender_profile && typeof b.sender_profile === "object" ? b.sender_profile : (senderProfileRows[0] || {});
+        const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (recipientProfileRows[0] || { nickname: recipientName });
+        const senderSnapshot = JSON.stringify(senderProfile);
+        const recipientSnapshot = JSON.stringify(recipientProfile);
         const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
           VALUES (${key},${recipientKey},${threadId},${senderName},${recipientName},${text},${bottleId},${context?.bottle_snippet || null},${context?.bottle_author || null},${context?.bottle_type || null},${senderSnapshot}::jsonb,${recipientSnapshot}::jsonb,NOW(),NOW()) RETURNING *`;
         const message = saved[0];
