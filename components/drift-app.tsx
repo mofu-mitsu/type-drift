@@ -22,8 +22,8 @@ import {
 
 const DEFAULT_GAS_URL = process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
 
-type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; time: string; ai?: string; mine?: boolean; color: string };
-type ReplyItem = { id: number; body: string; parentId?: number; reaction: number };
+type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; color: string };
+type ReplyItem = { id: number; body: string; parentId?: number; reaction: number; author?: string; emoji?: string };
 
 const BOTTLE_PROMPTS = [
   "最近、自分のタイプらしさを感じた瞬間は？",
@@ -160,6 +160,7 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
     {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
     <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={() => setMoreOpen(open => !open)}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
+    {Boolean(bottle.aiLikers?.length) && <div style={{ padding: "4px 12px 10px", color: "#9d174d", fontSize: "11px" }}>AIからのいいね：{bottle.aiLikers?.join(" · ")}</div>}
   </article>;
 }
 
@@ -296,7 +297,7 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
 }
 
 function ReplyThread({ replies, onReact, onReply }: { replies: ReplyItem[]; onReact: (id: number) => void; onReply: (id: number) => void }) {
-  const render = (parentId?: number, depth = 0): ReactNode => replies.filter(item => item.parentId === parentId).map(item => <div className="reply-item" style={{ marginLeft: `${Math.min(depth, 3) * 14}px` }} key={item.id}><p>{item.body}</p><div><button type="button" onClick={() => onReact(item.id)} className={`reply-reaction reply-reaction--${item.reaction}`}>♡ {item.reaction ? `+${item.reaction}` : "反応"}</button><button type="button" onClick={() => onReply(item.id)} className="reply-to">返信</button></div>{render(item.id, depth + 1)}</div>);
+  const render = (parentId?: number, depth = 0): ReactNode => replies.filter(item => item.parentId === parentId).map(item => <div className="reply-item" style={{ marginLeft: `${Math.min(depth, 3) * 14}px` }} key={item.id}>{item.author && <small style={{ display: "block", marginBottom: "4px", color: "#9d174d", fontWeight: 700 }}>{item.emoji} {item.author}</small>}<p>{item.body}</p><div><button type="button" onClick={() => onReact(item.id)} className={`reply-reaction reply-reaction--${item.reaction}`}>♡ {item.reaction ? `+${item.reaction}` : "反応"}</button><button type="button" onClick={() => onReply(item.id)} className="reply-to">返信</button></div>{render(item.id, depth + 1)}</div>);
   return replies.length ? <div className="reply-thread"><p className="reply-thread__title">返信の流れ</p>{render()}</div> : null;
 }
 
@@ -1663,6 +1664,7 @@ export default function DriftApp() {
             poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined,
             reactions: Number(row.reactions_sum_level || 0),
             replies: Number(row.replies_count || 0),
+            aiLikers: Array.isArray(row.ai_likers) ? row.ai_likers.map(String) : [],
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
             mine: Boolean(row.is_mine),
@@ -2986,7 +2988,7 @@ export default function DriftApp() {
       const visit = (row: any, parentId?: number) => {
         const id = Number(row.id);
         if (!Number.isFinite(id)) return;
-        flattened.push({ id, body: normalizeDmBody(row.body || ""), parentId, reaction: Number(row.reactions_count || row.reactions?.reduce((sum: number, item: any) => sum + Number(item.level || 0), 0) || 0) });
+        flattened.push({ id, body: normalizeDmBody(row.body || ""), parentId, reaction: Number(row.reactions_count || row.reactions?.reduce((sum: number, item: any) => sum + Number(item.level || 0), 0) || 0), author: row.guest_key === "ai:darling" ? "ダーリンちゃん" : row.guest_key === "ai:lsi-worm" ? "LSI芋虫" : undefined, emoji: row.guest_key === "ai:darling" ? "🥺" : row.guest_key === "ai:lsi-worm" ? "🐛" : undefined });
         for (const child of Array.isArray(row.children) ? row.children : []) visit(child, id);
       };
       for (const row of Array.isArray(data?.replies) ? data.replies : []) visit(row, row.parent_reply_id ? Number(row.parent_reply_id) : undefined);
