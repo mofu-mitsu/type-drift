@@ -16,6 +16,8 @@ export type PlazaUser = {
   sessionKey: string; nickname: string; emoji: string; avatarUrl?: string;
   mbti?: string; socionics?: string; enneagram?: string; otherType?: string;
   identity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string; other_type?: string };
+  bio?: string;
+  links?: Array<{ id: string; title: string; url: string }>;
 };
 export type PlazaDirectMessage = { id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number };
 
@@ -31,6 +33,8 @@ export type PlazaPanelProps = {
   nickname?: string;
   profileImage?: string | null;
   profileIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
+  profileBio?: string;
+  profileLinks?: Array<{ id: string; title: string; url: string }>;
   externalEmote?: { emote: string; label?: string; id: number } | null;
   externalMessage?: { author: string; body: string; kind: 'human' | 'ai' | 'system'; emoji?: string; id: number } | null;
   onToast?: (message: string) => void;
