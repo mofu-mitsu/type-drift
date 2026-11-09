@@ -4555,18 +4555,22 @@ export default function DriftApp() {
                                     : undefined;
                                   const messageIdentity = otherMessage
                                     ? (otherMessage.isMine
-                                        ? { mbti: messageProfile?.mbti, socionics: messageProfile?.socionics, enneagram: messageProfile?.enneagram, otherType: messageProfile?.otherType }
-                                        : otherMessage.senderIdentity || { mbti: messageProfile?.mbti, socionics: messageProfile?.socionics, enneagram: messageProfile?.enneagram, otherType: messageProfile?.otherType })
+                                        ? { mbti: messageProfile?.mbti, socionics: messageProfile?.socionics, enneagram: messageProfile?.enneagram, otherType: messageProfile?.otherType || (messageProfile as any)?.other_type }
+                                        : otherMessage.senderIdentity || { mbti: messageProfile?.mbti, socionics: messageProfile?.socionics, enneagram: messageProfile?.enneagram, otherType: messageProfile?.otherType || (messageProfile as any)?.other_type })
+                                    : undefined;
+                                  const isBottleOwnerTarget = activeDmThreadId.startsWith("bottle-") && Boolean(otherMessage?.isMine);
+                                  const originBottle = isBottleOwnerTarget
+                                    ? bottles.find(bottle => bottle.id === Number(activeDmThreadId.replace("bottle-", "")))
                                     : undefined;
                                   setDmInspectProfile({
                                     id: activeDmThreadId,
                                     name: user?.nickname || messageProfile?.nickname || currentThread.name,
                                     emoji: user?.emoji || messageProfile?.emoji || currentThread.emoji || "◌",
                                     image: user?.avatarUrl || messageProfile?.profileImageUrl || currentThread.avatarUrl,
-                                    mbti: user?.mbti || user?.identity?.mbti || messageIdentity?.mbti || "",
-                                    socionics: user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
-                                    enneagram: user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
-                                    psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
+                                    mbti: originBottle?.mbti || user?.mbti || user?.identity?.mbti || messageIdentity?.mbti || "",
+                                    socionics: originBottle?.socionics || user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
+                                    enneagram: originBottle?.enneagram || user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
+                                    psycho: originBottle?.otherType || user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
                                     links: (user?.links?.length ? user.links : messageProfile?.links) || [],
                                     overview: user?.bio || messageProfile?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
