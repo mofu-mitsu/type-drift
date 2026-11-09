@@ -228,13 +228,13 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
       const response = await apiFetch(`/api/bottles/${bottle.id}/votes`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ option_index: index }) });
       const data = await response.json().catch(() => null);
       if (!response.ok || data?.ok !== true) throw new Error(data?.error || "投票を保存できませんでした");
+      // 保存APIが成功したら投票済みにする。集計レスポンスの形式差で成功した票を失敗扱いしない。
       setVoted(index);
-      // 投票APIが成功を返しただけでは完了扱いにしない。DB集計に自分の票が反映されたことを確認する。
-      const counts = poll.options.map((_, i) => Number(data.counts?.find((row: { option_index: number }) => Number(row.option_index) === i)?.votes || 0));
-      if (!Array.isArray(data.counts) || counts[index] < 1) {
-        setVoted(null);
-        throw new Error("vote_not_persisted");
-      }
+      const rows = Array.isArray(data.counts) ? data.counts : [];
+      const counts = poll.options.map((_, i) => {
+        const row = rows.find((item: { option_index?: number; votes?: number; count?: number; total?: number }) => Number(item.option_index) === i);
+        return row ? Number(row.votes ?? row.count ?? row.total ?? 0) : poll.votes[i] + (i === index ? 1 : 0);
+      });
       setPoll({ ...poll, votes: counts });
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch (error) {
@@ -3411,7 +3411,7 @@ export default function DriftApp() {
               </p>
             </div>
             <div className="sea-actions">
-              <button className="v2-sea-flow-btn" type="button" onClick={() => setComposerOpen(true)}>
+              <button className="v2-sea-flow-btn" type="button" onClick={() => { setPostMode("secret"); setPollOptions(["", ""]); setDraftImage(undefined); setComposerOpen(true); }}>
                 <Plus size={16} /> 秘密を流す
               </button>
               <button className="question-box-sea-btn" type="button" onClick={() => setQuestionBoxOpen(true)}>
@@ -4095,7 +4095,7 @@ export default function DriftApp() {
               <button
                 type="button"
                 className="activity-v2-post-btn"
-                onClick={() => setComposerOpen(true)}
+                onClick={() => { setPostMode("secret"); setPollOptions(["", ""]); setDraftImage(undefined); setComposerOpen(true); }}
               >
                 <Plus size={18} /> 秘密を流す
               </button>
