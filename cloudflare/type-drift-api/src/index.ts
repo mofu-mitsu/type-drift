@@ -339,7 +339,14 @@ export default {
           RETURNING level`;
         const level = rows.length ? rows[0].level : (await sql`SELECT level FROM reactions WHERE bottle_id=${id} AND guest_key=${key} ORDER BY id DESC LIMIT 1`)[0]?.level;
         const owner = await sql`SELECT guest_key FROM bottles WHERE id=${id} AND deleted_at IS NULL`;
-        if (owner[0]?.guest_key && owner[0].guest_key !== key) await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${owner[0].guest_key},'bottle_reaction',${String(id)},'あなたのボトルに新しい反応が届きました。',NOW(),NOW())`;
+        if (owner[0]?.guest_key && owner[0].guest_key !== key) {
+          // 同じログインユーザーが別のguest keyを使っていても、自分自身への通知は作らない。
+          const profiles = await sql`SELECT guest_key,user_id FROM profiles WHERE guest_key IN (${owner[0].guest_key}, ${key})`;
+          const ownerProfile = profiles.find((profile: any) => profile.guest_key === owner[0].guest_key);
+          const actorProfile = profiles.find((profile: any) => profile.guest_key === key);
+          const sameUser = ownerProfile?.user_id && actorProfile?.user_id && String(ownerProfile.user_id) === String(actorProfile.user_id);
+          if (!sameUser) await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${owner[0].guest_key},'bottle_reaction',${String(id)},'あなたのボトルに新しい反応が届きました。',NOW(),NOW())`;
+        }
         return json({ level: Number(level || 1) }, 200, env, request);
       }
 
