@@ -2168,6 +2168,24 @@ export default function DriftApp() {
     const myDisplayName = isBottleConversation && !isProfileRevealed ? "匿名のあなた" : (nickname || "匿名のあなた");
     const targetBottleId = target.id.startsWith("bottle-") ? Number(target.id.slice("bottle-".length)) : 0;
     const hasMatchingBottle = Boolean(target.id.startsWith("bottle-") && target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
+    const targetUser = plazaUsers.find(item => item.sessionKey === target.id) ||
+      plazaUsers.find(item => item.nickname === target.name && item.nickname !== nickname) ||
+      dmProfileCache[target.id] || dmProfileCache[target.name];
+    const senderProfileSnapshot = {
+      nickname: nickname || "",
+      mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "",
+      enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "",
+      bio: profileBio || "", links: profileLinks || [], profileImageUrl: profileImage || "",
+    };
+    const recipientProfileSnapshot = targetUser ? {
+      nickname: targetUser.nickname || target.name,
+      mbti: targetUser.mbti || targetUser.identity?.mbti || "",
+      socionics: targetUser.socionics || targetUser.identity?.socionics || "",
+      enneagram: targetUser.enneagram || targetUser.identity?.enneagram || "",
+      otherType: targetUser.otherType || targetUser.identity?.otherType || targetUser.identity?.other_type || "",
+      bio: targetUser.bio || "", links: targetUser.links || [], profileImageUrl: targetUser.avatarUrl || "",
+      emoji: targetUser.emoji || target.emoji,
+    } : undefined;
 
     // AIキャラクターは広場セッションID（UUID / plaza-...）を持っていても
     // 人間向けのNeon DM APIへ送らない。以前はセッションID判定が先に当たり、
@@ -2182,10 +2200,10 @@ export default function DriftApp() {
     if (!isAiTarget && ((hasMatchingBottle && !isAiBottleTarget) || isSessionKey || (isServerThread && !isAiBottleTarget))) {
       try {
         const payload = hasMatchingBottle
-          ? { bottle_id: target.bottleInfo!.id, body, sender_name: myDisplayName, recipient_name: target.name }
+          ? { bottle_id: target.bottleInfo!.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
           : isSessionKey
-            ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name }
-            : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name };
+            ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
+            : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot };
         const response = await apiFetch("/api/direct-messages", {
           method: "POST",
           credentials: "include",
