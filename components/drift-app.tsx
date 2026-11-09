@@ -2440,12 +2440,24 @@ export default function DriftApp() {
     for (const thread of threads) {
       if (!thread.targetId.startsWith("bottle-")) continue;
       const last = thread.lastMsg;
-      if (last.isMine) {
-        thread.type = last.bottleType || thread.type || "ボトル主へのトーク";
-      } else {
-        thread.type = [last.senderIdentity?.mbti, last.senderIdentity?.socionics, last.senderIdentity?.enneagram]
-          .filter(Boolean).join(" · ") || thread.type || "匿名の誰か";
-      }
+      const bottleId = last.bottleId || Number(thread.targetId.replace("bottle-", ""));
+      const originalBottle = bottles.find(bottle => bottle.id === bottleId);
+      const originalBottleIdentity = [
+        originalBottle?.mbti,
+        originalBottle?.socionics,
+        originalBottle?.enneagram,
+        originalBottle?.otherType,
+      ].filter(Boolean).join(" · ");
+      const senderSnapshot = last.senderProfile;
+      const recipientSnapshot = last.recipientProfile;
+      const messageIdentity = last.isMine
+        ? [recipientSnapshot?.mbti, recipientSnapshot?.socionics, recipientSnapshot?.enneagram, recipientSnapshot?.otherType].filter(Boolean).join(" · ")
+        : [last.senderIdentity?.mbti || senderSnapshot?.mbti, last.senderIdentity?.socionics || senderSnapshot?.socionics, last.senderIdentity?.enneagram || senderSnapshot?.enneagram, last.senderIdentity?.otherType || senderSnapshot?.otherType].filter(Boolean).join(" · ");
+      // ボトルの会話では、主の自認は会話元のボトル記録を最優先にする。
+      // 「匿名の誰か」側は、メッセージに保存された送信者プロフィールを使う。
+      thread.type = last.isMine
+        ? (originalBottleIdentity || messageIdentity || last.bottleType || thread.type || "ボトル主への返信")
+        : (messageIdentity || originalBottleIdentity || last.bottleType || thread.type || "匿名の誰か");
     }
     return threads.sort((a, b) => b.lastMsg.createdAt - a.lastMsg.createdAt);
   }, [directMessages, plazaUsers]);
@@ -4486,9 +4498,15 @@ export default function DriftApp() {
                                 } else {
                                   // DM履歴に保存された「相手から届いたメッセージ」の自認も使う。
                                   // オフラインで広場のpresence情報がなくても、閲覧者自身の自認を相手へ流用しない。
-                                  const otherMessage = [...directMessages].reverse().find(item =>
-                                    item.threadId === activeDmThreadId && (item.isMine ? item.recipientProfile : item.senderProfile)
+                                  const profileHasDetails = (profile?: DirectMessage["senderProfile"]) => Boolean(
+                                    profile && (profile.nickname || profile.mbti || profile.socionics || profile.enneagram ||
+                                      profile.otherType || profile.bio || profile.profileImageUrl ||
+                                      (Array.isArray(profile.links) && profile.links.length))
                                   );
+                                  const matchingMessages = [...directMessages].reverse().filter(item => item.threadId === activeDmThreadId);
+                                  const otherMessage = matchingMessages.find(item =>
+                                    item.isMine ? profileHasDetails(item.recipientProfile) : profileHasDetails(item.senderProfile)
+                                  ) || matchingMessages.find(item => item.isMine ? item.recipientProfile : item.senderProfile);
                                   const messageProfile = otherMessage
                                     ? (otherMessage.isMine ? otherMessage.recipientProfile : otherMessage.senderProfile)
                                     : undefined;
@@ -4506,7 +4524,7 @@ export default function DriftApp() {
                                     socionics: user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
                                     enneagram: user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
                                     psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
-                                    links: user?.links || messageProfile?.links || [],
+                                    links: (user?.links?.length ? user.links : messageProfile?.links) || [],
                                     overview: user?.bio || messageProfile?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
                                 }
