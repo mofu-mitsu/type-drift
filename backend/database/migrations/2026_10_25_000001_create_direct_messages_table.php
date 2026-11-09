@@ -8,6 +8,12 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // The production table may have been provisioned before Laravel recorded this migration.
+        // Treat an existing table as already created so later additive migrations can run.
+        if (Schema::hasTable('direct_messages')) {
+            return;
+        }
+
         Schema::create('direct_messages', function (Blueprint $table) {
             $table->id();
             $table->string('sender_guest_key', 100)->index();
