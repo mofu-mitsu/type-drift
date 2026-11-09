@@ -721,3 +721,13 @@
 .bottle-stream{isolation:isolate}
 .bottle-stream::before,.bottle-stream::after{pointer-events:none}
 .bottle-card .poll-box:before{content:"";display:block;height:3px;width:42px;border-radius:99px;background:linear-gradient(90deg,#83cbb8,#a6d9e8);margin-bottom:2px}
+
+
+/* Reply identity controls: separate from the original consultation thread author */
+.consult-comment-identity-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 12px;padding:12px;border:1px solid #d7e9e4;border-radius:14px;background:linear-gradient(135deg,#f5fcf9,#f5f7ff)}
+.consult-comment-toggle{display:flex;align-items:center;gap:7px;min-width:0;padding:8px 10px;border-radius:10px;background:#fff;color:#426d68;font-size:12px;font-weight:650}
+.consult-comment-toggle input{width:16px;height:16px;flex:0 0 auto;accent-color:#59a995}
+.consult-comment-toggle small{color:#8da7a1;font-size:10px;font-weight:500}
+.consult-comment-name{display:flex;flex-direction:column;gap:5px;min-width:0;color:#64817c;font-size:11px}
+.consult-comment-name input{width:100%;min-width:0;padding:9px 10px;border:1px solid #d7e6e1;border-radius:9px;background:#fff;color:#385a56;font-size:12px}
+@media(max-width:560px){.consult-comment-identity-options{grid-template-columns:minmax(0,1fr)}}
