@@ -52,6 +52,8 @@ type DirectMessage = {
   bottleAuthor?: string;
   bottleType?: string;
   senderIdentity?: { mbti?: string; socionics?: string; enneagram?: string; otherType?: string };
+  senderProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id?: string; title: string; url: string }>; emoji?: string };
+  recipientProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id?: string; title: string; url: string }>; emoji?: string };
   serverId?: number;
   isAiError?: boolean;
 };
@@ -397,6 +399,16 @@ export default function DriftApp() {
             mbti: row.sender_identity.mbti || "", socionics: row.sender_identity.socionics || "",
             enneagram: row.sender_identity.enneagram || "", otherType: row.sender_identity.otherType || row.sender_identity.other_type || "",
           } : undefined,
+          senderProfile: row.sender_profile && typeof row.sender_profile === "object" ? {
+            ...row.sender_profile,
+            otherType: row.sender_profile.otherType || row.sender_profile.other_type || "",
+            profileImageUrl: row.sender_profile.profileImageUrl || row.sender_profile.profile_image_url || "",
+          } : undefined,
+          recipientProfile: row.recipient_profile && typeof row.recipient_profile === "object" ? {
+            ...row.recipient_profile,
+            otherType: row.recipient_profile.otherType || row.recipient_profile.other_type || "",
+            profileImageUrl: row.recipient_profile.profileImageUrl || row.recipient_profile.profile_image_url || "",
+          } : undefined,
         }));
         setDirectMessages(current => {
           const merged = [...current];
@@ -418,6 +430,13 @@ export default function DriftApp() {
     const timer = window.setInterval(() => void refresh(), 7000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("type-drift-dm-profile-cache");
+      if (raw) setDmProfileCache(JSON.parse(raw));
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -2363,28 +2382,9 @@ export default function DriftApp() {
           emoji: otherEmoji,
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
-            ? (() => {
-                // Bottle threads must identify the message author, never copy the bottle owner's
-                // (current viewer's) profile into the anonymous sender's header.
-                const senderIdentity = m.senderIdentity;
-                const senderParts = [
-                  senderIdentity?.mbti,
-                  senderIdentity?.socionics,
-                  senderIdentity?.enneagram,
-                ].filter(Boolean);
-                const ownParts = [
-                  profileIdentity.mbti,
-                  profileIdentity.socionics,
-                  profileIdentity.enneagram,
-                ].filter(Boolean);
-                const accidentallyCopiedOwnIdentity =
-                  senderParts.length > 0 &&
-                  ownParts.length > 0 &&
-                  senderParts.join("|") === ownParts.join("|");
-                return (!accidentallyCopiedOwnIdentity && senderParts.length
-                  ? senderParts.join(" · ")
-                  : "") || "匿名のボトル主へのトーク";
-              })()
+            ? (m.isMine
+                ? (m.bottleType || "ボトル主へのトーク")
+                : ([m.senderIdentity?.mbti, m.senderIdentity?.socionics, m.senderIdentity?.enneagram].filter(Boolean).join(" · ") || "匿名の誰か"))
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
                 plazaUser?.socionics || plazaUser?.identity?.socionics,
@@ -2402,7 +2402,20 @@ export default function DriftApp() {
         }
       }
     }
-    return Object.values(map).sort((a, b) => b.lastMsg.createdAt - a.lastMsg.createdAt);
+    const threads = Object.values(map);
+    // 会話相手の自認は、最後のメッセージの向きで決める。
+    // 自分が送ったメッセージなら相手はボトル主、相手から届いたものなら送信者本人。
+    for (const thread of threads) {
+      if (!thread.targetId.startsWith("bottle-")) continue;
+      const last = thread.lastMsg;
+      if (last.isMine) {
+        thread.type = last.bottleType || thread.type || "ボトル主へのトーク";
+      } else {
+        thread.type = [last.senderIdentity?.mbti, last.senderIdentity?.socionics, last.senderIdentity?.enneagram]
+          .filter(Boolean).join(" · ") || thread.type || "匿名の誰か";
+      }
+    }
+    return threads.sort((a, b) => b.lastMsg.createdAt - a.lastMsg.createdAt);
   }, [directMessages, plazaUsers]);
 
   const markThreadAsRead = (threadId: string) => {
@@ -4424,20 +4437,28 @@ export default function DriftApp() {
                                 } else {
                                   // DM履歴に保存された「相手から届いたメッセージ」の自認も使う。
                                   // オフラインで広場のpresence情報がなくても、閲覧者自身の自認を相手へ流用しない。
-                                  const messageIdentity = directMessages.find(item =>
-                                    item.threadId === activeDmThreadId && !item.isMine && item.senderIdentity
-                                  )?.senderIdentity;
+                                  const otherMessage = [...directMessages].reverse().find(item =>
+                                    item.threadId === activeDmThreadId && (item.isMine ? item.recipientProfile : item.senderProfile)
+                                  );
+                                  const messageProfile = otherMessage
+                                    ? (otherMessage.isMine ? otherMessage.recipientProfile : otherMessage.senderProfile)
+                                    : undefined;
+                                  const messageIdentity = otherMessage
+                                    ? (otherMessage.isMine
+                                        ? { mbti: messageProfile?.mbti, socionics: messageProfile?.socionics, enneagram: messageProfile?.enneagram, otherType: messageProfile?.otherType }
+                                        : otherMessage.senderIdentity || { mbti: messageProfile?.mbti, socionics: messageProfile?.socionics, enneagram: messageProfile?.enneagram, otherType: messageProfile?.otherType })
+                                    : undefined;
                                   setDmInspectProfile({
                                     id: activeDmThreadId,
-                                    name: user?.nickname || currentThread.name,
-                                    emoji: user?.emoji || currentThread.emoji || "◌",
-                                    image: user?.avatarUrl || currentThread.avatarUrl,
+                                    name: user?.nickname || messageProfile?.nickname || currentThread.name,
+                                    emoji: user?.emoji || messageProfile?.emoji || currentThread.emoji || "◌",
+                                    image: user?.avatarUrl || messageProfile?.profileImageUrl || currentThread.avatarUrl,
                                     mbti: user?.mbti || user?.identity?.mbti || messageIdentity?.mbti || "",
                                     socionics: user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
                                     enneagram: user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
                                     psycho: user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
-                                    links: user?.links || [],
-                                    overview: user?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
+                                    links: user?.links || messageProfile?.links || [],
+                                    overview: user?.bio || messageProfile?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
                                 }
                               }}
