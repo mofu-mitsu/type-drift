@@ -4601,13 +4601,13 @@ export default function DriftApp() {
                           key={thread.targetId}
                           className={`dm-v2-thread-item ${draggingDmId === thread.targetId ? "is-dragging" : ""}`}
                           onDragOver={event => { if (draggingDmId) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
-                          onDrop={event => { event.preventDefault(); const fromId = event.dataTransfer.getData("text/plain") || draggingDmId; if (fromId) reorderDmThread(fromId, thread.targetId); setDraggingDmId(null); }}
+                          onDrop={event => { event.preventDefault(); const fromId = event.dataTransfer.getData("text/plain") || draggingDmId; if (fromId) reorderDmThread(fromId, thread.targetId); setDraggingDmId(null); }} onTouchEnd={event => { if (!draggingDmId) return; const touch = event.changedTouches[0]; const target = touch ? document.elementFromPoint(touch.clientX, touch.clientY)?.closest(".dm-v2-thread-item") as HTMLElement | null : null; const toId = target?.getAttribute("data-thread-id"); if (toId) reorderDmThread(draggingDmId, toId); setDraggingDmId(null); }} data-thread-id={thread.targetId}
                           onClick={() => {
                             setActiveDmThreadId(thread.targetId);
                             markThreadAsRead(thread.targetId);
                           }}
                         >
-                          {dmSortMode === "manual" && <button type="button" className="dm-drag-handle" draggable aria-label={`${thread.name}を並び替え`} title="三本線をつかんで並び替え" onDragStart={event => { event.stopPropagation(); setDraggingDmId(thread.targetId); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", thread.targetId); }} onDragEnd={() => setDraggingDmId(null)} onClick={event => event.stopPropagation()}><Menu size={17} /></button>}
+                          {dmSortMode === "manual" && <button type="button" className="dm-drag-handle" draggable aria-label={`${thread.name}を並び替え`} title="三本線をつかんで並び替え" onDragStart={event => { event.stopPropagation(); setDraggingDmId(thread.targetId); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", thread.targetId); }} onDragEnd={() => setDraggingDmId(null)} onTouchStart={event => { event.stopPropagation(); setDraggingDmId(thread.targetId); }} onClick={event => event.stopPropagation()} style={{ touchAction: "none", cursor: "grab" }}><Menu size={17} /></button>}
                           <div className="dm-thread-avatar">
                             {thread.avatarUrl ? <img src={thread.avatarUrl} alt="" /> : thread.emoji}
                             {thread.unread > 0 && (
