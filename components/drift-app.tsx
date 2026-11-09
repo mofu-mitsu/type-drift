@@ -348,6 +348,8 @@ export default function DriftApp() {
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
   // DM相手のプロフィールはオンライン中に取得して端末へキャッシュし、退室後も表示できるようにする。
   const [dmProfileCache, setDmProfileCache] = useState<Record<string, PlazaUser>>({});
+  const [dmHiddenAt, setDmHiddenAt] = useState<Record<string, number>>({});
+  const [dmSortMode, setDmSortMode] = useState<"recent" | "oldest" | "unread">("recent");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
@@ -436,6 +438,10 @@ export default function DriftApp() {
     try {
       const raw = localStorage.getItem("type-drift-dm-profile-cache");
       if (raw) setDmProfileCache(JSON.parse(raw));
+      const hiddenRaw = localStorage.getItem("type-drift-dm-hidden-at");
+      if (hiddenRaw) setDmHiddenAt(JSON.parse(hiddenRaw));
+      const sortRaw = localStorage.getItem("type-drift-dm-sort-mode");
+      if (sortRaw === "recent" || sortRaw === "oldest" || sortRaw === "unread") setDmSortMode(sortRaw);
     } catch {}
   }, []);
 
@@ -2478,6 +2484,19 @@ export default function DriftApp() {
         }
       }
     }
+    // オフライン相手のアイコン・自認は、DM履歴に保存したプロフィールを優先的なフォールバックとして使う。
+    for (const thread of Object.values(map)) {
+      const messages = directMessages.filter(message => message.threadId === thread.targetId).sort((a, b) => b.createdAt - a.createdAt);
+      const profileMessage = messages.find(message => message.isMine ? Boolean(message.recipientProfile?.profileImageUrl || message.recipientProfile?.emoji || message.recipientProfile?.mbti || message.recipientProfile?.nickname) : Boolean(message.senderProfile?.profileImageUrl || message.senderProfile?.emoji || message.senderProfile?.mbti || message.senderProfile?.nickname));
+      const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
+      const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
+      thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
+      thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
+      if (!thread.type || thread.type === "広場の住人") {
+        const identity = [savedProfile?.mbti, savedProfile?.socionics, savedProfile?.enneagram, savedProfile?.otherType].filter(Boolean).join(" · ");
+        thread.type = identity || thread.type;
+      }
+    }
     const threads = Object.values(map);
     // 会話相手の自認は、最後のメッセージの向きで決める。
     // 自分が送ったメッセージなら相手はボトル主、相手から届いたものなら送信者本人。
@@ -2503,8 +2522,12 @@ export default function DriftApp() {
         ? (originalBottleIdentity || messageIdentity || last.bottleType || thread.type || "ボトル主への返信")
         : (messageIdentity || originalBottleIdentity || last.bottleType || thread.type || "匿名の誰か");
     }
-    return threads.sort((a, b) => b.lastMsg.createdAt - a.lastMsg.createdAt);
-  }, [directMessages, plazaUsers, bottles]);
+    return threads.filter(thread => !(dmHiddenAt[thread.targetId] && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId])).sort((a, b) => {
+      if (dmSortMode === "oldest") return a.lastMsg.createdAt - b.lastMsg.createdAt;
+      if (dmSortMode === "unread") return b.unread - a.unread || b.lastMsg.createdAt - a.lastMsg.createdAt;
+      return b.lastMsg.createdAt - a.lastMsg.createdAt;
+    });
+  }, [directMessages, plazaUsers, bottles, dmProfileCache, dmHiddenAt, dmSortMode]);
 
   const markThreadAsRead = (threadId: string) => {
     const unreadServerMessages = directMessages.filter(message => message.threadId === threadId && !message.isMine && !message.read && message.serverId);
@@ -4399,7 +4422,7 @@ export default function DriftApp() {
                       <strong style={{ fontSize: "15px", color: "#1e293b" }}>トーク一覧</strong>
                       <span style={{ fontSize: "11px", color: "#64748b", background: "#e2e8f0", padding: "1px 6px", borderRadius: "10px" }}>{dmThreads.length}</span>
                     </div>
-                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>タップして対話を開始</span>
+                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b" }}>並び替え <select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ border: "1px solid #dbe4ee", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option></select></label>
                   </div>
 
                   {dmThreads.length === 0 ? (
@@ -4452,6 +4475,7 @@ export default function DriftApp() {
                               {thread.unread}
                             </span>
                           )}
+                          <button type="button" title="このトークを非表示" aria-label={`${thread.name}とのトークを非表示`} onClick={event => { event.stopPropagation(); const next = { ...dmHiddenAt, [thread.targetId]: thread.lastMsg.createdAt }; setDmHiddenAt(next); try { localStorage.setItem("type-drift-dm-hidden-at", JSON.stringify(next)); } catch {} }} style={{ marginLeft: "8px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 8px", background: "#fff", color: "#64748b", cursor: "pointer", flexShrink: 0 }}><span style={{ fontSize: "11px" }}>非表示</span></button>
                         </div>
                       );
                     })
