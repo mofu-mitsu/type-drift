@@ -138,6 +138,27 @@ async function runScheduledAiEngagement(env: Env) {
         SELECT ${post.id}, ${chosen.key}, ${replyBody}, NULL, NOW(), NOW() FROM claimed
         RETURNING id`;
       if (inserted.length && post.guest_key) {
+        const profileRows = await sql`SELECT nickname, mbti, socionics, enneagram, other_type, bio, profile_image_url, links
+          FROM profiles WHERE guest_key = ${post.guest_key} OR ('user:' || user_id::text) = ${post.guest_key} LIMIT 1`;
+        const recipientProfile = profileRows[0] || {};
+        const senderProfile = {
+          nickname: chosen.name,
+          mbti: chosen.key === "ai:darling" ? "INTP" : "INTJ",
+          socionics: chosen.key === "ai:darling" ? "ILI" : "LSI",
+          enneagram: "5w6",
+          emoji: chosen.emoji,
+        };
+        // ボトルのAI返信は通知だけでなく、同じボトル専用スレッドにも保存する。
+        // 既存のボトル主の返信・送信履歴と同じ thread_id を使う。
+        await sql`INSERT INTO direct_messages (
+            sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body,
+            bottle_id, bottle_snippet, bottle_author, bottle_type, sender_profile, recipient_profile,
+            created_at, updated_at
+          ) VALUES (
+            ${chosen.key}, ${post.guest_key}, ${"bottle-" + String(post.id)}, ${chosen.name}, ${recipientProfile.nickname || "匿名のあなた"}, ${replyBody},
+            ${post.id}, ${body.slice(0, 180)}, '匿名ボトル', ${[recipientProfile.mbti, recipientProfile.socionics, recipientProfile.enneagram].filter(Boolean).join(" · ") || null},
+            ${JSON.stringify(senderProfile)}::jsonb, ${JSON.stringify(recipientProfile)}::jsonb, NOW(), NOW()
+          )`;
         await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at)
           VALUES (${post.guest_key}, 'bottle_reply', ${String(post.id)}, ${chosen.emoji + " " + chosen.name + "からボトルに返信が届きました。"}, NOW(), NOW())`;
       }
