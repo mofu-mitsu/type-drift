@@ -78,13 +78,16 @@ async function runScheduledAiEngagement(env: Env) {
 
     // 匿名のシステム反応：投稿ごとに一度だけ判定し、当たれば複数の匿名アカウントからいいねを付ける。
     // 既存のAIキャラ反応とは独立。各ゲストキーを別々にすることで同一投稿への複数いいねを許可する。
+    // 10分ごとに一度だけ判定。投稿が新着40件の範囲にある間は、何度でも匿名いいねが増える（上限なし）。
+    const anonymousBucket = Math.floor(Date.now() / 600000);
+    const anonymousActor = `ai:anonymous-system:${anonymousBucket}`;
     const anonymousBatch = await sql`INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
-      VALUES (${post.id}, 'ai:anonymous-system', 'anonymous_like_batch', NOW())
+      VALUES (${post.id}, ${anonymousActor}, 'anonymous_like_batch', NOW())
       ON CONFLICT DO NOTHING RETURNING bottle_id`;
-    if (anonymousBatch.length && Math.random() < 0.78) {
+    if (anonymousBatch.length && Math.random() < 0.20) {
       const anonymousCount = 1 + Math.floor(Math.random() * 3);
       for (let i = 1; i <= anonymousCount; i++) {
-        const anonymousKey = `anon:system:${post.id}:${i}`;
+        const anonymousKey = `anon:system:${post.id}:${anonymousBucket}:${i}`;
         await sql`INSERT INTO reactions (bottle_id, guest_key, level, created_at, updated_at)
           VALUES (${post.id}, ${anonymousKey}, 1, NOW(), NOW()) ON CONFLICT DO NOTHING`;
       }
