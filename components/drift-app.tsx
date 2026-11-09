@@ -344,6 +344,8 @@ export default function DriftApp() {
   // 広場の住人は現在のpresence応答だけを表示する。localStorageの過去セッションを復元すると、
   // 退室済みの自分や古いプロフィールが「幽霊」のように残り、住人が増殖して見える。
   const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
+  // DM相手のプロフィールはオンライン中に取得して端末へキャッシュし、退室後も表示できるようにする。
+  const [dmProfileCache, setDmProfileCache] = useState<Record<string, PlazaUser>>({});
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
@@ -417,6 +419,20 @@ export default function DriftApp() {
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, []);
+
+  useEffect(() => {
+    if (!plazaUsers.length) return;
+    try {
+      const raw = localStorage.getItem("type-drift-dm-profile-cache");
+      const cached: Record<string, PlazaUser> = raw ? JSON.parse(raw) : {};
+      for (const user of plazaUsers) {
+        if (user.sessionKey) cached[user.sessionKey] = user;
+        if (user.nickname) cached[user.nickname] = user;
+      }
+      localStorage.setItem("type-drift-dm-profile-cache", JSON.stringify(cached));
+      setDmProfileCache(cached);
+    } catch {}
+  }, [plazaUsers]);
 
   // ダーリンちゃんのミニゲーム・心理テスト用State
   const [darlingTargetNumber, setDarlingTargetNumber] = useState<number | null>(null);
@@ -1623,6 +1639,14 @@ export default function DriftApp() {
         if (typeof state.profileBio === "string") setProfileBio(state.profileBio);
         if (Array.isArray(state.profileLinks)) setProfileLinks(state.profileLinks);
         if (typeof state.profileImage === "string") setProfileImage(state.profileImage);
+      }
+      // DM相手のプロフィールを復元（オンライン状態に依存せず「プロフィールを見る」に利用）。
+      const savedProfiles = localStorage.getItem("type-drift-dm-profile-cache");
+      if (savedProfiles) {
+        try {
+          const parsed = JSON.parse(savedProfiles);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) setDmProfileCache(parsed);
+        } catch {}
       }
       // DMメッセージの復元
       const savedDm = localStorage.getItem("type-drift-direct-messages");
@@ -3998,9 +4022,18 @@ export default function DriftApp() {
                   type="button"
                   className="primary-button"
                   onClick={async () => {
+                    let savedLocally = false;
                     try {
                       const uploadedImage = profileImage?.startsWith("data:") ? await uploadToCloudinary(profileImage) : profileImage || undefined;
                       if (uploadedImage) setProfileImage(uploadedImage);
+                      // まず端末へ保存。APIがオフラインでも自認・プロフィールは失われない。
+                      const previousState = JSON.parse(localStorage.getItem("type-drift-state") || "{}");
+                      localStorage.setItem("type-drift-state", JSON.stringify({
+                        ...previousState, nickname, profileIdentity, profileBio, profileLinks,
+                        profileImage: uploadedImage || profileImage, useSavedIdentity
+                      }));
+                      savedLocally = true;
+                      setProfileSaved(true);
                       const api = process.env.NEXT_PUBLIC_API_URL;
                       if (!api) throw new Error("profile API is not configured");
                       const response = await apiFetch("/api/profile", {
@@ -4017,7 +4050,9 @@ export default function DriftApp() {
                       setPlazaToast("設定を保存しました。ボトルは匿名です。");
                     } catch (error) {
                       console.error("[Type Drift] profile save failed", error);
-                      setPlazaToast("プロフィールの保存に失敗しました。画像設定とログイン状態を確認してください");
+                      setPlazaToast(savedLocally
+                        ? "端末には保存しました。サーバー同期は未完了ですが、自認はこの端末に保持されています。"
+                        : "プロフィールの保存に失敗しました。画像設定を確認してください");
                     }
                   }}
                 >
@@ -4366,7 +4401,9 @@ export default function DriftApp() {
                               className="dm-v2-profile-btn"
                               onClick={() => {
                                 const user = plazaUsers.find(item => item.sessionKey === activeDmThreadId) ||
-                                  plazaUsers.find(item => item.nickname === currentThread.name && item.nickname !== nickname);
+                                  plazaUsers.find(item => item.nickname === currentThread.name && item.nickname !== nickname) ||
+                                  dmProfileCache[activeDmThreadId] ||
+                                  dmProfileCache[currentThread.name];
                                 if (activeDmThreadId === "darling" || currentThread.name.includes("ダーリンちゃん")) {
                                   setDmInspectProfile({
                                     id: "darling", name: "ダーリンちゃん", emoji: "🥺",
