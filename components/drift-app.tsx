@@ -2917,23 +2917,34 @@ export default function DriftApp() {
     if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
     setEditingBottle(bottle);
     setEditBottleDraft(bottle.text);
+    setDraft(bottle.text);
+    setIdentity({ mbti: bottle.mbti === "未設定" ? "" : bottle.mbti || "", socionics: bottle.socionics === "未設定" ? "" : bottle.socionics || "", enneagram: bottle.enneagram === "未設定" ? "" : bottle.enneagram || "", otherType: bottle.otherType || "" });
     setEditBottleMbti(bottle.mbti || "");
     setEditBottleSocionics(bottle.socionics || "");
     setEditBottleEnneagram(bottle.enneagram || "");
     setEditBottleOtherType(bottle.otherType || "");
     setEditBottleImageUrl(bottle.imageUrl || "");
     setEditBottlePollOptions(bottle.poll?.options?.length ? [...bottle.poll.options] : ["", ""]);
+    setPollOptions(bottle.poll?.options?.length ? [...bottle.poll.options] : ["", ""]);
+    setPostMode(bottle.poll?.options?.length ? "poll" : "secret");
+    setDraftImage(undefined);
+    setComposerOpen(true);
   };
   const saveBottleEdit = async () => {
-    if (!editingBottle || !editBottleDraft.trim()) return;
+    if (!editingBottle || !draft.trim()) return;
     const bottle = editingBottle;
-    const body = editBottleDraft.trim();
+    const body = draft.trim();
     try {
-      const pollOptions = bottle.poll ? editBottlePollOptions.map(option => option.trim()).filter(Boolean).slice(0, 6) : null;
-      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body, mbti: editBottleMbti, socionics: editBottleSocionics, enneagram: editBottleEnneagram, other_type: editBottleOtherType, image_url: editBottleImageUrl || null, poll_options: pollOptions }) });
+      const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean).slice(0, 6);
+      if (postMode === "poll" && cleanOptions.length < 2) { setPlazaToast("アンケートには選択肢を2つ以上入力してください。"); return; }
+      const imageUrl = draftImage ? await uploadToCloudinary(draftImage) : (editBottleImageUrl || null);
+      const optionsToSave = postMode === "poll" ? cleanOptions : null;
+      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body, mbti: identity.mbti, socionics: identity.socionics, enneagram: identity.enneagram, other_type: identity.otherType, image_url: imageUrl, poll_options: optionsToSave }) });
       if (!response.ok) { setPlazaToast(response.status === 404 ? "自分のボトルとして確認できず、編集できませんでした。" : `編集に失敗しました（${response.status}）`); return; }
-      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body, mbti: editBottleMbti, socionics: editBottleSocionics, enneagram: editBottleEnneagram, otherType: editBottleOtherType, imageUrl: editBottleImageUrl || undefined, poll: pollOptions ? { options: pollOptions, votes: pollOptions.map(() => 0) } : undefined } : item));
+      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, imageUrl: imageUrl || undefined, poll: optionsToSave ? { options: optionsToSave, votes: optionsToSave.map(() => 0) } : undefined } : item));
       setEditingBottle(null);
+      setComposerOpen(false);
+      setDraftImage(undefined);
       setPlazaToast("ボトルを編集しました。");
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch { setPlazaToast("通信エラーで編集できませんでした。"); }
@@ -2988,7 +2999,7 @@ export default function DriftApp() {
     if (!result.secure_url) throw new Error("画像の保存先を取得できませんでした。画像と本文は投稿されていません。");
     return result.secure_url;
   };
-  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
+  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; if (editingBottle) { setImageUploading(true); try { await saveBottleEdit(); } finally { setImageUploading(false); } return; } setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
   const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); await apiFetch('/api/question-prompts', { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
   const readDraftImage = (file: File | undefined) => {
@@ -5861,12 +5872,12 @@ export default function DriftApp() {
         </div>
       </div>
     )}
-    {composerOpen && (
+    {(composerOpen || editingBottle) && (
       <div className="modal-backdrop" onClick={() => setComposerOpen(false)}>
         <div className="composer composer-scrollable" onClick={e => e.stopPropagation()}>
-          <button className="modal-close" type="button" onClick={() => setComposerOpen(false)}><X size={18} /></button>
+          <button className="modal-close" type="button" onClick={() => { setComposerOpen(false); setEditingBottle(null); }}><X size={18} /></button>
           <p className="eyebrow">FLOAT A SECRET</p>
-          <h2>何を海へ流す？</h2>
+          <h2>{editingBottle ? "ボトルを編集" : "何を海へ流す？"}</h2>
           <div className="post-mode">
             <button type="button" className={postMode === "secret" ? "active" : ""} onClick={() => setPostMode("secret")}>秘密メモ</button>
             <button type="button" className={postMode === "poll" ? "active" : ""} onClick={() => setPostMode("poll")}>アンケート</button>
@@ -5962,7 +5973,8 @@ export default function DriftApp() {
           )}
           <div className="composer__foot">
             <span>{draft.length} / 500</span>
-            <button className="primary-button" type="button" onClick={publish}><Send size={16} /> 流す</button>
+            {editingBottle && <label className="bottle-edit-image-url">画像URL<input value={editBottleImageUrl} onChange={event => setEditBottleImageUrl(event.target.value)} placeholder="https://..." /></label>}
+            <button className="primary-button" type="button" onClick={publish} disabled={imageUploading}><Send size={16} /> {editingBottle ? "変更を保存" : "流す"}</button>
           </div>
         </div>
       </div>
@@ -5996,30 +6008,6 @@ export default function DriftApp() {
           </div>
           <small className="reply-count">{reply.length} / 1000</small>
         </div>
-      </div>
-    )}
-    {editingBottle && (
-      <div className="modal-backdrop bottle-action-backdrop" onClick={() => setEditingBottle(null)}>
-        <section className="bottle-action-modal" role="dialog" aria-modal="true" aria-labelledby="bottle-edit-title" onClick={event => event.stopPropagation()}>
-          <button type="button" className="bottle-action-close" aria-label="閉じる" onClick={() => setEditingBottle(null)}><X size={18} /></button>
-          <span className="bottle-action-eyebrow">BOTTLE EDITOR</span>
-          <h2 id="bottle-edit-title">ボトルを編集</h2>
-          <p>投稿した内容をここで書き換えられるよ。</p>
-          <textarea className="bottle-action-textarea" value={editBottleDraft} onChange={event => setEditBottleDraft(event.target.value)} autoFocus />
-          <div className="bottle-edit-fields">
-            <label>MBTI<input value={editBottleMbti} onChange={event => setEditBottleMbti(event.target.value)} placeholder="例：INFJ" /></label>
-            <label>ソシオニクス<input value={editBottleSocionics} onChange={event => setEditBottleSocionics(event.target.value)} placeholder="例：EII" /></label>
-            <label>エニアグラム<input value={editBottleEnneagram} onChange={event => setEditBottleEnneagram(event.target.value)} placeholder="例：5w4" /></label>
-            <label>その他の自認<input value={editBottleOtherType} onChange={event => setEditBottleOtherType(event.target.value)} placeholder="例：LEFV・sp/so" /></label>
-            <label className="bottle-edit-wide">画像URL<input value={editBottleImageUrl} onChange={event => setEditBottleImageUrl(event.target.value)} placeholder="https://..." /></label>
-            {editingBottle?.poll && <div className="bottle-edit-wide bottle-edit-poll"><strong>アンケートの選択肢</strong>{editBottlePollOptions.map((option, index) => <input key={index} value={option} onChange={event => setEditBottlePollOptions(items => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`選択肢 ${index + 1}`} />)}{editBottlePollOptions.length < 6 && <button type="button" onClick={() => setEditBottlePollOptions(items => [...items, ""])}>＋ 選択肢を追加</button>}</div>}
-          </div>
-          <div className="bottle-action-count">{editBottleDraft.length} 文字</div>
-          <div className="bottle-action-actions">
-            <button type="button" className="bottle-action-secondary" onClick={() => setEditingBottle(null)}>キャンセル</button>
-            <button type="button" className="bottle-action-primary" disabled={!editBottleDraft.trim()} onClick={() => void saveBottleEdit()}>変更を保存</button>
-          </div>
-        </section>
       </div>
     )}
     {recoveringBottle && (
