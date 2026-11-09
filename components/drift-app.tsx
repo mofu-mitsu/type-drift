@@ -210,10 +210,21 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
     if (bottle.id <= 0) { setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); return; }
     try {
       const response = await apiFetch(`/api/bottles/${bottle.id}/votes`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ option_index: index }) });
-      if (!response.ok) throw new Error("投票を保存できませんでした");
-      const data = await response.json(); setVoted(index);
-      setPoll({ ...poll, votes: poll.options.map((_, i) => Number(data.counts?.find((row: { option_index: number }) => Number(row.option_index) === i)?.votes || 0)) });
-    } catch { /* keep voting available after failures */ }
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.ok !== true) throw new Error(data?.error || "投票を保存できませんでした");
+      setVoted(index);
+      // APIが返す集計形式が環境差で欠けても、投票成功直後に0票へ戻さない。
+      const counts = poll.options.map((_, i) => Number(data.counts?.find((row: { option_index: number }) => Number(row.option_index) === i)?.votes || 0));
+      if (counts.every(count => count === 0)) {
+        setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) });
+      } else {
+        setPoll({ ...poll, votes: counts });
+      }
+      window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+    } catch (error) {
+      console.error("[Type Drift] poll vote failed", error);
+      setPlazaToast("投票を保存できませんでした。通信後にもう一度お試しください。");
+    }
   };
   return <article className={`bottle-card ${bottle.color}`}>
     <div className="bottle-card__top"><div className="author"><span className="author__emoji">{bottle.emoji}</span><span><strong>{bottle.author}</strong><small>{bottle.type} · {bottle.mbti}{bottle.otherType ? ` · ${bottle.otherType}` : ""}</small></span></div><span className="time">{bottle.time}</span></div>
