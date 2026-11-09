@@ -86,6 +86,20 @@ function normalizeDmBody(value: unknown, depth = 0): string {
     for (const candidate of candidates) {
       if (typeof candidate !== "string") continue;
       const text = candidate.trim();
+      // LLMの出力がJSONの途中で切れていても、body値だけは復元できる場合がある。
+      const bodyStart = text.match(/^\\s*\\{\\s*["']body["']\\s*:\\s*["']/);
+      if (bodyStart && !(text.endsWith("}") || text.endsWith('"}'))) {
+        const start = bodyStart[0].length;
+        let raw = "", escaped = false;
+        for (let index = start; index < text.length; index++) {
+          const char = text[index];
+          if (escaped) { raw += char === "n" ? "\\n" : char === "r" ? "\\r" : char === "t" ? "\\t" : char; escaped = false; continue; }
+          if (char === "\\\\") { escaped = true; continue; }
+          if (char === '"') break;
+          raw += char;
+        }
+        if (raw) return normalizeDmBody(raw, depth + 1);
+      }
       if (!text.startsWith("{") || !text.endsWith("}")) continue;
       try {
         const parsed = JSON.parse(text);
