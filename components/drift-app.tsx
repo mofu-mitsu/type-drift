@@ -189,6 +189,14 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
   const [moreOpen, setMoreOpen] = useState(false);
   const [voted, setVoted] = useState<number | null>(null);
   useEffect(() => {
+    if (!bottle.poll || bottle.id <= 0) return;
+    apiFetch(`/api/bottles/${bottle.id}/votes`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(r => r.ok ? r.json() : null).then(data => {
+      if (!data) return;
+      setPoll({ options: bottle.poll!.options, votes: bottle.poll!.options.map((_, i) => Number(data.counts?.find((row: { option_index: number }) => Number(row.option_index) === i)?.votes || 0)) });
+      setVoted(data.myVote == null ? null : Number(data.myVote));
+    }).catch(() => {});
+  }, [bottle.id, bottle.poll]);
+  useEffect(() => {
     if (!moreOpen) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target;
@@ -197,13 +205,22 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
     document.addEventListener("click", closeOnOutsideClick);
     return () => document.removeEventListener("click", closeOnOutsideClick);
   }, [moreOpen]);
-  const vote = (index: number) => { if (!poll || voted !== null) return; setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); };
+  const vote = async (index: number) => {
+    if (!poll || voted !== null) return;
+    if (bottle.id <= 0) { setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); return; }
+    try {
+      const response = await apiFetch(`/api/bottles/${bottle.id}/votes`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ option_index: index }) });
+      if (!response.ok) throw new Error("投票を保存できませんでした");
+      const data = await response.json(); setVoted(index);
+      setPoll({ ...poll, votes: poll.options.map((_, i) => Number(data.counts?.find((row: { option_index: number }) => Number(row.option_index) === i)?.votes || 0)) });
+    } catch { /* keep voting available after failures */ }
+  };
   return <article className={`bottle-card ${bottle.color}`}>
     <div className="bottle-card__top"><div className="author"><span className="author__emoji">{bottle.emoji}</span><span><strong>{bottle.author}</strong><small>{bottle.type} · {bottle.mbti}</small></span></div><span className="time">{bottle.time}</span></div>
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
     <div className="bottle-text"><BottleTextWithLinks text={normalizeDmBody(bottle.text)} /></div>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
-    {poll && <div className="poll-box">{poll.options.map((option, index) => <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)}><span>{option}</span>{voted !== null && <small>{poll.votes[index]}票</small>}</button>)}</div>}
+    {poll && <div className="poll-box"><div className="poll-box__heading"><span>🌊 みんなの投票</span><small>{poll.votes.reduce((sum, count) => sum + count, 0)}票</small></div>{poll.options.map((option, index) => { const total = poll.votes.reduce((sum, count) => sum + count, 0); const percent = total ? Math.round(poll.votes[index] / total * 100) : 0; return <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)} disabled={voted !== null}><span className="poll-option__label">{option}</span>{voted !== null && <span className="poll-option__result"><span className="poll-option__bar"><i style={{ width: `${percent}%` }} /></span><small>{poll.votes[index]}票 · {percent}%</small></span>}</button>;})}{voted !== null && <p className="poll-box__thanks">投票ありがとう！結果はみんなで共有中 🫧</p>}</div>}
     <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={event => { event.stopPropagation(); setMoreOpen(open => !open); }}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
     {Boolean(bottle.aiLikers?.length) && <div style={{ padding: "4px 12px 10px", color: "#9d174d", fontSize: "11px" }}>AIからのいいね：{bottle.aiLikers?.join(" · ")}</div>}
   </article>;
@@ -4066,6 +4083,7 @@ export default function DriftApp() {
                   {profileIdentity.mbti ? ` · ${profileIdentity.mbti}` : ""}
                   {profileIdentity.socionics ? ` · ${profileIdentity.socionics}` : ""}
                   {profileIdentity.enneagram ? ` · ${profileIdentity.enneagram}` : ""}
+                  {profileIdentity.otherType ? ` · ${profileIdentity.otherType}` : ""}
                   {profileLinks.length > 0 ? ` · リンク${profileLinks.length}件` : ""}
                 </span>
               </div>
