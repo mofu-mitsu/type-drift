@@ -141,6 +141,10 @@ export default function ConsultationRoom({
 
   // 長文コメント入力State (投稿IDごと)
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [commentAnonymous, setCommentAnonymous] = useState(true);
+  const [commentPublishIdentity, setCommentPublishIdentity] = useState(true);
+  const [commentDisplayName, setCommentDisplayName] = useState(userNickname || "");
+  const [commentIdentity, setCommentIdentity] = useState(userTypeString || "");
   const [editingComment, setEditingComment] = useState<{ postId: string; comment: ConsultationComment } | null>(null);
   
   // 診断結果への追加質問・意見State (依頼IDごと)
@@ -360,8 +364,8 @@ export default function ConsultationRoom({
 
     const newComment: ConsultationComment = {
       id: `c-${Date.now()}`,
-      author: userNickname || "匿名の誰か",
-      authorType: userTypeString || undefined,
+      author: commentAnonymous ? "匿名の誰か" : (commentDisplayName.trim() || userNickname || "広場の住人"),
+      authorType: commentPublishIdentity ? (commentIdentity.trim() || userTypeString || undefined) : undefined,
       userKey: guestKey,
       body: text,
       createdAt: new Date().toLocaleDateString("ja-JP", {
@@ -558,10 +562,6 @@ export default function ConsultationRoom({
                 <span className="step-num">1</span>
                 <h4>基本情報</h4>
               </div>
-              {activeTab === "forum" && <div className="consult-publish-options">
-                <label><input type="checkbox" checked={anonymousAuthor} onChange={e => setAnonymousAuthor(e.target.checked)} /> 匿名で投稿する <small>最初から匿名</small></label>
-                <label><input type="checkbox" checked={publishIdentity} onChange={e => setPublishIdentity(e.target.checked)} /> 自認を公開する</label>
-              </div>}
               <div className="consult-grid-fields">
                 <div className="consult-field">
                   <label>ニックネーム</label>
@@ -954,6 +954,12 @@ export default function ConsultationRoom({
 
                       {/* 長文コメント入力エリア */}
                       <div className="consult-comment-input-block">
+                        <div className="consult-comment-identity-options">
+                          <label className="consult-comment-toggle"><input type="checkbox" checked={commentAnonymous} onChange={e => setCommentAnonymous(e.target.checked)} /> 匿名で返信 <small>初期設定</small></label>
+                          {!commentAnonymous && <label className="consult-comment-name">表示名<input value={commentDisplayName} onChange={e => setCommentDisplayName(e.target.value)} maxLength={20} placeholder="広場での名前" /></label>}
+                          <label className="consult-comment-toggle"><input type="checkbox" checked={commentPublishIdentity} onChange={e => setCommentPublishIdentity(e.target.checked)} /> 自認を表示</label>
+                          {commentPublishIdentity && <label className="consult-comment-name">表示する自認<input value={commentIdentity} onChange={e => setCommentIdentity(e.target.value)} maxLength={100} placeholder="例：INTP · LII · 5w6 · いもむし大好き🐛" /></label>}
+                        </div>
                         <textarea
                           rows={3}
                           className="consult-comment-textarea"
