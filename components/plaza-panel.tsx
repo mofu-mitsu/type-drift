@@ -119,7 +119,7 @@ export default function PlazaPanel({
         ws.onopen = () => {
           setConnected(true);
           ws.send(JSON.stringify({ type: 'plaza_join', sessionKey: sessionKeyRef.current, nickname: displayName(nickname), emoji: guestMark, avatarUrl: profileImage?.startsWith('https://') ? profileImage : undefined, identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', otherType: profileIdentity.otherType || '' } : undefined }));
-          presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname) });
+          presence('join', { session_key: sessionKeyRef.current, nickname: displayName(nickname), identity: profileIdentity ? { mbti: profileIdentity.mbti || '', socionics: profileIdentity.socionics || '', enneagram: profileIdentity.enneagram || '', other_type: profileIdentity.otherType || '' } : { mbti: '', socionics: '', enneagram: '', other_type: '' } });
           heartbeat = window.setInterval(() => presence('heartbeat', { session_key: sessionKeyRef.current }), 20000);
         };
         ws.onmessage = event => {
