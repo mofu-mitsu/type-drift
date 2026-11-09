@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\DirectMessage;
 use App\Models\Bottle;
+use App\Models\Notification;
+use App\Models\Profile;
 use Illuminate\Http\Request;
 
 class DirectMessageController extends Controller
@@ -48,6 +50,7 @@ class DirectMessageController extends Controller
                     'bottle_snippet' => $message->bottle_snippet,
                     'bottle_author' => $message->bottle_author,
                     'bottle_type' => $message->bottle_type,
+                    'sender_identity' => $this->senderIdentity($message),
                 ];
             });
 
@@ -117,6 +120,16 @@ class DirectMessageController extends Controller
             'bottle_type' => $lastMessage->bottle_type ?: '匿名ボトル',
         ]);
 
+        if ($recipientUserId || $recipientGuestKey) {
+            Notification::create([
+                'user_id' => $recipientUserId,
+                'guest_key' => $recipientUserId ? null : $recipientGuestKey,
+                'type' => 'direct_message',
+                'entity_id' => $threadId,
+                'message' => '個別メッセージが届きました。',
+            ]);
+        }
+
         return response()->json(['message' => [
             'id' => $message->id,
             'thread_id' => $message->thread_id,
@@ -130,7 +143,23 @@ class DirectMessageController extends Controller
             'bottle_snippet' => $message->bottle_snippet,
             'bottle_author' => $message->bottle_author,
             'bottle_type' => $message->bottle_type,
+            'sender_identity' => $this->senderIdentity($message),
         ]], 201);
+    }
+
+    private function senderIdentity(DirectMessage $message): array
+    {
+        $profile = Profile::query()
+            ->when($message->sender_user_id, fn ($query) => $query->where('user_id', $message->sender_user_id))
+            ->when(!$message->sender_user_id && $message->sender_guest_key, fn ($query) => $query->where('guest_key', $message->sender_guest_key))
+            ->first();
+
+        return [
+            'mbti' => $profile?->mbti,
+            'socionics' => $profile?->socionics,
+            'enneagram' => $profile?->enneagram,
+            'other_type' => $profile?->other_type,
+        ];
     }
 
     public function markRead(Request $request, DirectMessage $directMessage)
