@@ -17,8 +17,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        Illuminate\Support\Facades\DB::table('profiles')->whereNotNull('guest_key')->delete();
         Schema::table('profiles', function (Blueprint $table) {
-            $table->whereNotNull('guest_key')->delete();
             $table->dropUnique(['guest_key']);
             $table->dropColumn('guest_key');
             $table->unsignedBigInteger('user_id')->nullable(false)->change();
