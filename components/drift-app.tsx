@@ -3544,6 +3544,8 @@ export default function DriftApp() {
           nickname={nickname}
           profileImage={profileImage}
           profileIdentity={profileIdentity}
+          profileBio={profileBio}
+          profileLinks={profileLinks}
           externalEmote={externalEmote}
           externalMessage={externalPlazaMessage}
           onToast={setPlazaToast}
