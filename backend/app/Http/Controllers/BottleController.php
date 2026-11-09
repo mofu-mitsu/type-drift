@@ -98,6 +98,12 @@ class BottleController extends Controller
                 $bottle->other_type,
             ])));
 
+            $recipientProfile = $this->profileSnapshot($bottle->user_id, $bottle->guest_key);
+            $recipientProfile['mbti'] = $bottle->mbti ?: ($recipientProfile['mbti'] ?? '');
+            $recipientProfile['socionics'] = $bottle->socionics ?: ($recipientProfile['socionics'] ?? '');
+            $recipientProfile['enneagram'] = $bottle->enneagram ?: ($recipientProfile['enneagram'] ?? '');
+            $recipientProfile['otherType'] = $bottle->other_type ?: ($recipientProfile['otherType'] ?? '');
+
             $directMessage = DirectMessage::create([
                 'sender_guest_key' => $senderGuestKey,
                 'recipient_guest_key' => $ownerGuestKey,
@@ -112,12 +118,7 @@ class BottleController extends Controller
                 'bottle_author' => '匿名のボトル主',
                 'bottle_type' => $bottleType ?: '匿名ボトル',
                 'sender_profile' => $this->profileSnapshot($userId, $guestKey),
-                'recipient_profile' => array_merge([
-                    'mbti' => $bottle->mbti ?: '',
-                    'socionics' => $bottle->socionics ?: '',
-                    'enneagram' => $bottle->enneagram ?: '',
-                    'otherType' => $bottle->other_type ?: '',
-                ], $this->profileSnapshot($bottle->user_id, $bottle->guest_key)),
+                'recipient_profile' => $recipientProfile,
             ]);
         }
 
