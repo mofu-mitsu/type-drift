@@ -537,6 +537,12 @@ export default function DriftApp() {
   const [activeDarlingPsychTest, setActiveDarlingPsychTest] = useState<{ id: number; title: string; question: string; answerA: string; answerB: string } | null>(null);
   const [editingBottle, setEditingBottle] = useState<Bottle | null>(null);
   const [editBottleDraft, setEditBottleDraft] = useState("");
+  const [editBottleMbti, setEditBottleMbti] = useState("");
+  const [editBottleSocionics, setEditBottleSocionics] = useState("");
+  const [editBottleEnneagram, setEditBottleEnneagram] = useState("");
+  const [editBottleOtherType, setEditBottleOtherType] = useState("");
+  const [editBottleImageUrl, setEditBottleImageUrl] = useState("");
+  const [editBottlePollOptions, setEditBottlePollOptions] = useState<string[]>(["", ""]);
   const [recoveringBottle, setRecoveringBottle] = useState<Bottle | null>(null);
 
   // 💌 ダイレクトメッセージ (DM) 関連State
@@ -2883,15 +2889,22 @@ export default function DriftApp() {
     if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
     setEditingBottle(bottle);
     setEditBottleDraft(bottle.text);
+    setEditBottleMbti(bottle.mbti || "");
+    setEditBottleSocionics(bottle.socionics || "");
+    setEditBottleEnneagram(bottle.enneagram || "");
+    setEditBottleOtherType(bottle.otherType || "");
+    setEditBottleImageUrl(bottle.imageUrl || "");
+    setEditBottlePollOptions(bottle.poll?.options?.length ? [...bottle.poll.options] : ["", ""]);
   };
   const saveBottleEdit = async () => {
     if (!editingBottle || !editBottleDraft.trim()) return;
     const bottle = editingBottle;
     const body = editBottleDraft.trim();
     try {
-      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) });
+      const pollOptions = bottle.poll ? editBottlePollOptions.map(option => option.trim()).filter(Boolean).slice(0, 6) : null;
+      const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body, mbti: editBottleMbti, socionics: editBottleSocionics, enneagram: editBottleEnneagram, other_type: editBottleOtherType, image_url: editBottleImageUrl || null, poll_options: pollOptions }) });
       if (!response.ok) { setPlazaToast(response.status === 404 ? "自分のボトルとして確認できず、編集できませんでした。" : `編集に失敗しました（${response.status}）`); return; }
-      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body } : item));
+      setBottles(items => items.map(item => item.id === bottle.id ? { ...item, text: body, mbti: editBottleMbti, socionics: editBottleSocionics, enneagram: editBottleEnneagram, otherType: editBottleOtherType, imageUrl: editBottleImageUrl || undefined, poll: pollOptions ? { options: pollOptions, votes: pollOptions.map(() => 0) } : undefined } : item));
       setEditingBottle(null);
       setPlazaToast("ボトルを編集しました。");
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
@@ -5965,6 +5978,14 @@ export default function DriftApp() {
           <h2 id="bottle-edit-title">ボトルを編集</h2>
           <p>投稿した内容をここで書き換えられるよ。</p>
           <textarea className="bottle-action-textarea" value={editBottleDraft} onChange={event => setEditBottleDraft(event.target.value)} autoFocus />
+          <div className="bottle-edit-fields">
+            <label>MBTI<input value={editBottleMbti} onChange={event => setEditBottleMbti(event.target.value)} placeholder="例：INFJ" /></label>
+            <label>ソシオニクス<input value={editBottleSocionics} onChange={event => setEditBottleSocionics(event.target.value)} placeholder="例：EII" /></label>
+            <label>エニアグラム<input value={editBottleEnneagram} onChange={event => setEditBottleEnneagram(event.target.value)} placeholder="例：5w4" /></label>
+            <label>その他の自認<input value={editBottleOtherType} onChange={event => setEditBottleOtherType(event.target.value)} placeholder="例：LEFV・sp/so" /></label>
+            <label className="bottle-edit-wide">画像URL<input value={editBottleImageUrl} onChange={event => setEditBottleImageUrl(event.target.value)} placeholder="https://..." /></label>
+            {editingBottle?.poll && <div className="bottle-edit-wide bottle-edit-poll"><strong>アンケートの選択肢</strong>{editBottlePollOptions.map((option, index) => <input key={index} value={option} onChange={event => setEditBottlePollOptions(items => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`選択肢 ${index + 1}`} />)}{editBottlePollOptions.length < 6 && <button type="button" onClick={() => setEditBottlePollOptions(items => [...items, ""])}>＋ 選択肢を追加</button>}</div>}
+          </div>
           <div className="bottle-action-count">{editBottleDraft.length} 文字</div>
           <div className="bottle-action-actions">
             <button type="button" className="bottle-action-secondary" onClick={() => setEditingBottle(null)}>キャンセル</button>
