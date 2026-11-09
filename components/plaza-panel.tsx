@@ -129,7 +129,7 @@ export default function PlazaPanel({
               const count = Number(data.count) || 0;
               setPresence(count);
               onPresenceUpdate?.(count + NPC_COUNT);
-              const users = (Array.isArray(data.users) ? data.users : []).map((raw: any) => {
+              const normalizedUsers = (Array.isArray(data.users) ? data.users : []).map((raw: any) => {
                 const identity = raw.identity && typeof raw.identity === "object" ? raw.identity : {};
                 return {
                   ...raw,
@@ -143,6 +143,10 @@ export default function PlazaPanel({
                   otherType: raw.otherType || raw.other_type || identity.otherType || identity.other_type || "",
                 } as PlazaUser;
               });
+              // Multiple tabs or reconnecting sockets can report the same session more than once.
+              const users = Array.from(new Map(normalizedUsers.filter((user: PlazaUser) => user.sessionKey).map((user: PlazaUser) => [user.sessionKey, user])).values()) as PlazaUser[];
+              setPresence(users.length);
+              onPresenceUpdate?.(users.length + NPC_COUNT);
               setOnlineUsers(users);
               onPresenceUsers?.(users);
               if (Array.isArray(data.messages) && data.messages.length > 0) {
