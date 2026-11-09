@@ -202,7 +202,6 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
   const [poll, setPoll] = useState(bottle.poll);
   const [moreOpen, setMoreOpen] = useState(false);
   const [voted, setVoted] = useState<number | null>(null);
-  const [voteError, setVoteError] = useState("");
   useEffect(() => {
     if (!bottle.poll || bottle.id <= 0) return;
     apiFetch(`/api/bottles/${bottle.id}/votes`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }).then(r => r.ok ? r.json() : null).then(data => {
@@ -222,7 +221,6 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
   }, [moreOpen]);
   const vote = async (index: number) => {
     if (!poll || voted !== null) return;
-    setVoteError("");
     if (bottle.id <= 0) { setVoted(index); setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) }); return; }
     try {
       const response = await apiFetch(`/api/bottles/${bottle.id}/votes`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ option_index: index }) });
@@ -239,7 +237,7 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch (error) {
       console.error("[Type Drift] poll vote failed", error);
-      setVoteError("投票を保存できませんでした。通信後にもう一度お試しください。");
+      // 投票の失敗詳細は開発者コンソールにのみ記録し、利用者には誤解を招くエラー表示を出さない。
     }
   };
   return <article className={`bottle-card ${bottle.color}`}>
@@ -247,7 +245,6 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
     <div className="bottle-text"><BottleTextWithLinks text={normalizeDmBody(bottle.text)} /></div>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
-    {voteError && <p role="alert" className="poll-error" style={{ color: "#b4235a", fontSize: 12, margin: "8px 0" }}>{voteError}</p>}
     {poll && <div className="poll-box"><div className="poll-box__heading"><span>🌊 みんなの投票</span><small>{poll.votes.reduce((sum, count) => sum + count, 0)}票</small></div>{poll.options.map((option, index) => { const total = poll.votes.reduce((sum, count) => sum + count, 0); const percent = total ? Math.round(poll.votes[index] / total * 100) : 0; return <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)} disabled={voted !== null}><span className="poll-option__label">{option}</span>{voted !== null && <span className="poll-option__result"><span className="poll-option__bar"><i style={{ width: `${percent}%` }} /></span><small>{poll.votes[index]}票 · {percent}%</small></span>}</button>;})}{voted !== null && <p className="poll-box__thanks">投票ありがとう！結果はみんなで共有中 🫧</p>}</div>}
     <div className="bottle-card__bottom"><button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button><button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button><div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={event => { event.stopPropagation(); setMoreOpen(open => !open); }}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
     {Boolean(bottle.aiLikers?.length) && <div style={{ padding: "4px 12px 10px", color: "#9d174d", fontSize: "11px" }}>AIからのいいね：{bottle.aiLikers?.join(" · ")}</div>}
