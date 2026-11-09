@@ -411,3 +411,51 @@
   font: 10px/1.4 'DM Mono', monospace;
   letter-spacing: .08em;
 }
+
+
+/* DM profile links: compact, tappable external-link chips */
+.dm-profile-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 100%;
+  margin: 0.35rem 0.4rem 0.15rem 0;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgba(20, 148, 133, 0.24);
+  border-radius: 999px;
+  color: #087f75;
+  background: linear-gradient(135deg, rgba(226, 250, 245, 0.96), rgba(245, 250, 255, 0.98));
+  box-shadow: 0 3px 10px rgba(14, 116, 106, 0.08);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 650;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  overflow-wrap: anywhere;
+}
+.dm-profile-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(20, 148, 133, 0.52);
+  box-shadow: 0 6px 16px rgba(14, 116, 106, 0.14);
+}
+.dm-profile-link-icon {
+  display: inline-grid;
+  flex: 0 0 1.65rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(20, 148, 133, 0.12);
+}
+.dm-profile-link-icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.dm-profile-link-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dm-profile-link-arrow {
+  flex: 0 0 auto;
+  opacity: 0.75;
+  font-size: 0.95rem;
+}
