@@ -63,12 +63,11 @@ async function runScheduledAiEngagement(env: Env) {
 
     // いいねは返信より高確率。各AIキャラは同じ投稿へ一度だけ反応する。
     for (const actor of AI_ACTORS) {
-      if (Math.random() >= 0.58) continue;
-      const alreadyLiked = await sql`SELECT 1 FROM reactions WHERE bottle_id = ${post.id} AND guest_key = ${actor.key} LIMIT 1`;
-      if (alreadyLiked.length) continue;
       const claim = await sql`INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
         VALUES (${post.id}, ${actor.key}, 'like', NOW()) ON CONFLICT DO NOTHING RETURNING bottle_id`;
-      if (!claim.length) continue;
+      if (!claim.length || Math.random() >= 0.58) continue;
+      const alreadyLiked = await sql`SELECT 1 FROM reactions WHERE bottle_id = ${post.id} AND guest_key = ${actor.key} LIMIT 1`;
+      if (alreadyLiked.length) continue;
       await sql`INSERT INTO reactions (bottle_id, guest_key, level, created_at, updated_at)
         VALUES (${post.id}, ${actor.key}, 1, NOW(), NOW()) ON CONFLICT DO NOTHING`;
       if (post.guest_key) {
@@ -85,7 +84,9 @@ async function runScheduledAiEngagement(env: Env) {
     if (existingAiReply.length) continue;
     // 名指し投稿は対象キャラが必ず返信。その他は一定確率でどちらか一人が返信する。
     if (!chosen) {
-      if (Math.random() >= 0.08) continue;
+      const decision = await sql`INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
+        VALUES (${post.id}, 'ai:system', 'reply_decision', NOW()) ON CONFLICT DO NOTHING RETURNING bottle_id`;
+      if (!decision.length || Math.random() >= 0.08) continue;
       chosen = Math.random() < 0.5 ? AI_ACTORS[0] : AI_ACTORS[1];
     }
 
