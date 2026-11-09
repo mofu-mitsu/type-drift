@@ -2341,13 +2341,13 @@ export default function DriftApp() {
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
             ? ([
-                ...(m.isMine
-                  ? [profileIdentity.mbti, profileIdentity.socionics, profileIdentity.enneagram]
-                  : [
-                      m.senderIdentity?.mbti || plazaUser?.mbti || plazaUser?.identity?.mbti,
-                      m.senderIdentity?.socionics || plazaUser?.socionics || plazaUser?.identity?.socionics,
-                      m.senderIdentity?.enneagram || plazaUser?.enneagram || plazaUser?.identity?.enneagram,
-                    ]),
+                ...[
+                  // Bottle threads must never fall back to the current viewer's identity.
+                  m.bottleType,
+                  m.senderIdentity?.mbti || plazaUser?.mbti || plazaUser?.identity?.mbti,
+                  m.senderIdentity?.socionics || plazaUser?.socionics || plazaUser?.identity?.socionics,
+                  m.senderIdentity?.enneagram || plazaUser?.enneagram || plazaUser?.identity?.enneagram,
+                ],
               ].filter(Boolean).join(" · ") || "匿名のボトル主へのトーク")
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
