@@ -4564,7 +4564,7 @@ export default function DriftApp() {
                                     : undefined;
                                   const isBottleOwnerTarget = activeDmThreadId.startsWith("bottle-") && Boolean(otherMessage?.isMine);
                                   const originBottle = isBottleOwnerTarget
-                                    ? bottles.find(bottle => bottle.id === Number(activeDmThreadId.match(/^bottle-(\\d+)/)?.[1] || 0))
+                                    ? bottles.find(bottle => bottle.id === Number(activeDmThreadId.match(/^bottle-(\d+)/)?.[1] || 0))
                                     : undefined;
                                   setDmInspectProfile({
                                     id: activeDmThreadId,
