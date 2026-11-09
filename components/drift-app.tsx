@@ -3979,8 +3979,11 @@ export default function DriftApp() {
               type="button"
               className="v2-identity-share-btn"
               onClick={async () => {
-                const params = new URLSearchParams({ page: "profile", name: nickname || "匿名の誰か", mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType, bio: profileBio, image: profileImage || "" });
-                const url = `${window.location.origin}/?${params.toString()}`;
+                const params = new URLSearchParams({ name: nickname || "匿名の誰か", mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType, bio: profileBio });
+                // Avoid putting large base64 image payloads into a share URL.
+                if (profileImage && /^https?:\/\//i.test(profileImage)) params.set("image", profileImage);
+                if (profileLinks.length) params.set("links", JSON.stringify(profileLinks.filter(link => link.title && /^https?:\/\//i.test(link.url))));
+                const url = `${window.location.origin}/profile?${params.toString()}`;
                 const typeLine = [profileIdentity.mbti, profileIdentity.socionics, profileIdentity.enneagram, profileIdentity.otherType].filter(Boolean).join(" · ") || "類型未設定";
                 const shareText = `🌊 ${nickname || "匿名の観測者"}が、類型の海に置いていった自認プロフィールです。\n${typeLine}\n#typedrift`;
                 try { if (navigator.share) await navigator.share({ title: `🌊 ${nickname || "匿名の観測者"}の自認プロフィール | Type Drift`, text: shareText, url }); else await navigator.clipboard.writeText(`${shareText}\n${url}`); setPlazaToast("プロフィールの共有リンクを作りました"); } catch {}
