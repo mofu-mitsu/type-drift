@@ -229,13 +229,13 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
       const data = await response.json().catch(() => null);
       if (!response.ok || data?.ok !== true) throw new Error(data?.error || "投票を保存できませんでした");
       setVoted(index);
-      // APIが返す集計形式が環境差で欠けても、投票成功直後に0票へ戻さない。
+      // 投票APIが成功を返しただけでは完了扱いにしない。DB集計に自分の票が反映されたことを確認する。
       const counts = poll.options.map((_, i) => Number(data.counts?.find((row: { option_index: number }) => Number(row.option_index) === i)?.votes || 0));
-      if (counts.every(count => count === 0)) {
-        setPoll({ ...poll, votes: poll.votes.map((count, option) => option === index ? count + 1 : count) });
-      } else {
-        setPoll({ ...poll, votes: counts });
+      if (!Array.isArray(data.counts) || counts[index] < 1) {
+        setVoted(null);
+        throw new Error("vote_not_persisted");
       }
+      setPoll({ ...poll, votes: counts });
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch (error) {
       console.error("[Type Drift] poll vote failed", error);
