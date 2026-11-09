@@ -340,7 +340,10 @@ export default function DriftApp() {
   const [dmInspectProfile, setDmInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string } | null>(null);
   const [useSavedIdentity, setUseSavedIdentity] = useState(true);
   const [onlineCount, setOnlineCount] = useState(4);
-  const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>([]);
+  const [plazaUsers, setPlazaUsers] = useState<PlazaUser[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { const saved = localStorage.getItem("type-drift-plaza-profiles"); return saved ? JSON.parse(saved) as PlazaUser[] : []; } catch { return []; }
+  });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [constellationStep, setConstellationStep] = useState(0);
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
@@ -2332,7 +2335,7 @@ export default function DriftApp() {
           emoji: otherEmoji,
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
-            ? (m.targetType || "ボトルへの返信")
+            ? "匿名のボトル主へのトーク"
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
                 plazaUser?.socionics || plazaUser?.identity?.socionics,
@@ -3532,7 +3535,32 @@ export default function DriftApp() {
           externalMessage={externalPlazaMessage}
           onToast={setPlazaToast}
           onPresenceUpdate={setOnlineCount}
-          onPresenceUsers={setPlazaUsers}
+          onPresenceUsers={(users) => {
+            setPlazaUsers(current => {
+              const merged = new Map<string, PlazaUser>();
+              for (const user of current) if (user.sessionKey) merged.set(user.sessionKey, user);
+              for (const user of users) {
+                const previous = merged.get(user.sessionKey);
+                merged.set(user.sessionKey, {
+                  ...previous, ...user,
+                  mbti: user.mbti || previous?.mbti || "",
+                  socionics: user.socionics || previous?.socionics || "",
+                  enneagram: user.enneagram || previous?.enneagram || "",
+                  otherType: user.otherType || previous?.otherType || "",
+                  identity: {
+                    ...(previous?.identity || {}), ...(user.identity || {}),
+                    mbti: user.mbti || user.identity?.mbti || previous?.mbti || previous?.identity?.mbti || "",
+                    socionics: user.socionics || user.identity?.socionics || previous?.socionics || previous?.identity?.socionics || "",
+                    enneagram: user.enneagram || user.identity?.enneagram || previous?.enneagram || previous?.identity?.enneagram || "",
+                    otherType: user.otherType || user.identity?.otherType || previous?.otherType || previous?.identity?.otherType || "",
+                  }
+                });
+              }
+              const next = Array.from(merged.values());
+              try { localStorage.setItem("type-drift-plaza-profiles", JSON.stringify(next)); } catch {}
+              return next;
+            });
+          }}
           onUserMessageSent={handlePlazaUserMessage}
         />
 
@@ -4240,7 +4268,7 @@ export default function DriftApp() {
                   };
                   const isBottleThread = activeDmThreadId.startsWith("bottle-");
                   const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
-                  const activePlazaUser = !isBottleThread ? plazaUsers.find(item => item.sessionKey === activeDmThreadId || item.nickname === currentThread.name) : undefined;
+                  const activePlazaUser = !isBottleThread ? (plazaUsers.find(item => item.sessionKey === activeDmThreadId) || plazaUsers.find(item => item.nickname === currentThread.name && item.nickname !== nickname)) : undefined;
                   const threadMessages = directMessages.filter(
                     m => (m.threadId === activeDmThreadId) || (!m.threadId && ((m.isMine && m.recipient === currentThread.name) || (!m.isMine && m.sender === currentThread.name)))
                   );
@@ -4288,7 +4316,7 @@ export default function DriftApp() {
                         <div className="dm-v2-header-actions">
                           {isBottleThread ? (
                             <span className="dm-v2-identity-pill">
-                              {currentThread.type && currentThread.type !== "自認未設定" ? currentThread.type : "自認未設定"}
+                              {currentThread.type && currentThread.type !== "自認未設定" ? currentThread.type : "ボトル主への返信"}
                             </span>
                           ) : (
                             <button
@@ -5482,7 +5510,7 @@ export default function DriftApp() {
               </select>
             </label>
             <label>エニア
-              <input value={identity.enneagram} onChange={e => setIdentity({ ...identity, enneagram: e.target.value })} placeholder="5w4" />
+              <input value={identity.enneagram} onChange={e => setIdentity({ ...identity, enneagram: e.target.value })} placeholder="例：5w4（自認を入力）" />
             </label>
           </div>
           <input className="other-type-input" value={identity.otherType} onChange={e => setIdentity({ ...identity, otherType: e.target.value })} placeholder="その他の自認（自由入力）" />
