@@ -2339,15 +2339,28 @@ export default function DriftApp() {
           emoji: otherEmoji,
           avatarUrl: isBottleThread ? undefined : plazaUser?.avatarUrl,
           type: isBottleThread
-            ? ([
-                ...[
-                  // Bottle threads must never fall back to the current viewer's identity.
-                  m.bottleType,
-                  m.senderIdentity?.mbti || plazaUser?.mbti || plazaUser?.identity?.mbti,
-                  m.senderIdentity?.socionics || plazaUser?.socionics || plazaUser?.identity?.socionics,
-                  m.senderIdentity?.enneagram || plazaUser?.enneagram || plazaUser?.identity?.enneagram,
-                ],
-              ].filter(Boolean).join(" · ") || "匿名のボトル主へのトーク")
+            ? (() => {
+                // Bottle threads must identify the message author, never copy the bottle owner's
+                // (current viewer's) profile into the anonymous sender's header.
+                const senderIdentity = m.senderIdentity;
+                const senderParts = [
+                  senderIdentity?.mbti,
+                  senderIdentity?.socionics,
+                  senderIdentity?.enneagram,
+                ].filter(Boolean);
+                const ownParts = [
+                  profileIdentity.mbti,
+                  profileIdentity.socionics,
+                  profileIdentity.enneagram,
+                ].filter(Boolean);
+                const accidentallyCopiedOwnIdentity =
+                  senderParts.length > 0 &&
+                  ownParts.length > 0 &&
+                  senderParts.join("|") === ownParts.join("|");
+                return (!accidentallyCopiedOwnIdentity && senderParts.length
+                  ? senderParts.join(" · ")
+                  : "") || "匿名のボトル主へのトーク";
+              })()
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
                 plazaUser?.socionics || plazaUser?.identity?.socionics,
@@ -3989,9 +4002,16 @@ export default function DriftApp() {
                       const uploadedImage = profileImage?.startsWith("data:") ? await uploadToCloudinary(profileImage) : profileImage || undefined;
                       if (uploadedImage) setProfileImage(uploadedImage);
                       const api = process.env.NEXT_PUBLIC_API_URL;
-                      if (api) {
-                        const response = await fetch(`${api}/api/profile`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ nickname, ...profileIdentity, bio: profileBio, links: profileLinks, profile_image_url: uploadedImage }) });
-                        if (!response.ok) throw new Error(`profile save failed (${response.status})`);
+                      if (!api) throw new Error("profile API is not configured");
+                      const response = await apiFetch("/api/profile", {
+                        method: "PUT",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+                        body: JSON.stringify({ nickname, ...profileIdentity, bio: profileBio, links: profileLinks, profile_image_url: uploadedImage }),
+                      });
+                      if (!response.ok) {
+                        const detail = await response.clone().text().catch(() => "");
+                        throw new Error(`profile save failed (${response.status}) ${detail.slice(0, 180)}`);
                       }
                       setProfileSaved(true);
                       setPlazaToast("設定を保存しました。ボトルは匿名です。");
