@@ -2460,7 +2460,7 @@ export default function DriftApp() {
         : (messageIdentity || originalBottleIdentity || last.bottleType || thread.type || "匿名の誰か");
     }
     return threads.sort((a, b) => b.lastMsg.createdAt - a.lastMsg.createdAt);
-  }, [directMessages, plazaUsers]);
+  }, [directMessages, plazaUsers, bottles]);
 
   const markThreadAsRead = (threadId: string) => {
     const unreadServerMessages = directMessages.filter(message => message.threadId === threadId && !message.isMine && !message.read && message.serverId);
