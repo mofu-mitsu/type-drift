@@ -4389,7 +4389,8 @@ export default function DriftApp() {
                               <div>
                                 <h3>{dmInspectProfile.name}</h3>
                                 <p className="profile-inspect-types"><strong>MBTI / Socionics:</strong> {dmInspectProfile.mbti || "未設定"} / {dmInspectProfile.socionics || "未設定"}</p>
-                                <p className="profile-inspect-types"><strong>Enneagram:</strong> {dmInspectProfile.enneagram || "未設定"} {dmInspectProfile.psycho ? "(" + dmInspectProfile.psycho + ")" : ""}</p>
+                                <p className="profile-inspect-types"><strong>Enneagram:</strong> {dmInspectProfile.enneagram || "未設定"}</p>
+                                <p className="profile-inspect-types"><strong>Other:</strong> {dmInspectProfile.psycho || "未設定"}</p>
                               </div>
                             </div>
                             <div className="dm-profile-overview">{dmInspectProfile.overview}</div>
