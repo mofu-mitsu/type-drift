@@ -19,10 +19,14 @@ class DirectMessage extends Model
         'bottle_snippet',
         'bottle_author',
         'bottle_type',
+        'sender_profile',
+        'recipient_profile',
         'read_at',
     ];
 
     protected $casts = [
         'read_at' => 'datetime',
+        'sender_profile' => 'array',
+        'recipient_profile' => 'array',
     ];
 }
