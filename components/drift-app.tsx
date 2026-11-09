@@ -3236,7 +3236,7 @@ export default function DriftApp() {
                 socionics: user.socionics || user.identity?.socionics || "",
                 enneagram: user.enneagram || user.identity?.enneagram || "",
                 psycho: user.otherType || user.identity?.otherType || user.identity?.other_type || "",
-                overview: user.bio || user.profileBio || "この住人は、まだ自己紹介を公開していません。",
+                overview: user.bio || "この住人は、まだ自己紹介を公開していません。",
                 image: user.avatarUrl,
                 links: Array.isArray(user.links) ? user.links : [],
               })}
