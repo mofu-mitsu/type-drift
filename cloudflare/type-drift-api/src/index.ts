@@ -50,16 +50,42 @@ async function runScheduledAiEngagement(env: Env) {
     ON ai_engagements (bottle_id) WHERE action = 'reply'`;
 
   const posts = await sql`
-    SELECT b.id, b.body, b.guest_key, b.created_at
+    SELECT b.id, b.body, b.guest_key, b.created_at, b.poll_options
     FROM bottles b
     WHERE b.deleted_at IS NULL AND COALESCE(b.is_ai, FALSE) = FALSE
       AND b.created_at > NOW() - INTERVAL '7 days'
     ORDER BY b.created_at DESC LIMIT 40
   `;
 
-  for (const post of posts as Array<{ id: number; body: string; guest_key: string | null }>) {
+  await sql`CREATE TABLE IF NOT EXISTS bottle_poll_votes (
+    id BIGSERIAL PRIMARY KEY, bottle_id BIGINT NOT NULL REFERENCES bottles(id) ON DELETE CASCADE,
+    guest_key TEXT NOT NULL, option_index INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (bottle_id, guest_key)
+  )`;
+
+  for (const post of posts as Array<{ id: number; body: string; guest_key: string | null; poll_options?: unknown }>) {
     const body = String(post.body || "");
     if (!body.trim()) continue;
+
+    // AIキャラクターもアンケートに参加。キャラごとに一度だけ投票し、票数に反映する。
+    const pollOptions = Array.isArray(post.poll_options) ? post.poll_options : [];
+    if (pollOptions.length > 0) {
+      for (const actor of AI_ACTORS) {
+        const existingVote = await sql`SELECT 1 FROM bottle_poll_votes WHERE bottle_id=${post.id} AND guest_key=${actor.key} LIMIT 1`;
+        if (existingVote.length) continue;
+        const lower = body.toLowerCase();
+        const optionTexts = pollOptions.map(String);
+        let chosenIndex = Math.floor(Math.random() * optionTexts.length);
+        if (actor.key === "ai:lsi-worm") {
+          const cabbage = optionTexts.findIndex(option => /キャベツ|白菜|葉/.test(option));
+          if (cabbage >= 0 && /芋虫|いもむし|キャベツ|レタス/.test(lower)) chosenIndex = cabbage;
+        } else {
+          const lettuce = optionTexts.findIndex(option => /レタス|柔らか|かわいい/.test(option));
+          if (lettuce >= 0 && /芋虫|いもむし|キャベツ|レタス/.test(lower)) chosenIndex = lettuce;
+        }
+        await sql`INSERT INTO bottle_poll_votes (bottle_id, guest_key, option_index) VALUES (${post.id}, ${actor.key}, ${chosenIndex}) ON CONFLICT (bottle_id, guest_key) DO NOTHING`;
+      }
+    }
 
     // いいねは返信より高確率。各AIキャラは同じ投稿へ一度だけ反応する。
     for (const actor of AI_ACTORS) {
