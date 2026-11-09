@@ -453,6 +453,46 @@ export default function DriftApp() {
     } catch {}
   }, [plazaUsers]);
 
+  // DMに含まれるプロフィールスナップショットも名前で端末に保存する。
+  // 広場のpresenceが消えたあとも、過去のメッセージから相手の自認を復元できる。
+  useEffect(() => {
+    if (!directMessages.length) return;
+    try {
+      const raw = localStorage.getItem("type-drift-dm-profile-cache");
+      const cached: Record<string, PlazaUser> = raw ? JSON.parse(raw) : {};
+      const saveSnapshot = (name: string, profile?: DirectMessage["senderProfile"]) => {
+        if (!name || !profile) return;
+        const existing = cached[name] as (PlazaUser & { bio?: string; links?: ProfileLink[]; otherType?: string }) | undefined;
+        const hasUsefulData = Boolean(profile.nickname || profile.mbti || profile.socionics || profile.enneagram ||
+          profile.otherType || profile.bio || profile.profileImageUrl || profile.links?.length);
+        if (!hasUsefulData) return;
+        const mbti = profile.mbti || existing?.mbti || existing?.identity?.mbti || "";
+        const socionics = profile.socionics || existing?.socionics || existing?.identity?.socionics || "";
+        const enneagram = profile.enneagram || existing?.enneagram || existing?.identity?.enneagram || "";
+        const otherType = profile.otherType || existing?.otherType || existing?.identity?.otherType || "";
+        cached[name] = {
+          ...(existing || {}),
+          nickname: profile.nickname || existing?.nickname || name,
+          mbti,
+          socionics,
+          enneagram,
+          otherType,
+          identity: { ...(existing?.identity || {}), mbti, socionics, enneagram, otherType },
+          bio: profile.bio || existing?.bio || "",
+          links: profile.links?.length ? profile.links as ProfileLink[] : existing?.links || [],
+          avatarUrl: profile.profileImageUrl || existing?.avatarUrl || "",
+          emoji: profile.emoji || existing?.emoji || "◌",
+        } as PlazaUser;
+      };
+      for (const message of directMessages) {
+        saveSnapshot(message.sender, message.senderProfile);
+        saveSnapshot(message.recipient, message.recipientProfile);
+      }
+      localStorage.setItem("type-drift-dm-profile-cache", JSON.stringify(cached));
+      setDmProfileCache(cached);
+    } catch {}
+  }, [directMessages]);
+
   // ダーリンちゃんのミニゲーム・心理テスト用State
   const [darlingTargetNumber, setDarlingTargetNumber] = useState<number | null>(null);
   const [darlingGuessCount, setDarlingGuessCount] = useState<number>(0);
