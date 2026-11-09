@@ -208,11 +208,17 @@ export default {
       }
       if (path === "/api/direct-messages" && method === "GET") {
         if (!key) return json({ messages: [] }, 200, env, request);
-        const rows = await sql`SELECT * FROM direct_messages WHERE sender_guest_key=${key} OR recipient_guest_key=${key} ORDER BY created_at DESC LIMIT 200`;
+        const rows = await sql`SELECT dm.*, p.mbti AS sender_mbti, p.socionics AS sender_socionics,
+            p.enneagram AS sender_enneagram, p.other_type AS sender_other_type
+          FROM direct_messages dm
+          LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key)
+          WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key}
+          ORDER BY dm.created_at DESC LIMIT 200`;
         return json({ messages: rows.reverse().map((row: any) => ({
           id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
           body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
           bottle_type: row.bottle_type, created_at: row.created_at,
+          sender_identity: { mbti: row.sender_mbti || "", socionics: row.sender_socionics || "", enneagram: row.sender_enneagram || "", other_type: row.sender_other_type || "" },
           is_mine: row.sender_guest_key === key, read: Boolean(row.read_at),
         })) }, 200, env, request);
       }
