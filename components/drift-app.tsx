@@ -4558,18 +4558,15 @@ export default function DriftApp() {
                       return (
                         <div
                           key={thread.targetId}
-                          className="dm-v2-thread-item"
-                          draggable
-                          onDragStart={event => { setDraggingDmId(thread.targetId); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", thread.targetId); }}
+                          className={`dm-v2-thread-item ${draggingDmId === thread.targetId ? "is-dragging" : ""}`}
                           onDragOver={event => { if (draggingDmId) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
                           onDrop={event => { event.preventDefault(); const fromId = event.dataTransfer.getData("text/plain") || draggingDmId; if (fromId) reorderDmThread(fromId, thread.targetId); setDraggingDmId(null); }}
-                          onDragEnd={() => setDraggingDmId(null)}
-                          style={{ cursor: draggingDmId === thread.targetId ? "grabbing" : "grab", opacity: draggingDmId === thread.targetId ? 0.55 : 1 }}
                           onClick={() => {
                             setActiveDmThreadId(thread.targetId);
                             markThreadAsRead(thread.targetId);
                           }}
                         >
+                          {dmSortMode === "manual" && <button type="button" className="dm-drag-handle" draggable aria-label={`${thread.name}を並び替え`} title="三本線をつかんで並び替え" onDragStart={event => { event.stopPropagation(); setDraggingDmId(thread.targetId); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", thread.targetId); }} onDragEnd={() => setDraggingDmId(null)} onClick={event => event.stopPropagation()}><Menu size={17} /></button>}
                           <div className="dm-thread-avatar">
                             {thread.avatarUrl ? <img src={thread.avatarUrl} alt="" /> : thread.emoji}
                             {thread.unread > 0 && (
