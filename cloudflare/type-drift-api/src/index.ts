@@ -84,13 +84,11 @@ async function runScheduledAiEngagement(env: Env) {
     const anonymousBatch = await sql`INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
       VALUES (${post.id}, ${anonymousActor}, 'anonymous_like_batch', NOW())
       ON CONFLICT DO NOTHING RETURNING bottle_id`;
+    // まとめて複数件を付けず、1回の定期実行につき最大1件にして通知が一気に届くのを防ぐ。
     if (anonymousBatch.length && Math.random() < 0.20) {
-      const anonymousCount = 1 + Math.floor(Math.random() * 3);
-      for (let i = 1; i <= anonymousCount; i++) {
-        const anonymousKey = `anon:system:${post.id}:${anonymousBucket}:${i}`;
-        await sql`INSERT INTO reactions (bottle_id, guest_key, level, created_at, updated_at)
-          VALUES (${post.id}, ${anonymousKey}, 1, NOW(), NOW()) ON CONFLICT DO NOTHING`;
-      }
+      const anonymousKey = `anon:system:${post.id}:${anonymousBucket}:1`;
+      await sql`INSERT INTO reactions (bottle_id, guest_key, level, created_at, updated_at)
+        VALUES (${post.id}, ${anonymousKey}, 1, NOW(), NOW()) ON CONFLICT DO NOTHING`;
       if (post.guest_key) {
         await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at)
           VALUES (${post.guest_key}, 'bottle_reaction', ${String(post.id)}, '匿名の誰かからいいねが届きました。', NOW(), NOW())`;
@@ -102,7 +100,35 @@ async function runScheduledAiEngagement(env: Env) {
     let chosen = darlingAt < wormAt ? AI_ACTORS[0] : wormAt < darlingAt ? AI_ACTORS[1] : null;
     const existingAiReply = await sql`SELECT 1 FROM replies WHERE bottle_id = ${post.id}
       AND guest_key IN ('ai:darling', 'ai:lsi-worm') AND deleted_at IS NULL LIMIT 1`;
-    if (existingAiReply.length) continue;
+    if (existingAiReply.length) {
+      // 既存AI返信のうち、DM未作成のものも個人メッセージへ移行する。
+      if (post.guest_key) {
+        const legacyReplies = await sql`SELECT id, guest_key, body, created_at FROM replies
+          WHERE bottle_id = ${post.id} AND guest_key IN ('ai:darling', 'ai:lsi-worm')
+            AND deleted_at IS NULL ORDER BY created_at ASC`;
+        const recipientRows = await sql`SELECT nickname, mbti, socionics, enneagram, other_type, bio, profile_image_url, links
+          FROM profiles WHERE guest_key = ${post.guest_key} OR ('user:' || user_id::text) = ${post.guest_key} LIMIT 1`;
+        const recipient = recipientRows[0] || {};
+        for (const legacy of legacyReplies as Array<{id:number;guest_key:string;body:string;created_at:string}>) {
+          const actor = AI_ACTORS.find(item => item.key === legacy.guest_key);
+          if (!actor) continue;
+          const exists = await sql`SELECT 1 FROM direct_messages WHERE bottle_id = ${post.id}
+            AND sender_guest_key = ${actor.key} AND recipient_guest_key = ${post.guest_key} AND body = ${legacy.body} LIMIT 1`;
+          if (exists.length) continue;
+          const actorProfile = { nickname: actor.name, mbti: actor.key === "ai:darling" ? "INTP" : "INTJ",
+            socionics: actor.key === "ai:darling" ? "ILI" : "LSI", enneagram: "5w6", emoji: actor.emoji };
+          await sql`INSERT INTO direct_messages (
+              sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body,
+              bottle_id, bottle_snippet, bottle_author, bottle_type, sender_profile, recipient_profile, created_at, updated_at
+            ) VALUES (
+              ${actor.key}, ${post.guest_key}, ${"bottle-" + String(post.id)}, ${actor.name}, ${recipient.nickname || "匿名のあなた"}, ${legacy.body},
+              ${post.id}, ${body.slice(0,180)}, '匿名ボトル', ${[recipient.mbti, recipient.socionics, recipient.enneagram].filter(Boolean).join(" · ") || null},
+              ${JSON.stringify(actorProfile)}::jsonb, ${JSON.stringify(recipient)}::jsonb, ${legacy.created_at}, NOW()
+            )`;
+        }
+      }
+      continue;
+    }
     // 名指し投稿は対象キャラが必ず返信。その他は一定確率でどちらか一人が返信する。
     if (!chosen) {
       const decision = await sql`INSERT INTO ai_engagements (bottle_id, actor, action, created_at)
