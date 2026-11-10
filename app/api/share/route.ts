@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as { kind?: string; payload?: unknown };
-    if (body.kind !== "horoscope" && body.kind !== "profile") {
+    if (body.kind !== "horoscope" && body.kind !== "profile" && body.kind !== "worm-beach") {
       return NextResponse.json({ error: "invalid_kind" }, { status: 400 });
     }
     const serialized = JSON.stringify(body.payload);
