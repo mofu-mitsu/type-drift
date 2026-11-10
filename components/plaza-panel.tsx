@@ -42,13 +42,13 @@ function normalizeAiReplyBody(value: unknown): string {
       break;
     } catch {
       // 返答が途中で切れてJSONとして壊れていても、bodyの文字列部分だけ救出する。
-      const match = text.match(/^\\s*\\{\\s*[\"']body[\"']\\s*:\\s*[\"']((?:\\\\.|[^\"'\\\\])*)/s);
+      const match = text.match(/^\s*\{\s*[\"']body[\"']\s*:\s*[\"']((?:\\.|[^\"'\\])*)/s);
       if (!match) break;
       try { text = JSON.parse('"' + match[1] + '"'); }
       catch { text = match[1].replace(/\\\\n/g, '\n').replace(/\\\\r/g, '\r').replace(/\\\\t/g, '\t').replace(/\\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\'); }
     }
   }
-  return text.replace(/\\\\n/g, '\n').replace(/\\\\r/g, '\r').replace(/\\\\t/g, '\t').trim();
+  return text.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').trim();
 }
 
 export type PlazaPanelProps = {
