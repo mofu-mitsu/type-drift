@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
 import WormGame from "./worm-game";
@@ -5503,7 +5503,7 @@ export default function DriftApp() {
               ) : (
                 <div className="admin-inbox-clean">
                   {[...adminFeedbacks.filter(fb => fb.needsReply), ...adminFeedbacks.filter(fb => !fb.needsReply)].map((fb, index, sorted) => (
-                    <React.Fragment key={fb.id}>
+                    <Fragment key={fb.id}>
                     {(index === 0 || sorted[index - 1].needsReply !== fb.needsReply) && (
                       <div style={{ margin: "18px 0 10px", padding: "10px 12px", borderRadius: "12px", background: fb.needsReply ? "#fff7ed" : "#f1f5f9", border: `1px solid ${fb.needsReply ? "#fed7aa" : "#cbd5e1"}` }}>
                         <strong style={{ fontSize: "13px", color: fb.needsReply ? "#9a3412" : "#475569" }}>
@@ -5593,7 +5593,7 @@ export default function DriftApp() {
                         </div>
                       </div>
                     </div>
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                 </div>
               )}
