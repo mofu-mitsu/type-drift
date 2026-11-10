@@ -520,9 +520,10 @@ export default function PlazaPanel({
         Math.abs(item.createdAt - newMsg.createdAt) < 15_000);
       return duplicate ? curr : [...curr, newMsg].slice(-80);
     });
-    // システム通知はAIに発言させない。NPCの返答はAI専用イベントで中継する。
-    if (externalMessage.kind === 'system') return;
-    if (externalMessage.kind === 'ai') {
+    // システム通知も全参加者へ中継する。受信側では kind='system' として表示。
+    if (externalMessage.kind === 'system') {
+      sendRelay({ type: 'plaza_system_message', author: externalMessage.author, body: externalMessage.body, emoji: externalMessage.emoji });
+    } else if (externalMessage.kind === 'ai') {
       sendRelay({ type: 'plaza_ai_message', character: externalMessage.author, body: externalMessage.body });
     } else {
       sendRelay({ type: 'plaza_message', nickname: externalMessage.author, body: externalMessage.body });
