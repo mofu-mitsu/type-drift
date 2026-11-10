@@ -86,6 +86,7 @@ interface ConsultationRoomProps {
   onToast: (message: string) => void;
   onExit: () => void;
   sharedPostId?: string | null;
+  openRequestSignal?: number;
 }
 
 export default function ConsultationRoom({
@@ -104,11 +105,15 @@ export default function ConsultationRoom({
   onToast,
   onExit,
   sharedPostId = null,
+  openRequestSignal = 0,
 }: ConsultationRoomProps) {
   const activeGasUrl = gasUrl || DEFAULT_GAS_URL;
 
   // モード切替: "forum" (みんなに相談) | "request" (自認診断を依頼)
   const [activeTab, setActiveTab] = useState<"forum" | "request">("forum");
+  useEffect(() => {
+    if (openRequestSignal > 0) setActiveTab("request");
+  }, [openRequestSignal]);
   
   // 投稿・編集作成フォームの開閉
   const [isPosting, setIsPosting] = useState(false);
