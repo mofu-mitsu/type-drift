@@ -458,10 +458,10 @@ export default function DriftApp() {
     const params = new URLSearchParams(window.location.search);
     const loginResult = params.get("login");
     if (params.get("page") === "stars") setActivePage("stars");
-    if (loginResult === "success") {
-      setPlazaToast("ログインしました");
+    if (loginResult === "success" || loginResult === "error") {
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
-    } else if (loginResult === "error") {
+    }
+    if (loginResult === "error") {
       const reason = params.get("reason");
       const messages: Record<string, string> = {
         cancelled: "Googleログインがキャンセルされました",
@@ -491,6 +491,7 @@ export default function DriftApp() {
         setAuthName(String(data.user.name || email));
         setIsAdminLoggedIn(isAdmin);
         setAdminEmail(isAdmin ? email : "");
+        if (loginResult === "success") setPlazaToast(isAdmin ? "管理者としてログインしました ✨" : "ログインしました ✨");
         if (isAdmin) localStorage.setItem("type-drift-is-admin", "true");
         else localStorage.removeItem("type-drift-is-admin");
       } else {
@@ -500,10 +501,12 @@ export default function DriftApp() {
         setIsAdminLoggedIn(false);
         setAdminEmail("");
         localStorage.removeItem("type-drift-is-admin");
+        if (loginResult === "success") setPlazaToast("ログイン後のセッションを確認できませんでした。もう一度ログインしてください。");
       }
     };
     void syncSession().catch(error => {
       console.error("[Type Drift] session sync failed", error);
+      if (loginResult === "success") setPlazaToast("ログイン状態を確認できませんでした。もう一度お試しください。");
     });
     return () => { cancelled = true; };
   }, []);
