@@ -4105,7 +4105,7 @@ export default function DriftApp() {
                   <div className="profile-links-chip-list">
                     {((inspectProfile.isSelf ? profileLinks : inspectProfile.links) || []).filter(l => l.url?.startsWith("https://")).map(l => (
                       <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer" className="profile-chip-link">
-                        {l.title || l.url} <ArrowUpRight size={12} />
+                        {l.title || l.url}
                       </a>
                     ))}
                   </div>
