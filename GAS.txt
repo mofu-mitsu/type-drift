@@ -325,7 +325,7 @@ function doPost(e) {
       var replyId = data.replyId || ("rep-" + new Date().getTime());
       var targetFeedbackId = data.feedbackId || "";
       var targetUserKey = data.userKey || "";
-      var adminName = data.adminName || "運営チーム";
+      var adminName = data.adminName || data.sender || "運営チーム";
       var replyBody = data.replyBody || data.body || "";
 
       replySheet.appendRow([replyId, targetFeedbackId, targetUserKey, now, adminName, replyBody]);
