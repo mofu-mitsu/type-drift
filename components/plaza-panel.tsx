@@ -580,7 +580,6 @@ export default function PlazaPanel({
                     <strong>{message.author}</strong>
                     {isAi && <small className="ai-tag">AI</small>}
                     {profileType && <small className="plaza-profile-type">{profileType}</small>}
-                    {messageProfile?.links?.filter(link => link.title && link.url.startsWith("https://")).map(link => <a key={link.id || link.url} className="plaza-profile-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.title}</a>)}
                     {message.kind === "system" && <small className="plaza-system-tag">SYSTEM</small>}
                   </div>
                   <p className="plaza-chat-text">{message.body}</p>
