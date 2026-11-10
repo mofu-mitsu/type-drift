@@ -393,6 +393,28 @@ export default function ConsultationRoom({
     }
   };
 
+  // コメント削除はDB側で所有者を確認し、成功後にUIから取り除く。
+  const handleDeleteComment = async (postId: string, commentId: string) => {
+    try {
+      const response = await fetch("/api/consultations/comments/delete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey },
+        body: JSON.stringify({ postId, commentId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok !== true) {
+        throw new Error(typeof result.error === "string" ? result.error : "コメントを削除できませんでした");
+      }
+      onDeleteComment?.(postId, commentId);
+      window.dispatchEvent(new Event("type-drift:refresh-consultations"));
+      onToast("コメントを削除しました");
+    } catch (error) {
+      console.error("[Type Drift] consultation comment delete failed", error);
+      onToast("コメントを削除できませんでした。少し待ってからもう一度試してね。");
+    }
+  };
+
   // コメント送信 (forum)
   const handleSendComment = (postId: string) => {
     const text = commentInputs[postId]?.trim();
@@ -978,7 +1000,7 @@ export default function ConsultationRoom({
                                     <button type="button" onClick={() => void handleReactComment(post.id, c.id)}>♡ {c.reaction ? `+${c.reaction}` : "反応"}</button>
                                     {c.userKey === guestKey && <>
                                       <button type="button" onClick={() => setEditingComment({ postId: post.id, comment: c })}>編集</button>
-                                      <button type="button" onClick={() => onDeleteComment?.(post.id, c.id)}>削除</button>
+                                      <button type="button" onClick={() => void handleDeleteComment(post.id, c.id)}>削除</button>
                                     </>}
                                   </div>
                                 </>
