@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const sql = db();
-    const rows = await sql`SELECT id, name, email FROM users WHERE id = ${userId} LIMIT 1`;
-    const user = rows[0] as { id: number; name: string; email: string } | undefined;
+    const rows = await sql`SELECT id, name, email, oauth_provider FROM users WHERE id = ${userId} LIMIT 1`;
+    const user = rows[0] as { id: number; name: string; email: string; oauth_provider?: string | null } | undefined;
     if (!user) {
       return NextResponse.json(
         { authenticated: false, isAdmin: false },
@@ -32,8 +32,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         authenticated: true,
-        user: { id: Number(user.id), name: user.name, email },
+        user: { id: Number(user.id), name: user.name, email, provider: String(user.oauth_provider || "").toLowerCase() },
         email,
+        provider: String(user.oauth_provider || "").toLowerCase(),
         isAdmin,
       },
       { headers: { "Cache-Control": "no-store" } },
