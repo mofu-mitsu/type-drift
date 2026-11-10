@@ -2241,7 +2241,7 @@ export default function DriftApp() {
     const newReply: FeedbackReply = {
       id: `rep-${Date.now()}`,
       sender: nickname || "あなた",
-      date: new Date().toLocaleString("ja-JP"),
+      date: new Date().toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }),
       body: text,
       isUserReply: true,
     };
