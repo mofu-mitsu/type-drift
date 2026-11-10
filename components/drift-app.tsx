@@ -730,6 +730,7 @@ export default function DriftApp() {
   // 📮 運営・管理者インボックス & 問い合わせ State
   const [adminFeedbacks, setAdminFeedbacks] = useState<FeedbackItem[]>([]);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminPanelTab, setAdminPanelTab] = useState<"announcements" | "feedback" | "diagnosis">("announcements");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminReplyTexts, setAdminReplyTexts] = useState<Record<string, string>>({});
   const [newNoticeTitle, setNewNoticeTitle] = useState("");
@@ -5294,9 +5295,23 @@ export default function DriftApp() {
               </div>
               <span className="admin-badge">✓ 管理者権限が有効です</span>
             </div>
+            <div role="tablist" aria-label="管理項目" style={{ display: "flex", flexWrap: "wrap", gap: "8px", margin: "16px 0 20px" }}>
+              {([
+                ["announcements", "お知らせ配信"],
+                ["feedback", `届いたご意見 (${adminFeedbacks.length})`],
+                ["diagnosis", `自認診断カルテ (${consultationPosts.filter(p => p.category === "request").length})`],
+              ] as const).map(([tab, label]) => (
+                <button key={tab} type="button" role="tab" aria-selected={adminPanelTab === tab} onClick={() => setAdminPanelTab(tab)} style={{
+                  border: adminPanelTab === tab ? "1px solid #a78bfa" : "1px solid #e2e8f0",
+                  background: adminPanelTab === tab ? "#f3e8ff" : "#fff",
+                  color: adminPanelTab === tab ? "#6b21a8" : "#475569",
+                  borderRadius: "999px", padding: "8px 14px", fontSize: "12px", fontWeight: 700, cursor: "pointer"
+                }}>{label}</button>
+              ))}
+            </div>
 
             {/* 📢 管理トレイから直接お知らせ配信 */}
-            <div className="admin-post-announcement-box">
+            <div className="admin-post-announcement-box" style={{ display: adminPanelTab === "announcements" ? "block" : "none" }}>
               <h4>📢 全員へお知らせを直接配信</h4>
               <form className="admin-announcement-form" onSubmit={handlePostAnnouncement}>
                 <input
@@ -5346,7 +5361,7 @@ export default function DriftApp() {
             </div>
 
             {/* 意見一覧 & 返信機能 */}
-            <div className="admin-feedbacks-list">
+            <div className="admin-feedbacks-list" style={{ display: adminPanelTab === "feedback" ? "block" : "none" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
                 <h4 style={{ margin: 0 }}>届いたご意見一覧 ({adminFeedbacks.length}件)</h4>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -5458,7 +5473,7 @@ export default function DriftApp() {
             </div>
 
             {/* 🔮 自認診断依頼リスト */}
-            <div className="admin-feedbacks-list" style={{ marginTop: "32px" }}>
+            <div className="admin-feedbacks-list" style={{ display: adminPanelTab === "diagnosis" ? "block" : "none", marginTop: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
                 <h4 style={{ margin: 0 }}>自認診断の受付・カルテ一覧 ({consultationPosts.filter(p => p.category === "request").length}件)</h4>
                 {adminPendingConsultationCount > 0 && (
