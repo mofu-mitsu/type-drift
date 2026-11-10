@@ -32,7 +32,7 @@ const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か'
 // AIが {"body":"..."} の形で返した本文や、JSONの途中で切れた返答を表示用テキストに戻す。
 function normalizeAiReplyBody(value: unknown): string {
   let text = typeof value === 'string' ? value.trim() : '';
-  for (let depth = 0; depth < 4 && text; depth++) {
+  for (let depth = 0; depth < 5 && text; depth++) {
     try {
       const parsed = JSON.parse(text);
       if (typeof parsed === 'string') { text = parsed.trim(); continue; }
@@ -41,14 +41,32 @@ function normalizeAiReplyBody(value: unknown): string {
       if (parsed && typeof parsed.message === 'string') { text = parsed.message.trim(); continue; }
       break;
     } catch {
-      // 返答が途中で切れてJSONとして壊れていても、bodyの文字列部分だけ救出する。
-      const match = text.match(/^\s*\{\s*[\"']body[\"']\s*:\s*[\"']((?:\\.|[^\"'\\])*)/s);
-      if (!match) break;
-      try { text = JSON.parse('"' + match[1] + '"'); }
-      catch { text = match[1].replace(/\\\\n/g, '\n').replace(/\\\\r/g, '\r').replace(/\\\\t/g, '\t').replace(/\\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\'); }
+      // JSON全体の解析に失敗しても、先頭の {"body":" と末尾の "} を表示から取り除く。
+      const prefix = text.match(/^\s*\{\s*["']body["']\s*:\s*["']/);
+      if (prefix) {
+        let raw = text.slice(prefix[0].length);
+        let escaped = false;
+        let end = -1;
+        for (let i = 0; i < raw.length; i++) {
+          if (escaped) { escaped = false; continue; }
+          if (raw[i] === '\\\\') { escaped = true; continue; }
+          if (raw[i] === '"') { end = i; break; }
+        }
+        if (end >= 0) raw = raw.slice(0, end);
+        else raw = raw.replace(/["']?\s*\}?\s*$/, '');
+        text = raw;
+        continue;
+      }
+      break;
     }
   }
-  return text.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').trim();
+  return text
+    .replace(/\\\\n/g, '\n')
+    .replace(/\\\\r/g, '\r')
+    .replace(/\\\\t/g, '\t')
+    .replace(/\\\"/g, '"')
+    .replace(/\\\\\\\\/g, '\\\\')
+    .trim();
 }
 
 export type PlazaPanelProps = {
