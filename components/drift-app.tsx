@@ -528,6 +528,7 @@ export default function DriftApp() {
         setIsAdminLoggedIn(false);
         setAdminEmail("");
         localStorage.removeItem("type-drift-is-admin");
+        localStorage.removeItem("type-drift-user-key");
         if (loginResult === "success") setPlazaToast("ログイン後のセッションを確認できませんでした。もう一度ログインしてください。");
       }
     };
