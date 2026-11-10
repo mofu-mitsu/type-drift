@@ -447,6 +447,9 @@ export default function DriftApp() {
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
   const [serverNotificationCounts, setServerNotificationCounts] = useState<Record<string, number>>({});
   const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string | null; message: string; created_at: string }>>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authProvider, setAuthProvider] = useState<string>("");
+  const [authName, setAuthName] = useState("");
 
   // 広場AIのエラーから、意見箱を直接開けるようにする
   // OAuthのセッションをサーバーで検証し、登録済みの管理者アカウントだけ管理者UIを表示する。
@@ -454,8 +457,9 @@ export default function DriftApp() {
     let cancelled = false;
     const params = new URLSearchParams(window.location.search);
     const loginResult = params.get("login");
+    if (params.get("page") === "stars") setActivePage("stars");
     if (loginResult === "success") {
-      setPlazaToast("Googleアカウントでログインしました");
+      setPlazaToast("ログインしました");
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
     } else if (loginResult === "error") {
       const reason = params.get("reason");
@@ -480,12 +484,19 @@ export default function DriftApp() {
       if (cancelled) return;
       if (data?.authenticated && data?.user?.email) {
         const email = String(data.user.email).trim().toLowerCase();
+        const provider = String(data.provider || data.user.provider || "").toLowerCase();
         const isAdmin = data.isAdmin === true;
+        setIsAuthenticated(true);
+        setAuthProvider(provider);
+        setAuthName(String(data.user.name || email));
         setIsAdminLoggedIn(isAdmin);
         setAdminEmail(isAdmin ? email : "");
         if (isAdmin) localStorage.setItem("type-drift-is-admin", "true");
         else localStorage.removeItem("type-drift-is-admin");
       } else {
+        setIsAuthenticated(false);
+        setAuthProvider("");
+        setAuthName("");
         setIsAdminLoggedIn(false);
         setAdminEmail("");
         localStorage.removeItem("type-drift-is-admin");
@@ -3253,8 +3264,8 @@ export default function DriftApp() {
           className="topbar-nav-btn"
           onClick={() => { setGuideOpen(false); setAnnouncementModalOpen(false); setLoginOpen(true); }}
         >
-          <span className="topbar-nav-icon"><LogIn size={15} /></span>
-          <span className="topbar-nav-label">{isAdminLoggedIn ? "マイアカウント" : "ログイン"}</span>
+          <span className="topbar-nav-icon" aria-label={isAuthenticated ? `${authProvider || "account"}でログイン中` : "ログイン"}>{isAuthenticated ? <strong style={{ fontSize: 13, fontWeight: 800 }}>{authProvider.includes("google") ? "G" : authProvider === "x" || authProvider.includes("twitter") ? "𝕏" : "✓"}</strong> : <LogIn size={15} />}</span>
+          <span className="topbar-nav-label">{isAdminLoggedIn ? "マイアカウント" : isAuthenticated ? "ログイン済み" : "ログイン"}</span>
         </button>
 
         <button
@@ -5613,6 +5624,7 @@ export default function DriftApp() {
           <p className="eyebrow">WELCOME BACK</p>
           <h2>海へ戻る</h2>
           <p>ログイン方法を選んでください。認証後も、海に流すボトルは匿名のままです。</p>
+          {isAuthenticated && <div className="admin-login-box" style={{ marginTop: 14 }}><p className="admin-logged-in-label">{authProvider.includes("google") ? "G Google" : authProvider === "x" || authProvider.includes("twitter") ? "𝕏 X" : "✓"}  ログイン中</p><p style={{ margin: "6px 0 0", overflowWrap: "anywhere" }}>{authName}</p>{isAdminLoggedIn && <small>管理者アカウント</small>}</div>}
 
           <button
             type="button"
