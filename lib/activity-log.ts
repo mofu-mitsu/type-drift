@@ -2,10 +2,17 @@ import { apiFetch } from './api-client';
 
 export function getGuestKey() {
   if (typeof window === 'undefined') return '';
-  let key = localStorage.getItem('type-drift-guest-key');
+  // Logged-in identities must never share the browser-wide guest key.
+  // Keep a separate opaque key for each authenticated account, while preserving
+  // the legacy anonymous key for users who are not signed in.
+  const userKey = localStorage.getItem('type-drift-user-key');
+  const storageKey = userKey
+    ? `type-drift-guest-key:user:${userKey}`
+    : 'type-drift-guest-key';
+  let key = localStorage.getItem(storageKey);
   if (!key) {
     key = crypto.randomUUID();
-    localStorage.setItem('type-drift-guest-key', key);
+    localStorage.setItem(storageKey, key);
   }
   return key;
 }
