@@ -458,6 +458,7 @@ export default function DriftApp() {
     const params = new URLSearchParams(window.location.search);
     const loginResult = params.get("login");
     if (params.get("page") === "stars") setActivePage("stars");
+    if (params.get("page") === "games") setActivePage("games");
     if (loginResult === "success" || loginResult === "error") {
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
     }
