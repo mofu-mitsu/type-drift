@@ -355,13 +355,14 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
       }
     }
 
-    setBody("");
     if (gasDelivered) {
+      setBody("");
       setStatus(needsReply
-        ? "ご意見をスプレッドシートに保存しました！返信をお待ちください（「あなたの活動」タブから確認できます）。"
-        : "ご意見をスプレッドシートに保存しました。ありがとうございます！");
+        ? "ご意見を承りました。返信を希望する場合は「あなたの活動」から確認できます。ありがとうございます！"
+        : "ご意見を承りました。ありがとうございます！");
     } else {
-      setStatus(`ご意見は送信処理に進みましたが、スプレッドシートへの保存を確認できませんでした。${gasDeliveryError ? `（${gasDeliveryError}）` : ""} 運営側の記録も確認してください。`);
+      // 受信確認が取れない場合は本文を残し、送信できたように見せない。
+      setStatus(`送信を確認できませんでした。入力内容は残してあります。時間をおいて再度お試しください。${gasDeliveryError ? `（${gasDeliveryError}）` : ""}`);
     }
   };
 
@@ -2058,12 +2059,21 @@ export default function DriftApp() {
     try {
       const endpoint = new URL(url);
       endpoint.searchParams.set("action", "feedbacks");
+      endpoint.searchParams.set("_", String(Date.now()));
       const response = await fetch(endpoint.toString(), { cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json();
       if (data && Array.isArray(data.feedbacks)) {
-        setAdminFeedbacks(data.feedbacks);
-        try { localStorage.setItem("type-drift-admin-feedbacks", JSON.stringify(data.feedbacks)); } catch {}
+        // 運営以外の送信者から来た返信は、ユーザーの追加コメントとして扱う。
+        const normalized = data.feedbacks.map((fb: FeedbackItem) => ({
+          ...fb,
+          replies: (fb.replies || []).map(reply => ({
+            ...reply,
+            isUserReply: reply.isUserReply ?? !String(reply.sender || "").includes("運営"),
+          })),
+        }));
+        setAdminFeedbacks(normalized);
+        try { localStorage.setItem("type-drift-admin-feedbacks", JSON.stringify(normalized)); } catch {}
       }
     } catch (error) {
       console.warn("[Type Drift] admin feedback sync failed", error);
@@ -2114,11 +2124,12 @@ export default function DriftApp() {
     }
   }, [storageReady, gasUrl, userInquiries.length]);
 
-  // 管理者でログインしたときは、同じブラウザのlocalStorageではなくシートの受信一覧を同期する。
+  // 管理者ログイン中は受信一覧を定期更新し、別端末から届いた意見・追加コメントも反映する。
   useEffect(() => {
-    if (storageReady && isAdminLoggedIn && gasUrl) {
-      void fetchSpreadsheetFeedbacks(gasUrl);
-    }
+    if (!storageReady || !isAdminLoggedIn || !gasUrl) return;
+    void fetchSpreadsheetFeedbacks(gasUrl);
+    const refreshId = window.setInterval(() => void fetchSpreadsheetFeedbacks(gasUrl), 20000);
+    return () => window.clearInterval(refreshId);
   }, [storageReady, isAdminLoggedIn, gasUrl]);
 
   // 開発者トレイから直接お知らせを配信する処理
@@ -2732,7 +2743,10 @@ export default function DriftApp() {
     return adminFeedbacks.filter(fb => {
       const isUnreplied = fb.needsReply && (!fb.replies || fb.replies.length === 0);
       const isDismissed = readAdminFeedbackIds.includes(fb.id);
-      return isUnreplied && !isDismissed;
+      const hasUnreadFollowup = (fb.replies || []).some(reply =>
+        reply.isUserReply && !readAdminFeedbackIds.includes(`${fb.id}:reply:${reply.id}`)
+      );
+      return (isUnreplied && !isDismissed) || hasUnreadFollowup;
     }).length;
   }, [adminFeedbacks, readAdminFeedbackIds]);
 
@@ -2930,7 +2944,11 @@ export default function DriftApp() {
   };
 
   const markAdminFeedbacksAsRead = (ids?: string[]) => {
-    const targetIds = ids || adminFeedbacks.map(f => f.id);
+    const targetFeedbacks = ids ? adminFeedbacks.filter(f => ids.includes(f.id)) : adminFeedbacks;
+    const targetIds = targetFeedbacks.flatMap(f => [
+      f.id,
+      ...(f.replies || []).filter(reply => reply.isUserReply).map(reply => `${f.id}:reply:${reply.id}`),
+    ]);
     setReadAdminFeedbackIds(prev => {
       const updated = Array.from(new Set([...prev, ...targetIds]));
       try { localStorage.setItem("type-drift-read-admin-feedbacks", JSON.stringify(updated)); } catch {}
@@ -5177,6 +5195,19 @@ export default function DriftApp() {
         {/* 💬 問い合わせ・返信タブ（一般ユーザー向け） */}
         {activityTab === "inquiries" && (
           <div className="inquiries-container">
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  setActivePage("plaza");
+                  setFeedbackOpen(true);
+                  setPlazaToast("広場の意見箱を開きました 📮");
+                }}
+              >
+                📮 意見箱を開く
+              </button>
+            </div>
             {/* 🔮 自認相談室の診断・相談通知カード */}
             {(() => {
               const myItems = consultationPosts.filter(p =>
@@ -5309,7 +5340,7 @@ export default function DriftApp() {
             {userInquiries.length === 0 ? (
               <div className="empty-mine">
                 <MessageCircle size={22} />
-                <p>まだ送信したご意見はありません。<br />広場の下部にある「意見箱」から、気づいたことやご要望を送ることができます。</p>
+                <p>まだ送信したご意見はありません。<br />上の「意見箱を開く」から、気づいたことやご要望を送れます。</p>
               </div>
             ) : (
               userInquiries.map(inq => (
