@@ -162,13 +162,14 @@ export default function CognitiveConstellation({ onExit, onSendToBottle }: Props
   const [toastMsg, setToastMsg] = useState("");
   const [savedHoroscopeImage, setSavedHoroscopeImage] = useState("");
 
-  // 共有URLからホロスコープを復元する（?page=stars&horoscope=...）。
+  // 短縮共有URLからホロスコープを取得し、星図を復元する。
   useEffect(() => {
-    const encoded = new URLSearchParams(window.location.search).get("horoscope");
-    if (!encoded) return;
-    try {
-      const data = JSON.parse(encoded) as { celestials?: CelestialBody[]; aspectLines?: Array<{ fromId: string; toId: string; aspectType: AspectLine["aspectType"]; color: string }>; selectedBodyId?: string };
-      if (!Array.isArray(data.celestials) || data.celestials.length < 2) return;
+    const params = new URLSearchParams(window.location.search);
+    const shareId = params.get("share");
+    const encoded = params.get("horoscope");
+    let cancelled = false;
+    const restore = (data: { celestials?: CelestialBody[]; aspectLines?: Array<{ fromId: string; toId: string; aspectType: AspectLine["aspectType"]; color: string }>; selectedBodyId?: string }) => {
+      if (cancelled || !Array.isArray(data.celestials) || data.celestials.length < 2) return;
       const bodies = data.celestials;
       const byId = new Map(bodies.map(body => [body.id, body]));
       const lines: AspectLine[] = (Array.isArray(data.aspectLines) ? data.aspectLines : []).flatMap(line => {
@@ -182,9 +183,17 @@ export default function CognitiveConstellation({ onExit, onSendToBottle }: Props
       setStep("result");
       setToastMsg("共有されたホロスコープを開きました ✨");
       window.setTimeout(() => setToastMsg(""), 3000);
-    } catch (error) {
-      console.error("[Type Drift] shared horoscope could not be restored", error);
+    };
+    if (shareId) {
+      void fetch(`/api/share/${encodeURIComponent(shareId)}`, { cache: "no-store" })
+        .then(response => { if (!response.ok) throw new Error(`Share lookup failed: ${response.status}`); return response.json(); })
+        .then(result => { if (result.kind === "horoscope") restore(result.payload); })
+        .catch(error => console.error("[Type Drift] shared horoscope lookup failed", error));
+    } else if (encoded) {
+      try { restore(JSON.parse(encoded)); }
+      catch (error) { console.error("[Type Drift] shared horoscope could not be restored", error); }
     }
+    return () => { cancelled = true; };
   }, []);
 
   // 時間帯計算
@@ -652,38 +661,42 @@ export default function CognitiveConstellation({ onExit, onSendToBottle }: Props
     setTimeout(() => setToastMsg(""), 3000);
   };
 
-  // 🔗 ホロスコープそのものをURLに含め、開いた人が同じ星図を見られるように共有
+  // 🔗 星図データはサーバーに保存し、短い共有URLを発行する。
   const handleShare = async () => {
     const title = getHoroscopeTitle();
-    const url = new URL(window.location.href);
-    url.search = "";
-    url.searchParams.set("page", "stars");
-    url.searchParams.set("horoscope", JSON.stringify({
+    const payload = {
       celestials,
       aspectLines: aspectLines.map(line => ({ fromId: line.from.id, toId: line.to.id, aspectType: line.aspectType, color: line.color })),
       selectedBodyId: selectedBody?.id
-    }));
-    url.hash = "typedrift";
-    const shareData = {
-      title: `${title} | Type Drift`,
-      text: `私の思考宇宙【${title}】を観測しました。診断ではなく、宇宙に星を置いて生まれたホロスコープです。🌌✨\n#typedrift`,
-      url: url.toString()
     };
-
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-        setToastMsg("ホロスコープを共有しました！ 🌌");
-      } catch {
-        // キャンセル時は何もしない
-      }
-    } else {
-      try {
+    try {
+      const response = await fetch("/api/share", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: "horoscope", payload })
+      });
+      if (!response.ok) throw new Error(`Share creation failed: ${response.status}`);
+      const result = await response.json() as { url: string };
+      const shareData = {
+        title: `${title} | Type Drift`,
+        text: `私の思考宇宙【${title}】を観測しました。診断ではなく、宇宙に星を置いて生まれたホロスコープです。🌌✨\n#typedrift`,
+        url: result.url
+      };
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+          setToastMsg("ホロスコープを共有しました！ 🌌");
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") return;
+          throw error;
+        }
+      } else {
         await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
-        setToastMsg("共有文とホロスコープURLをコピーしました 📋");
-      } catch {
-        setToastMsg("URLのコピーに対応していません");
+        setToastMsg("短いホロスコープURLをコピーしました 📋");
       }
+    } catch (error) {
+      console.error("[Type Drift] horoscope share failed", error);
+      setToastMsg("共有リンクを作れませんでした。通信を確認してください");
     }
     setTimeout(() => setToastMsg(""), 3000);
   };
