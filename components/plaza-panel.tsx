@@ -29,6 +29,28 @@ const EMOTES = ['👋', '✦', '🌊', '💭', '🩷', '✨', '🍵'];
 const GUEST_MARKS = ['◌', '◇', '◒', '✦', '○', '△', '·'];
 const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か';
 
+// AIが {"body":"..."} の形で返した本文や、JSONの途中で切れた返答を表示用テキストに戻す。
+function normalizeAiReplyBody(value: unknown): string {
+  let text = typeof value === 'string' ? value.trim() : '';
+  for (let depth = 0; depth < 4 && text; depth++) {
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed === 'string') { text = parsed.trim(); continue; }
+      if (parsed && typeof parsed.body === 'string') { text = parsed.body.trim(); continue; }
+      if (parsed && typeof parsed.content === 'string') { text = parsed.content.trim(); continue; }
+      if (parsed && typeof parsed.message === 'string') { text = parsed.message.trim(); continue; }
+      break;
+    } catch {
+      // 返答が途中で切れてJSONとして壊れていても、bodyの文字列部分だけ救出する。
+      const match = text.match(/^\\s*\\{\\s*[\"']body[\"']\\s*:\\s*[\"']((?:\\\\.|[^\"'\\\\])*)/s);
+      if (!match) break;
+      try { text = JSON.parse('"' + match[1] + '"'); }
+      catch { text = match[1].replace(/\\\\n/g, '\n').replace(/\\\\r/g, '\r').replace(/\\\\t/g, '\t').replace(/\\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\'); }
+    }
+  }
+  return text.replace(/\\\\n/g, '\n').replace(/\\\\r/g, '\r').replace(/\\\\t/g, '\t').trim();
+}
+
 export type PlazaPanelProps = {
   nickname?: string;
   profileImage?: string | null;
@@ -321,7 +343,7 @@ export default function PlazaPanel({
         : [];
       if (replies.length > 0) {
         for (const reply of replies) {
-          emitAiMessage(reply.character, reply.body.trim());
+          emitAiMessage(reply.character, normalizeAiReplyBody(reply.body));
         }
       } else {
         const character = /芋虫/.test(humanText) ? 'LSI芋虫' : 'ダーリンちゃん';
