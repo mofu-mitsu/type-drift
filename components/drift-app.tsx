@@ -2245,7 +2245,7 @@ export default function DriftApp() {
   };
 
   // 🔮 診断者コンソール: 診断結果を返信する処理
-  const handleSendDiagnosisReply = (postId: string) => {
+  const handleSendDiagnosisReply = async (postId: string) => {
     const input = diagnosisReplyInputs[postId];
     if (!input || !input.rank1?.trim() || !input.reasoning?.trim()) {
       setPlazaToast("第1位の判定と考察・メッセージを入力してください");
@@ -2257,7 +2257,7 @@ export default function DriftApp() {
       rank2: input.rank2?.trim() || undefined,
       rank3: input.rank3?.trim() || undefined,
       reasoning: input.reasoning.trim(),
-      diagnosedAt: new Date().toLocaleDateString("ja-JP", {
+      diagnosedAt: new Date().toLocaleString("ja-JP", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -2267,36 +2267,63 @@ export default function DriftApp() {
       diagnosedBy: "診断担当者"
     };
 
-    setConsultationPosts(prev => prev.map(p => {
-      if (p.id === postId) {
-        return {
-          ...p,
-          status: "diagnosed",
-          diagnosisResult: diagResult
-        };
-      }
-      return p;
-    }));
-
-    // GAS受付窓口へ送信 (no-cors, text/plain)
+    // 先にサーバーのカルテへ保存する。ローカルだけを「送信済み」にしない。
     try {
-      if (gasUrl || DEFAULT_GAS_URL) fetch(gasUrl || DEFAULT_GAS_URL, {
+      const saveResponse = await fetch("/api/consultations/diagnose", {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "reply_diagnosis",
-          id: postId,
-          diagnosedBy: "診断担当者",
-          rank1: diagResult.rank1,
-          rank2: diagResult.rank2 || "",
-          rank3: diagResult.rank3 || "",
-          reasoning: diagResult.reasoning
-        })
-      }).catch(() => {});
-    } catch {}
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, diagnosisResult: diagResult }),
+      });
+      const saveResult = await saveResponse.json().catch(() => ({}));
+      if (!saveResponse.ok || saveResult.ok !== true) {
+        throw new Error(typeof saveResult.error === "string" ? saveResult.error : "diagnosis_save_failed");
+      }
+    } catch (error) {
+      console.error("[Type Drift] diagnosis result save failed", error);
+      setPlazaToast("診断結果を保存できませんでした。ログイン状態を確認して、もう一度送信してください。");
+      return;
+    }
 
+    setConsultationPosts(prev => prev.map(p => p.id === postId
+      ? { ...p, status: "diagnosed", diagnosisResult: diagResult }
+      : p
+    ));
+    window.dispatchEvent(new Event("type-drift:refresh-consultations"));
     setActiveReplyPostId(null);
+
+    // スプレッドシートにも保存し、応答を確認する。失敗してもサイト上のカルテは保存済み。
+    const targetGasUrl = gasUrl || DEFAULT_GAS_URL;
+    if (targetGasUrl) {
+      try {
+        const gasResponse = await fetch("/api/feedback-gas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gasUrl: targetGasUrl,
+            payload: {
+              action: "reply_diagnosis",
+              id: postId,
+              diagnosedBy: "診断担当者",
+              rank1: diagResult.rank1,
+              rank2: diagResult.rank2 || "",
+              rank3: diagResult.rank3 || "",
+              reasoning: diagResult.reasoning
+            }
+          }),
+        });
+        const gasResult = await gasResponse.json().catch(() => ({}));
+        if (!gasResponse.ok || gasResult.ok !== true) {
+          setPlazaToast("診断結果はサイトに保存しましたが、スプレッドシートへの送信に失敗しました。");
+          return;
+        }
+      } catch (error) {
+        console.error("[Type Drift GAS] diagnosis reply relay failed", error);
+        setPlazaToast("診断結果はサイトに保存しましたが、スプレッドシートへの送信を確認できませんでした。");
+        return;
+      }
+    }
+
     setPlazaToast("診断結果を依頼者へ送信しました！");
   };
 
