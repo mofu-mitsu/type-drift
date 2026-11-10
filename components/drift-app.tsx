@@ -2278,28 +2278,44 @@ export default function DriftApp() {
       }
     } catch {}
 
-    // 3. GASスプレッドシートへ送信
+    // 3. GASスプレッドシートへ送信（API経由で保存結果を確認する）
     const targetInq = userInquiries.find(inq => inq.id === feedbackId);
+    let delivered = false;
+    let deliveryMessage = "";
     if (gasUrl && targetInq) {
       try {
-        fetch(gasUrl, {
+        const response = await fetch("/api/feedback-gas", {
           method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "reply",
-            feedbackId: targetInq.id,
-            userKey: targetInq.userKey || "",
-            replyMessage: text,
-            body: text,
-            sender: nickname || "ユーザー",
+            gasUrl,
+            payload: {
+              action: "reply",
+              replyId: newReply.id,
+              feedbackId: targetInq.id,
+              userKey: targetInq.userKey || localStorage.getItem("type-drift-user-inquiry-key") || "",
+              replyMessage: text,
+              body: text,
+              sender: nickname || "ユーザー",
+            },
           }),
-        }).catch(() => {});
-      } catch {}
+        });
+        const result = await response.json().catch(() => ({}));
+        delivered = response.ok && result.ok === true;
+        if (!delivered) {
+          deliveryMessage = typeof result.message === "string" ? result.message : "GASへの保存結果を確認できませんでした。";
+          console.error("[Type Drift] inquiry follow-up delivery failed", response.status, result);
+        }
+      } catch (error) {
+        deliveryMessage = "GASへの接続に失敗しました。";
+        console.error("[Type Drift] inquiry follow-up relay failed", error);
+      }
+    } else {
+      deliveryMessage = targetInq ? "受付連携URLが設定されていません。" : "送信元のお問い合わせを見つけられませんでした。";
     }
 
     setUserInquiryReplyText(prev => ({ ...prev, [feedbackId]: "" }));
-    setPlazaToast("運営へ返信メッセージを送信しました");
+    setPlazaToast(delivered ? "運営への追加返信をスプレッドシートに保存しました" : `画面には追加しましたが、運営への送信を確認できませんでした。（${deliveryMessage}）`);
   };
 
   const saveGasUrl = (url: string) => {
@@ -5189,7 +5205,10 @@ export default function DriftApp() {
                         cursor: "pointer",
                         boxShadow: "0 2px 8px rgba(13, 148, 136, 0.25)"
                       }}
-                      onClick={() => setActivePage("consult")}
+                      onClick={() => {
+                        setConsultationRequestOpenSignal(value => value + 1);
+                        setActivePage("consult");
+                      }}
                     >
                       自認相談室を開く →
                     </button>
@@ -5213,6 +5232,8 @@ export default function DriftApp() {
                           }}
                           onClick={() => {
                             if (isUnread) markDiagnosedPostAsRead(c.id);
+                            if (c.category === "request") setConsultationRequestOpenSignal(value => value + 1);
+                            setActivePage("consult");
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
