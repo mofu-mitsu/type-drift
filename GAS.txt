@@ -399,7 +399,55 @@ function doGet(e) {
       });
     }
 
-    // 2. ユーザー宛ての問い合わせ返信取得
+    // 2. 運営向けの意見箱一覧取得
+    if (action === "feedbacks") {
+      var feedbackSheet = ss.getSheetByName("意見箱");
+      var replySheetForFeedback = ss.getSheetByName("問い合わせ返信");
+      var feedbacks = [];
+      var replyMap = {};
+
+      if (replySheetForFeedback) {
+        var allReplyRows = replySheetForFeedback.getDataRange().getValues();
+        for (var rr = 1; rr < allReplyRows.length; rr++) {
+          var replyRow = allReplyRows[rr];
+          var targetId = String(replyRow[1] || "");
+          if (!targetId) continue;
+          if (!replyMap[targetId]) replyMap[targetId] = [];
+          replyMap[targetId].push({
+            id: String(replyRow[0] || ("rep-" + rr)),
+            sender: String(replyRow[4] || "運営チーム"),
+            date: replyRow[3] instanceof Date ? Utilities.formatDate(replyRow[3], "Asia/Tokyo", "yyyy/MM/dd HH:mm") : String(replyRow[3] || ""),
+            body: String(replyRow[5] || "")
+          });
+        }
+      }
+
+      if (feedbackSheet) {
+        var feedbackRows = feedbackSheet.getDataRange().getValues();
+        for (var ff = 1; ff < feedbackRows.length; ff++) {
+          var feedbackRow = feedbackRows[ff];
+          var feedbackId = String(feedbackRow[7] || ("fb-" + ff));
+          if (!feedbackRow[3] && !feedbackRow[1]) continue;
+          feedbacks.push({
+            id: feedbackId,
+            date: feedbackRow[0] instanceof Date ? Utilities.formatDate(feedbackRow[0], "Asia/Tokyo", "yyyy/MM/dd HH:mm") : String(feedbackRow[0] || ""),
+            author: String(feedbackRow[1] || "匿名"),
+            userType: String(feedbackRow[2] || "未設定"),
+            body: String(feedbackRow[3] || ""),
+            category: String(feedbackRow[4] || "感想・提案"),
+            needsReply: ["希望する", "true", "yes"].indexOf(String(feedbackRow[5] || "").toLowerCase()) >= 0,
+            userKey: String(feedbackRow[6] || ""),
+            read: false,
+            replies: replyMap[feedbackId] || []
+          });
+        }
+      }
+
+      feedbacks.reverse();
+      return createJsonResponse({ status: "success", feedbacks: feedbacks });
+    }
+
+    // 3. ユーザー宛ての問い合わせ返信取得
     if (action === "replies") {
       var targetUserKey = params.userKey || "";
       var replySheet = ss.getSheetByName("問い合わせ返信");
