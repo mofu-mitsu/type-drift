@@ -357,6 +357,30 @@ export default function ConsultationRoom({
     setModelView("");
   };
 
+  // リアクションはサーバーに保存し、コメントを書いた本人へ通知する。
+  const handleReactComment = async (postId: string, commentId: string) => {
+    try {
+      const response = await fetch("/api/consultation-reactions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey },
+        body: JSON.stringify({ postId, commentId }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.ok !== true) {
+        onToast("リアクションを保存できませんでした。少し待ってからもう一度試してね。");
+        return;
+      }
+      onReactComment?.(postId, commentId);
+      window.dispatchEvent(new Event("type-drift:refresh-consultations"));
+      window.dispatchEvent(new Event("type-drift:refresh-notifications"));
+      onToast(result.notified ? "リアクションを届けたよ♡ 投稿した本人に通知しました！" : "リアクションを保存したよ♡");
+    } catch (error) {
+      console.error("[Type Drift] consultation reaction request failed", error);
+      onToast("リアクションの送信に失敗しました。通信を確認してね。");
+    }
+  };
+
   // コメント送信 (forum)
   const handleSendComment = (postId: string) => {
     const text = commentInputs[postId]?.trim();
@@ -939,7 +963,7 @@ export default function ConsultationRoom({
                                 <>
                                   <p className="comment-body" style={{ whiteSpace: "pre-wrap" }}>{c.body}</p>
                                   <div className="consult-comment-tools">
-                                    <button type="button" onClick={() => { onReactComment?.(post.id, c.id); logConsultation({ externalId: `reaction-${c.id}-${Date.now()}`, parentExternalId: post.id, entryType: "reply", body: "reaction", payload: { commentId: c.id, kind: "reaction" } }); }}>♡ {c.reaction ? `+${c.reaction}` : "反応"}</button>
+                                    <button type="button" onClick={() => void handleReactComment(post.id, c.id)}>♡ {c.reaction ? `+${c.reaction}` : "反応"}</button>
                                     {c.userKey === guestKey && <>
                                       <button type="button" onClick={() => setEditingComment({ postId: post.id, comment: c })}>編集</button>
                                       <button type="button" onClick={() => onDeleteComment?.(post.id, c.id)}>削除</button>
