@@ -5573,9 +5573,7 @@ export default function DriftApp() {
             type="button"
             className="login-provider"
             onClick={() => {
-              const api = process.env.NEXT_PUBLIC_API_URL;
-              if (api) window.location.href = `${api}/api/auth/x/redirect`;
-              else setPlazaToast("NEXT_PUBLIC_API_URLを設定するとXログインが始まります");
+              window.location.href = `${window.location.origin}/api/auth/x/redirect`;
             }}
           >
             𝕏　Xでログイン
@@ -5585,15 +5583,7 @@ export default function DriftApp() {
             type="button"
             className="login-provider"
             onClick={() => {
-              const api = process.env.NEXT_PUBLIC_API_URL;
-              if (api) {
-                window.location.href = `${api}/api/auth/google/redirect`;
-              } else {
-                setIsAdminLoggedIn(true);
-                localStorage.setItem("type-drift-is-admin", "true");
-                setLoginOpen(false);
-                setPlazaToast("Googleアカウントでログインしました");
-              }
+              window.location.href = `${window.location.origin}/api/auth/google/redirect`;
             }}
           >
             G　Googleでログイン
