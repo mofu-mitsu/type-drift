@@ -205,26 +205,38 @@ export default function ConsultationRoom({
     setIsPosting(true);
   };
 
-  // 削除実行処理（iframeでwindow.confirmがブロックされるのを回避）
-  const executeDelete = (postId: string) => {
+  // 削除はDB側で確認してから画面から取り除く。GASへの通知だけではDBの投稿は消えない。
+  const executeDelete = async (postId: string) => {
     setConfirmingDeleteId(null);
-    onDeletePost(postId);
-
-    // GASへ削除通知
     try {
-      if (activeGasUrl) fetch(activeGasUrl, {
+      const response = await fetch("/api/consultations/delete", {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "delete_consultation",
-          id: postId,
-          userKey: guestKey
-        })
-      }).catch(() => {});
-    } catch {}
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey },
+        body: JSON.stringify({ postId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok !== true) {
+        throw new Error(typeof result.error === "string" ? result.error : "投稿を削除できませんでした");
+      }
+      onDeletePost(postId);
 
-    onToast("投稿を取り下げました");
+      // スプレッドシート側にも削除通知を送る（DB削除の成否とは独立）。
+      try {
+        if (activeGasUrl) fetch(activeGasUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "delete_consultation", id: postId, userKey: guestKey })
+        }).catch(() => {});
+      } catch {}
+      onToast("投稿を取り下げました");
+    } catch (error) {
+      console.error("[Type Drift] consultation delete failed", error);
+      onToast(error instanceof Error && error.message === "forbidden"
+        ? "自分の投稿だけ削除できます"
+        : "投稿を削除できませんでした。時間をおいてもう一度お試しください");
+    }
   };
 
   // 新規投稿 or 編集保存
