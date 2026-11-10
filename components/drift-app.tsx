@@ -2796,12 +2796,19 @@ export default function DriftApp() {
           : isSessionKey
             ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
             : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot };
-        const response = await apiFetch("/api/direct-messages", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
-          body: JSON.stringify(payload),
-        });
+        const response = isAuthenticated
+          ? await fetch("/api/direct-messages", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            })
+          : await apiFetch("/api/direct-messages", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+              body: JSON.stringify(payload),
+            });
         if (!response.ok) {
           const detail = await response.clone().text().catch(() => "");
           setPlazaToast(`メッセージを送信できませんでした（${response.status}）`);
