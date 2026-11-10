@@ -299,15 +299,17 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
       // localStorage fallback
     }
 
-    // 3. Google Apps Script (スプレッドシート) Webhook が設定されている場合は非同期送信
-    const gasUrl = localStorage.getItem("type-drift-gas-url") || process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL;
-    if (gasUrl) {
-      try {
-        fetch(gasUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({
+    // 3. GASへサーバー経由で送信し、スプレッドシートへの書き込み応答を確認
+    const gasUrl = localStorage.getItem("type-drift-gas-url") || process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
+    let gasDelivered = false;
+    let gasDeliveryError = "";
+    try {
+      const gasResponse = await fetch("/api/feedback-gas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gasUrl,
+          payload: {
             action: "feedback",
             id: feedbackItem.id,
             feedbackId: feedbackItem.id,
@@ -321,11 +323,20 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
             category: category,
             wantReply: needsReply,
             needsReply: needsReply,
-          }),
-        }).catch(() => {});
-      } catch {
-        // ignore network error
+          },
+        }),
+      });
+      const gasResult = await gasResponse.json().catch(() => ({}));
+      gasDelivered = gasResponse.ok && gasResult.ok === true;
+      if (!gasDelivered) {
+        gasDeliveryError = typeof gasResult.message === "string"
+          ? gasResult.message
+          : "GASへの保存結果を確認できませんでした。";
+        console.error("[Type Drift] GAS feedback delivery failed", gasResponse.status, gasResult);
       }
+    } catch (error) {
+      gasDeliveryError = "GASへの接続に失敗しました。";
+      console.error("[Type Drift] GAS feedback relay failed", error);
     }
 
     // 4. バックエンドAPIが設定されている場合も送信
@@ -345,7 +356,13 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
     }
 
     setBody("");
-    setStatus(needsReply ? "ご意見をお届けしました！返信をお待ちください（「あなたの活動」タブから確認できます）。" : "ご意見を大切にお届けしました。ありがとうございます！");
+    if (gasDelivered) {
+      setStatus(needsReply
+        ? "ご意見をスプレッドシートに保存しました！返信をお待ちください（「あなたの活動」タブから確認できます）。"
+        : "ご意見をスプレッドシートに保存しました。ありがとうございます！");
+    } else {
+      setStatus(`ご意見は送信処理に進みましたが、スプレッドシートへの保存を確認できませんでした。${gasDeliveryError ? `（${gasDeliveryError}）` : ""} 運営側の記録も確認してください。`);
+    }
   };
 
   return (
