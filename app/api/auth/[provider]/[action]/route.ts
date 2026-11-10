@@ -22,6 +22,7 @@ function fail(request: NextRequest, reason: string) {
   const url = new URL("/", request.nextUrl.origin);
   url.searchParams.set("login", "error");
   url.searchParams.set("reason", reason);
+  url.searchParams.set("provider", request.nextUrl.pathname.split("/")[3] || "unknown");
   const response = NextResponse.redirect(url);
   response.cookies.set("td_oauth_state", "", cookieOptions(0));
   response.cookies.set("td_oauth_verifier", "", cookieOptions(0));
@@ -125,7 +126,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pro
     response.cookies.set("td_oauth_verifier", "", cookieOptions(0));
     return response;
   } catch (error) {
-    console.error("[Type Drift OAuth] callback failed", { provider, error: error instanceof Error ? error.message : String(error) });
-    return fail(request, "callback_failed");
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[Type Drift OAuth] callback failed", { provider, error: detail });
+    const safeReason = /token exchange/i.test(detail) ? "token_exchange_failed"
+      : /profile request|profile missing/i.test(detail) ? "profile_fetch_failed"
+      : /DATABASE_URL|User persistence|duplicate key|relation .* does not exist|column .* does not exist/i.test(detail) ? "database_failed"
+      : /AUTH_SESSION_SECRET/i.test(detail) ? "session_secret_missing"
+      : "callback_failed";
+    return fail(request, safeReason);
   }
 }
