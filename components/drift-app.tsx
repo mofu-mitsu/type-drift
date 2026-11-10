@@ -537,6 +537,103 @@ export default function DriftApp() {
     return () => { cancelled = true; };
   }, []);
 
+  // ログインしたアカウントごとに、ブラウザ内のアプリデータをNeonへ同期する。
+  // 既存のアカウントデータがある場合はサーバー側を復元し、空のブラウザ状態で上書きしない。
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    let syncing = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const excludedKeys = new Set([
+      "type-drift-is-admin",
+      "type-drift-guest-key",
+      "type-drift-gas-url",
+      "type-drift-user-email",
+      "type-drift-user-key",
+    ]);
+    const readLocalState = () => {
+      const state: Record<string, string> = {};
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (!key || !key.startsWith("type-drift-") || excludedKeys.has(key)) continue;
+        const value = localStorage.getItem(key);
+        if (value !== null) state[key] = value;
+      }
+      return state;
+    };
+    const saveState = async (state: Record<string, string>) => {
+      const response = await fetch("/api/account-state", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ state }),
+      });
+      if (!response.ok) throw new Error(`Account state save failed: ${response.status}`);
+    };
+    const sync = async (initial = false) => {
+      if (cancelled || syncing || document.visibilityState !== "visible") return;
+      syncing = true;
+      try {
+        if (initial) {
+          const response = await fetch("/api/account-state", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!response.ok) throw new Error(`Account state load failed: ${response.status}`);
+          const remote = await response.json();
+          if (cancelled) return;
+          const local = readLocalState();
+          const remoteState = remote?.state && typeof remote.state === "object" ? remote.state as Record<string, unknown> : {};
+          if (remote.hasState && Object.keys(remoteState).length > 0) {
+            // サーバーに存在するキーはサーバーを正とし、端末にしかないキーは消さずに統合する。
+            const merged: Record<string, string> = { ...local };
+            for (const [key, value] of Object.entries(remoteState)) {
+              if (key.startsWith("type-drift-") && !excludedKeys.has(key) && typeof value === "string") {
+                merged[key] = value;
+              }
+            }
+            for (const [key, value] of Object.entries(merged)) localStorage.setItem(key, value);
+            await saveState(merged);
+            // 初期化済みReact stateも復元データで読み直す。1回だけリロードする。
+            const reloadMarker = "type-drift-account-state-restored";
+            if (sessionStorage.getItem(reloadMarker) !== "1") {
+              sessionStorage.setItem(reloadMarker, "1");
+              window.location.reload();
+              return;
+            }
+          } else {
+            // このアカウントへの初回ログインなら、現在の端末にあるデータを初期データとして保存。
+            await saveState(local);
+          }
+        } else {
+          await saveState(readLocalState());
+        }
+      } catch (error) {
+        console.error("[Type Drift account-state] sync failed", error);
+      } finally {
+        syncing = false;
+      }
+    };
+    void sync(true).then(() => {
+      if (!cancelled && !timer) {
+        timer = window.setInterval(() => void sync(false), 15000);
+      }
+    });
+    const syncOnReturn = () => {
+      if (document.visibilityState === "visible") void sync(false);
+    };
+    window.addEventListener("focus", syncOnReturn);
+    document.addEventListener("visibilitychange", syncOnReturn);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+      window.removeEventListener("focus", syncOnReturn);
+      document.removeEventListener("visibilitychange", syncOnReturn);
+    };
+  }, [isAuthenticated]);
+
   useEffect(() => {
     const openFeedbackFromAiError = (event: Event) => {
       const detail = (event as CustomEvent<{ category?: string; body?: string }>).detail;
