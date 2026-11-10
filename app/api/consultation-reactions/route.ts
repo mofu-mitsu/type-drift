@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, readSession } from "@/lib/server-auth";
+import { INITIAL_CONSULTATION_POSTS } from "@/types/consultation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,35 @@ export async function POST(request: NextRequest) {
       ORDER BY created_at DESC
       LIMIT 1
     `;
-    const target = rows[0] as ConsultationEntry | undefined;
+    let target = rows[0] as ConsultationEntry | undefined;
+    if (!target) {
+      // Seed comments are initially rendered from the static demo thread. Materialize
+      // the selected seed comment on first reaction so the normal DB reaction path works.
+      const seedPost = INITIAL_CONSULTATION_POSTS.find((post) => post.id === postId);
+      const seedComment = seedPost?.comments?.find((comment) => comment.id === commentId);
+      if (seedComment) {
+        const inserted = await sql`
+          INSERT INTO consultation_entries
+            (external_id, parent_external_id, entry_type, category, body, payload, guest_key, created_at, updated_at)
+          VALUES (
+            ${seedComment.id}, ${postId}, 'reply', NULL, ${seedComment.body},
+            ${JSON.stringify(seedComment)}::jsonb, NULL, NOW(), NOW()
+          )
+          ON CONFLICT (external_id) DO NOTHING
+          RETURNING id, external_id, parent_external_id, user_id, guest_key, payload
+        `;
+        const refreshed = inserted.length ? inserted : await sql`
+          SELECT id, external_id, parent_external_id, user_id, guest_key, payload
+          FROM consultation_entries
+          WHERE external_id = ${commentId}
+            AND parent_external_id = ${postId}
+            AND entry_type = 'reply'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
+        target = refreshed[0] as ConsultationEntry | undefined;
+      }
+    }
     if (!target) {
       return NextResponse.json({ ok: false, error: "comment_not_found" }, { status: 404 });
     }
