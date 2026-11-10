@@ -5202,6 +5202,9 @@ export default function DriftApp() {
                 onClick={() => {
                   setActivePage("plaza");
                   setFeedbackOpen(true);
+                  window.setTimeout(() => {
+                    document.querySelector(".feedback-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }, 120);
                   setPlazaToast("広場の意見箱を開きました 📮");
                 }}
               >
