@@ -2051,6 +2051,30 @@ export default function DriftApp() {
     }
   };
 
+  const fetchSpreadsheetFeedbacks = async (url: string) => {
+    if (!url || !url.startsWith("http")) return;
+    try {
+      const endpoint = new URL(url);
+      endpoint.searchParams.set("action", "feedbacks");
+      const response = await fetch(endpoint.toString(), { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data && Array.isArray(data.feedbacks)) {
+        setAdminFeedbacks(data.feedbacks);
+        try { localStorage.setItem("type-drift-admin-feedbacks", JSON.stringify(data.feedbacks)); } catch {}
+      }
+    } catch (error) {
+      console.warn("[Type Drift] admin feedback sync failed", error);
+    }
+  };
+
+  // 管理者でログインしたときは、同じブラウザのlocalStorageではなくシートの受信一覧を同期する。
+  useEffect(() => {
+    if (storageReady && isAdminLoggedIn && gasUrl) {
+      void fetchSpreadsheetFeedbacks(gasUrl);
+    }
+  }, [storageReady, isAdminLoggedIn, gasUrl]);
+
   // 開発者トレイから直接お知らせを配信する処理
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
