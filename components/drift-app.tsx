@@ -511,6 +511,18 @@ export default function DriftApp() {
       if (data?.authenticated && data?.user?.email) {
         const email = String(data.user.email).trim().toLowerCase();
         const provider = String(data.provider || data.user.provider || "").toLowerCase();
+        // ログインしたブラウザに残るゲストプロフィールを、本人のセッションへ安全に紐付ける。
+        // 表示名や投稿数ではなく、ブラウザ固有のゲストキーが一致するものだけを移行する。
+        try {
+          await fetch("/api/account-migrate", {
+            method: "POST",
+            credentials: "include",
+            headers: { "X-Guest-Key": getGuestKey() },
+            cache: "no-store",
+          });
+        } catch (migrationError) {
+          console.error("[Type Drift] guest profile migration failed", migrationError);
+        }
         const isAdmin = data.isAdmin === true;
         setIsAuthenticated(true);
         setAuthProvider(provider);
