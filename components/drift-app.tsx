@@ -2836,21 +2836,24 @@ export default function DriftApp() {
   }> = (() => {
     const reactions = serverNotifications.filter(n => n.type.includes("reaction"));
     const others = serverNotifications.filter(n => !n.type.includes("reaction"));
-    const grouped: Array<{
-      id: number;
-      groupedIds: number[];
-      type: string;
-      entity_id: string | number | null;
-      message: string;
-      created_at: string;
-    }> = reactions.length ? [{
-      id: reactions[0].id,
-      groupedIds: reactions.map(n => n.id),
-      type: "bottle_reaction",
-      entity_id: null,
-      message: `ボトルに${reactions.length}件のいいねが届きました`,
-      created_at: reactions.reduce((latest, n) => n.created_at > latest ? n.created_at : latest, reactions[0].created_at),
-    }] : [];
+    const reactionGroups = new Map<string, typeof reactions>();
+    for (const reaction of reactions) {
+      const group = reactionGroups.get(reaction.type) || [];
+      group.push(reaction);
+      reactionGroups.set(reaction.type, group);
+    }
+    const grouped = Array.from(reactionGroups.entries()).map(([type, items]) => ({
+      id: items[0].id,
+      groupedIds: items.map(item => item.id),
+      type,
+      entity_id: items[0].entity_id,
+      message: type === "consultation_reaction"
+        ? `自認相談室のコメントに${items.length}件のリアクションが届きました`
+        : type === "reply_reaction"
+          ? `返信に${items.length}件のリアクションが届きました`
+          : `ボトルに${items.length}件のいいねが届きました`,
+      created_at: items.reduce((latest, item) => item.created_at > latest ? item.created_at : latest, items[0].created_at),
+    }));
     return [...others, ...grouped].sort((a, b) => b.created_at.localeCompare(a.created_at));
   })();
 
