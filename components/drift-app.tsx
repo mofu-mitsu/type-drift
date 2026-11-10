@@ -5996,7 +5996,7 @@ export default function DriftApp() {
           <p className="eyebrow">WELCOME BACK</p>
           <h2>海へ戻る</h2>
           <p>ログイン方法を選んでください。認証後も、海に流すボトルは匿名のままです。</p>
-          {isAuthenticated && <div className="admin-login-box" style={{ marginTop: 14 }}><p className="admin-logged-in-label">{authProvider.includes("google") ? "G Google" : authProvider === "x" || authProvider.includes("twitter") ? "𝕏 X" : "✓"}  ログイン中</p><p style={{ margin: "6px 0 0", overflowWrap: "anywhere" }}>{authName}</p>{isAdminLoggedIn && <small>管理者アカウント</small>}</div>}
+          {isAuthenticated && <div className="admin-login-box" style={{ marginTop: 14 }}><p className="admin-logged-in-label">{authProvider.includes("google") ? "G Google" : authProvider === "x" || authProvider.includes("twitter") ? "𝕏 X" : "✓"}  ログイン中</p><p style={{ margin: "6px 0 0", overflowWrap: "anywhere" }}>{authName}</p>{isAdminLoggedIn && <small>管理者アカウント</small>}<button type="button" className="clean-secondary-btn" style={{ marginTop: 10, width: "100%" }} onClick={async () => { try { const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include", cache: "no-store" }); if (!response.ok) throw new Error("logout_failed"); setIsAuthenticated(false); setAuthProvider(""); setAuthName(""); setIsAdminLoggedIn(false); setAdminEmail(""); setPlazaToast("ログアウトしました"); setLoginOpen(false); window.location.reload(); } catch (error) { console.error("[Type Drift auth] logout failed", error); setPlazaToast("ログアウトできませんでした。もう一度お試しください。"); } }}>ログアウト</button></div>}
 
           <button
             type="button"
