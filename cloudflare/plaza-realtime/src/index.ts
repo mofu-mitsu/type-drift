@@ -10,7 +10,7 @@ type PlazaMessage = {
   id: string;
   author: string;
   body: string;
-  kind: "human" | "ai" | "emote";
+  kind: "human" | "ai" | "emote" | "system";
   emoji?: string;
   createdAt: number;
 };
@@ -127,6 +127,22 @@ export class PlazaRoom {
           body,
           kind: "human",
           emoji: "◌",
+          createdAt: Date.now(),
+        });
+        return;
+      }
+
+      if (type === "plaza_system_message") {
+        const author = clean(data.author, MAX_NICKNAME) || "広場の海風";
+        const body = clean(data.body, MAX_BODY);
+        const emoji = clean(data.emoji, 8) || "🌊";
+        if (!body) return;
+        this.push({
+          id: crypto.randomUUID(),
+          author,
+          body,
+          kind: "system",
+          emoji,
           createdAt: Date.now(),
         });
         return;
