@@ -24,6 +24,33 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const setFromPayload = (data: Partial<SharedProfile>) => {
+      const links = Array.isArray(data.links) ? data.links.filter((item): item is PublicLink =>
+        !!item && typeof item.title === "string" && typeof item.url === "string" && /^https?:\/\//i.test(item.url)
+      ).slice(0, 12) : [];
+      const image = typeof data.image === "string" && /^https?:\/\//i.test(data.image) ? data.image : "";
+      setProfile({
+        name: typeof data.name === "string" && data.name ? data.name : "匿名の誰か",
+        mbti: data.mbti || "",
+        socionics: data.socionics || "",
+        enneagram: data.enneagram || "",
+        otherType: data.otherType || "",
+        bio: data.bio || "",
+        image,
+        links,
+      });
+    };
+    const shareId = params.get("share");
+    if (shareId) {
+      void fetch(`/api/share/${encodeURIComponent(shareId)}`, { cache: "no-store" })
+        .then(response => { if (!response.ok) throw new Error(`Share lookup failed: ${response.status}`); return response.json(); })
+        .then(result => {
+          if (result.kind !== "profile") throw new Error("Wrong share type");
+          setFromPayload(result.payload || {});
+        })
+        .catch(error => console.error("[Type Drift] shared profile lookup failed", error));
+      return;
+    }
     let links: PublicLink[] = [];
     try {
       const parsed = JSON.parse(params.get("links") || "[]");
@@ -31,15 +58,14 @@ export default function PublicProfilePage() {
         item && typeof item.title === "string" && typeof item.url === "string" && /^https?:\/\//i.test(item.url)
       ).slice(0, 12);
     } catch {}
-    const image = params.get("image") || "";
-    setProfile({
+    setFromPayload({
       name: params.get("name") || "匿名の誰か",
       mbti: params.get("mbti") || "",
       socionics: params.get("socionics") || "",
       enneagram: params.get("enneagram") || "",
       otherType: params.get("otherType") || "",
       bio: params.get("bio") || "",
-      image: /^https?:\/\//i.test(image) ? image : "",
+      image: params.get("image") || "",
       links,
     });
   }, []);
