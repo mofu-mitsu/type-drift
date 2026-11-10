@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     await sql`CREATE TABLE IF NOT EXISTS account_app_state (user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, state JSONB NOT NULL DEFAULT '{}'::jsonb, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
     const rows = await sql`SELECT state, updated_at FROM account_app_state WHERE user_id = ${userId} LIMIT 1`;
     const row = rows[0] as { state?: unknown; updated_at?: string } | undefined;
-    return response({ authenticated: true, hasState: Boolean(row), state: row?.state && typeof row.state === "object" ? row.state : {}, updatedAt: row?.updated_at || null });
+    return response({ authenticated: true, userId, hasState: Boolean(row), state: row?.state && typeof row.state === "object" ? row.state : {}, updatedAt: row?.updated_at || null });
   } catch (error) {
     console.error("[Type Drift account-state] GET failed", error);
     return response({ error: "account_state_read_failed" }, 500);
