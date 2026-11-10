@@ -543,7 +543,7 @@ export default function DriftApp() {
     if (!isAuthenticated) return;
     let cancelled = false;
     let syncing = false;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    let timer: number | undefined;
     const excludedKeys = new Set([
       "type-drift-is-admin",
       "type-drift-guest-key",
