@@ -545,8 +545,108 @@ export default function DriftApp() {
     return () => { cancelled = true; };
   }, []);
 
-  // ログインしたアカウントごとに、ブラウザ内のアプリデータをNeonへ同期する。
-  // 既存のアカウントデータがある場合はサーバー側を復元し、空のブラウザ状態で上書きしない。
+  // アカウントのローカル状態は混ぜず、ログイン先ユーザーのNeon状態で置き換える。
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    let syncing = false;
+    let timer: number | undefined;
+    const excludedKeys = new Set([
+      "type-drift-is-admin",
+      "type-drift-guest-key",
+      "type-drift-gas-url",
+      "type-drift-user-email",
+      "type-drift-user-key",
+    ]);
+    const isAppKey = (key: string) => key.startsWith("type-drift-") && !excludedKeys.has(key);
+    const clearLocalAccountState = () => {
+      const keys: string[] = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && isAppKey(key)) keys.push(key);
+      }
+      for (const key of keys) localStorage.removeItem(key);
+    };
+    const readLocalState = () => {
+      const state: Record<string, string> = {};
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (!key || !isAppKey(key)) continue;
+        const value = localStorage.getItem(key);
+        if (value !== null) state[key] = value;
+      }
+      return state;
+    };
+    const saveState = async (state: Record<string, string>) => {
+      const response = await fetch("/api/account-state", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ state }),
+      });
+      if (!response.ok) throw new Error(`Account state save failed: ${response.status}`);
+    };
+    const sync = async (initial = false) => {
+      if (cancelled || syncing || document.visibilityState !== "visible") return;
+      syncing = true;
+      try {
+        if (initial) {
+          const response = await fetch("/api/account-state", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!response.ok) throw new Error(`Account state load failed: ${response.status}`);
+          const remote = await response.json();
+          if (cancelled) return;
+          const remoteState = remote?.state && typeof remote.state === "object"
+            ? remote.state as Record<string, unknown>
+            : {};
+
+          // 端末に残った前アカウント/ゲストの状態は先にすべて外し、ログイン先の状態だけを復元。
+          clearLocalAccountState();
+          const restored: Record<string, string> = {};
+          if (remote.hasState) {
+            for (const [key, value] of Object.entries(remoteState)) {
+              if (isAppKey(key) && typeof value === "string") {
+                localStorage.setItem(key, value);
+                restored[key] = value;
+              }
+            }
+          }
+          // 空の新規アカウントに、以前のブラウザのゲスト状態を初期データとして流し込まない。
+          await saveState(restored);
+          const reloadMarker = `type-drift-account-state-restored:${remote.userId || "current"}`;
+          if (sessionStorage.getItem(reloadMarker) !== "1") {
+            sessionStorage.setItem(reloadMarker, "1");
+            window.location.reload();
+            return;
+          }
+        } else {
+          await saveState(readLocalState());
+        }
+      } catch (error) {
+        console.error("[Type Drift account-state] sync failed", error);
+      } finally {
+        syncing = false;
+      }
+    };
+    void sync(true).then(() => {
+      if (!cancelled && !timer) timer = window.setInterval(() => void sync(false), 15000);
+    });
+    const syncOnReturn = () => {
+      if (document.visibilityState === "visible") void sync(false);
+    };
+    window.addEventListener("focus", syncOnReturn);
+    document.addEventListener("visibilitychange", syncOnReturn);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+      window.removeEventListener("focus", syncOnReturn);
+      document.removeEventListener("visibilitychange", syncOnReturn);
+    };
+  }, [isAuthenticated]);
   useEffect(() => {
     if (!isAuthenticated) return;
     let cancelled = false;
