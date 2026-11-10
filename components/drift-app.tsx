@@ -442,6 +442,7 @@ export default function DriftApp() {
   const [buriCaughtModalOpen, setBuriCaughtModalOpen] = useState(false);
   const [swimmingBuriVisible, setSwimmingBuriVisible] = useState(true);
   const [consultationPosts, setConsultationPosts] = useState<ConsultationPost[]>(INITIAL_CONSULTATION_POSTS);
+  const [consultationRequestOpenSignal, setConsultationRequestOpenSignal] = useState(0);
   const [buriGiftDialog, setBuriGiftDialog] = useState<{ targetName: string; message: string; emoji: string } | null>(null);
   const [buriTargetSelectorOpen, setBuriTargetSelectorOpen] = useState(false);
   const [inspectProfile, setInspectProfile] = useState<{ id: string; name: string; emoji: string; mbti?: string; socionics?: string; enneagram?: string; psycho?: string; overview: string; image?: string; isSelf?: boolean; links?: Array<{ id: string; title: string; url: string }> } | null>(null);
@@ -2068,6 +2069,50 @@ export default function DriftApp() {
       console.warn("[Type Drift] admin feedback sync failed", error);
     }
   };
+
+  const fetchSpreadsheetReplies = async (url: string, inquiries: FeedbackItem[]) => {
+    const userKeys = Array.from(new Set(inquiries.map(item => item.userKey).filter((key): key is string => Boolean(key))));
+    if (!url || userKeys.length === 0) return;
+    try {
+      const replyGroups = await Promise.all(userKeys.map(async userKey => {
+        const endpoint = new URL(url);
+        endpoint.searchParams.set("action", "replies");
+        endpoint.searchParams.set("userKey", userKey);
+        const response = await fetch(endpoint.toString(), { cache: "no-store" });
+        if (!response.ok) return [];
+        const data = await response.json();
+        return Array.isArray(data?.replies) ? data.replies : [];
+      }));
+      const replies = replyGroups.flat();
+      if (!replies.length) return;
+      setUserInquiries(current => {
+        const merged = current.map(inquiry => {
+          const sheetReplies = replies.filter((reply: any) => String(reply.feedbackId) === String(inquiry.id)).map((reply: any) => ({
+            id: String(reply.replyId || `rep-${reply.feedbackId}-${reply.date}`),
+            sender: String(reply.sender || "運営チーム"),
+            date: String(reply.date || ""),
+            body: String(reply.body || ""),
+            isUserReply: !String(reply.sender || "").includes("運営"),
+          }));
+          if (!sheetReplies.length) return inquiry;
+          const byId = new Map((inquiry.replies || []).map(reply => [reply.id, reply]));
+          for (const reply of sheetReplies) byId.set(reply.id, reply);
+          return { ...inquiry, replies: Array.from(byId.values()).sort((a, b) => a.date.localeCompare(b.date)) };
+        });
+        try { localStorage.setItem("type-drift-my-inquiries", JSON.stringify(merged)); } catch {}
+        return merged;
+      });
+    } catch (error) {
+      console.warn("[Type Drift] inquiry reply sync failed", error);
+    }
+  };
+
+  // 自分の問い合わせ履歴をシートの返信と照合し、別端末・別セッションでも運営返信を表示する。
+  useEffect(() => {
+    if (storageReady && gasUrl && userInquiries.length) {
+      void fetchSpreadsheetReplies(gasUrl, userInquiries);
+    }
+  }, [storageReady, gasUrl, userInquiries.length]);
 
   // 管理者でログインしたときは、同じブラウザのlocalStorageではなくシートの受信一覧を同期する。
   useEffect(() => {
@@ -4153,6 +4198,7 @@ export default function DriftApp() {
       <ConsultationRoom
         posts={consultationPosts}
         sharedPostId={sharedConsultId}
+        openRequestSignal={consultationRequestOpenSignal}
         onAddPost={(newPost) => {
           setConsultationPosts(prev => [newPost, ...prev]);
         }}
@@ -4659,17 +4705,18 @@ export default function DriftApp() {
                           <p>{notification.message}</p>
                           <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" })}</time>
                         </div>
-                        {notification.type === "consultation_reaction" && notification.entity_id != null && (
+                        {(notification.type === "consultation_reaction" || notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) && notification.entity_id != null && (
                           <button
                             type="button"
                             onClick={() => {
                               setSharedConsultId(String(notification.entity_id));
+                              if (notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) setConsultationRequestOpenSignal(value => value + 1);
                               setActivePage("consult");
                               void markServerNotificationsRead(undefined, notification.id, "groupedIds" in notification ? notification.groupedIds : undefined);
                             }}
-                            aria-label="リアクションが届いた相談室へ移動して既読にする"
+                            aria-label="相談室または自認診断依頼へ移動して既読にする"
                           >
-                            相談室へ移動
+                            {notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果") ? "自認診断依頼へ移動" : "相談室へ移動"}
                           </button>
                         )}
                         <button type="button" onClick={() => void markServerNotificationsRead(undefined, notification.id, "groupedIds" in notification ? notification.groupedIds : undefined)} aria-label="この通知を既読にする">既読</button>
@@ -5260,13 +5307,13 @@ export default function DriftApp() {
 
                     {/* ユーザーからの追加返信送信フォーム */}
                     <div className="inquiry-user-reply-box">
-                      <input
-                        type="text"
+                      <textarea
                         className="inquiry-user-reply-input"
                         value={userInquiryReplyText[inq.id] || ""}
                         onChange={e => setUserInquiryReplyText({ ...userInquiryReplyText, [inq.id]: e.target.value })}
-                        placeholder="運営へ返信・補足を入力…"
+                        placeholder="運営へ返信・補足を入力…（改行できます）"
                         maxLength={500}
+                        rows={3}
                       />
                       <button
                         type="button"
