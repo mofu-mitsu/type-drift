@@ -731,6 +731,7 @@ export default function DriftApp() {
 
   // 📮 運営・管理者インボックス & 問い合わせ State
   const [adminFeedbacks, setAdminFeedbacks] = useState<FeedbackItem[]>([]);
+  const [feedbackFilter, setFeedbackFilter] = useState<"reply" | "no-reply">("reply");
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPanelTab, setAdminPanelTab] = useState<"announcements" | "feedback" | "diagnosis">("announcements");
   const [adminEmail, setAdminEmail] = useState("");
@@ -1929,13 +1930,13 @@ export default function DriftApp() {
       const savedInquiries = localStorage.getItem("type-drift-my-inquiries");
       if (savedInquiries) {
         const parsed = JSON.parse(savedInquiries);
-        if (Array.isArray(parsed)) setUserInquiries(parsed);
+        if (Array.isArray(parsed)) setUserInquiries(parsed.map((item: FeedbackItem) => ({ ...item, needsReply: item.needsReply === true || String(item.needsReply).toLowerCase() === "true" || ["返信希望", "希望する", "はい", "yes", "1"].includes(String(item.needsReply || "").trim().toLowerCase()) })));
       }
       // 管理者トレイの復元
       const savedFeedbacks = localStorage.getItem("type-drift-admin-feedbacks");
       if (savedFeedbacks) {
         const parsed = JSON.parse(savedFeedbacks);
-        if (Array.isArray(parsed)) setAdminFeedbacks(parsed);
+        if (Array.isArray(parsed)) setAdminFeedbacks(parsed.map((item: FeedbackItem) => ({ ...item, needsReply: item.needsReply === true || String(item.needsReply).toLowerCase() === "true" || ["返信希望", "希望する", "はい", "yes", "1"].includes(String(item.needsReply || "").trim().toLowerCase()) })));
       }
       // 保存済みお知らせ一覧の復元
       const savedAnnouncements = localStorage.getItem("type-drift-announcements");
@@ -2067,6 +2068,7 @@ export default function DriftApp() {
         // 運営以外の送信者から来た返信は、ユーザーの追加コメントとして扱う。
         const normalized = data.feedbacks.map((fb: FeedbackItem) => ({
           ...fb,
+          needsReply: fb.needsReply === true || String(fb.needsReply).toLowerCase() === "true" || ["返信希望", "希望する", "はい", "yes", "1"].includes(String(fb.needsReply || "").trim().toLowerCase()),
           replies: (fb.replies || []).map(reply => ({
             ...reply,
             isUserReply: reply.isUserReply ?? !String(reply.sender || "").includes("運営"),
@@ -5350,6 +5352,7 @@ export default function DriftApp() {
                 <div key={inq.id} className="inquiry-card">
                   <div className="inquiry-head">
                     <span className="announcement-badge">{inq.category}</span>
+                    <span style={{ marginLeft: "auto", padding: "3px 9px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, background: inq.needsReply ? "#fff7ed" : "#f1f5f9", color: inq.needsReply ? "#9a3412" : "#475569" }}>{inq.needsReply ? "✉️ 返信希望" : "📨 返信不要"}</span>
                     <span>{inq.date}</span>
                   </div>
                   <p className="inquiry-body">{inq.body}</p>
@@ -5360,8 +5363,8 @@ export default function DriftApp() {
                     {(!inq.replies || inq.replies.length === 0) ? (
                       <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
                         {inq.needsReply
-                          ? "返信を希望しています。運営からのお返事が届くまで、こちらで確認できます。"
-                          : "ご意見を送信しました。返信は不要として受け付けています。追加の補足があれば、下から送れます。"}
+                          ? "✉️ 返信希望として受け付けました。運営からの返事は、この欄に届きます。"
+                          : "📨 返信不要として受け付けました。返事を待つ必要はありません。補足がある場合だけ、下から送れます。"}
                       </p>
                     ) : (
                       inq.replies.map(rep => (
@@ -5501,19 +5504,18 @@ export default function DriftApp() {
               {adminFeedbacks.length === 0 ? (
                 <p className="admin-empty-feedbacks">まだ届いたご意見はありません。広場の「意見箱」から送信テストを行えます。</p>
               ) : (
-                <div className="admin-inbox-clean">
-                  {[...adminFeedbacks.filter(fb => fb.needsReply), ...adminFeedbacks.filter(fb => !fb.needsReply)].map((fb, index, sorted) => (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px", marginBottom: "14px" }}>
+                    <button type="button" onClick={() => setFeedbackFilter("reply")} aria-pressed={feedbackFilter === "reply"} style={{ padding: "12px 10px", borderRadius: "12px", border: feedbackFilter === "reply" ? "1.5px solid #fb923c" : "1.5px solid #e2e8f0", background: feedbackFilter === "reply" ? "#fff7ed" : "#fff", color: feedbackFilter === "reply" ? "#9a3412" : "#64748b", fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+                      ✉️ 返信希望 <span style={{ display: "block", fontSize: "11px", marginTop: "3px" }}>{adminFeedbacks.filter(fb => fb.needsReply).length}件</span>
+                    </button>
+                    <button type="button" onClick={() => setFeedbackFilter("no-reply")} aria-pressed={feedbackFilter === "no-reply"} style={{ padding: "12px 10px", borderRadius: "12px", border: feedbackFilter === "no-reply" ? "1.5px solid #94a3b8" : "1.5px solid #e2e8f0", background: feedbackFilter === "no-reply" ? "#f1f5f9" : "#fff", color: feedbackFilter === "no-reply" ? "#334155" : "#64748b", fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+                      📨 返信不要 <span style={{ display: "block", fontSize: "11px", marginTop: "3px" }}>{adminFeedbacks.filter(fb => !fb.needsReply).length}件</span>
+                    </button>
+                  </div>
+                  <div className="admin-inbox-clean">
+                  {adminFeedbacks.filter(fb => feedbackFilter === "reply" ? Boolean(fb.needsReply) : !fb.needsReply).map(fb => (
                     <Fragment key={fb.id}>
-                    {(index === 0 || sorted[index - 1].needsReply !== fb.needsReply) && (
-                      <div style={{ margin: "18px 0 10px", padding: "10px 12px", borderRadius: "12px", background: fb.needsReply ? "#fff7ed" : "#f1f5f9", border: `1px solid ${fb.needsReply ? "#fed7aa" : "#cbd5e1"}` }}>
-                        <strong style={{ fontSize: "13px", color: fb.needsReply ? "#9a3412" : "#475569" }}>
-                          {fb.needsReply ? "✉️ 返信希望のお問い合わせ" : "📨 返信不要のお問い合わせ"}
-                        </strong>
-                        <span style={{ marginLeft: "8px", fontSize: "11px", color: "#64748b" }}>
-                          {sorted.filter(item => Boolean(item.needsReply) === Boolean(fb.needsReply)).length}件
-                        </span>
-                      </div>
-                    )}
                     <div className="admin-inbox-card">
                       <div className="admin-inbox-head">
                         <span className="admin-inbox-author">
@@ -5595,7 +5597,11 @@ export default function DriftApp() {
                     </div>
                     </Fragment>
                   ))}
+                  {adminFeedbacks.filter(fb => feedbackFilter === "reply" ? Boolean(fb.needsReply) : !fb.needsReply).length === 0 && (
+                    <p className="admin-empty-feedbacks">{feedbackFilter === "reply" ? "返信希望のお問い合わせはまだありません。" : "返信不要のお問い合わせはまだありません。"}</p>
+                  )}
                 </div>
+                </>
               )}
             </div>
 
