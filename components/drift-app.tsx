@@ -462,14 +462,20 @@ export default function DriftApp() {
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
     }
     if (loginResult === "error") {
-      const reason = params.get("reason");
+      const reason = params.get("reason") || "unknown";
+      const provider = params.get("provider") === "x" ? "X" : "Google";
       const messages: Record<string, string> = {
-        cancelled: "Googleログインがキャンセルされました",
-        state_mismatch: "ログイン状態の確認に失敗しました。もう一度お試しください",
-        configuration_or_code_missing: "Googleログインの設定を確認してください",
-        callback_failed: "Googleログインに失敗しました。設定とサーバーログを確認してください",
+        cancelled: `${provider}ログインがキャンセルされました`,
+        state_mismatch: "認証状態Cookieが一致しません。Cookie設定や戻り先URLを確認してください",
+        configuration_or_code_missing: `${provider} OAuthの設定・認証コードを確認してください`,
+        token_exchange_failed: `${provider}のトークン交換に失敗しました。開発者コンソールのClient SecretとCallback URLを確認してください`,
+        profile_fetch_failed: `${provider}のアカウント情報を取得できませんでした`,
+        database_failed: "ユーザー情報をデータベースに保存できませんでした",
+        session_secret_missing: "サーバーのAUTH_SESSION_SECRETが未設定か短すぎます",
+        callback_failed: `${provider}ログインの処理に失敗しました。VercelのRuntime Logsを確認してください`,
       };
-      setPlazaToast(messages[reason || ""] || "ログインに失敗しました");
+      console.error("[Type Drift OAuth] login failed", { provider, reason });
+      setPlazaToast(messages[reason] || `${provider}ログインに失敗しました（${reason}）`);
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
     }
 
