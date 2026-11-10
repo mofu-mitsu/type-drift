@@ -8,8 +8,13 @@ const cookieOptions = (maxAge: number) => ({
   sameSite: "lax" as const, path: "/api/auth", maxAge,
 });
 function redirectUri(request: NextRequest, provider: string) {
+  // Always use the canonical production hostname when deployed, so OAuth redirect_uri
+  // exactly matches the provider console even when Vercel serves a deployment alias.
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
+  const isVercel = Boolean(process.env.VERCEL);
+  const canonicalOrigin = isVercel ? "https://type-drift.vercel.app" : `${request.nextUrl.protocol}//${host}`;
   const configured = provider === "google" ? process.env.GOOGLE_REDIRECT_URI : process.env.X_REDIRECT_URI;
-  return configured || new URL(`/api/auth/${provider}/callback`, request.nextUrl.origin).toString();
+  return configured || new URL(`/api/auth/${provider}/callback`, canonicalOrigin).toString();
 }
 function fail(request: NextRequest, reason: string) {
   const url = new URL("/", request.nextUrl.origin);
