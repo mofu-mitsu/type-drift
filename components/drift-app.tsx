@@ -1757,15 +1757,16 @@ export default function DriftApp() {
     window.addEventListener("type-drift:refresh-bottles", immediateRefresh);
     return () => { window.clearInterval(timer); window.removeEventListener("type-drift:refresh-bottles", immediateRefresh); };
   }, []);
-  // 相談室はイベント保存されたスレッドを読み直し、別端末の投稿も反映する。
+  // 相談室はVercel側の集約APIから、スレッドと保存済みコメントをまとめて読み込む。
   useEffect(() => {
-    const api = process.env.NEXT_PUBLIC_API_URL;
-    if (!api) return;
-    const refresh = () => void apiFetch('/api/consultations').then(response => response.ok ? response.json() : null).then(data => {
+    const refresh = () => void fetch('/api/consultations', { credentials: "include", cache: "no-store" }).then(response => response.ok ? response.json() : null).then(data => {
       const entries = Array.isArray(data?.entries) ? data.entries : [];
-      const remote = entries.map((entry: any) => ({ ...(entry.payload || {}), id: entry.external_id, category: entry.category || entry.payload?.category || "forum", freeText: entry.body || entry.payload?.freeText || "", comments: entry.payload?.comments || [] } as ConsultationPost));
-      if (remote.length) setConsultationPosts(current => [...remote, ...current.filter(item => !remote.some((row: ConsultationPost) => row.id === item.id))]);
-    }).catch(() => undefined);
+      const remote = entries.map((entry: any) => ({ ...(entry.payload || {}), id: entry.external_id, category: entry.category || entry.payload?.category || "forum", freeText: entry.body || entry.payload?.freeText || "", comments: Array.isArray(entry.payload?.comments) ? entry.payload.comments : [] } as ConsultationPost));
+      if (remote.length) setConsultationPosts(current => {
+        const localOnly = current.filter(item => !remote.some((row: ConsultationPost) => row.id === item.id));
+        return [...remote, ...localOnly];
+      });
+    }).catch(error => console.warn("[Type Drift] consultation refresh failed", error));
     refresh();
     const timer = window.setInterval(refresh, 20000);
     const immediateRefresh = () => refresh();
