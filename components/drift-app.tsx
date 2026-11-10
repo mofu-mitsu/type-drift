@@ -61,60 +61,67 @@ type DirectMessage = {
 // AI/サーバーが本文をJSON文字列として返した場合も、画面には本文だけを表示する。
 function normalizeDmBody(value: unknown, depth = 0): string {
   if (value == null) return "";
-  if (typeof value !== "string") {
-    if (typeof value === "object") {
-      const record = value as { body?: unknown; content?: unknown; message?: unknown; replies?: unknown };
-      if (typeof record.body === "string") return normalizeDmBody(record.body, depth + 1);
-      if (typeof record.content === "string") return normalizeDmBody(record.content, depth + 1);
-      if (typeof record.message === "string") return normalizeDmBody(record.message, depth + 1);
-    }
+  if (typeof value === "object") {
+    const record = value as { body?: unknown; content?: unknown; message?: unknown; replies?: unknown };
+    if (typeof record.body === "string") return normalizeDmBody(record.body, depth + 1);
+    if (typeof record.content === "string") return normalizeDmBody(record.content, depth + 1);
+    if (typeof record.message === "string") return normalizeDmBody(record.message, depth + 1);
     return String(value);
   }
+  if (typeof value !== "string") return String(value);
 
-  let source = value.trim();
-  if (depth < 5) {
-    // JSONオブジェクトだけでなく、JSON文字列として二重エンコードされた本文もほどく。
-    const candidates = [source];
-    // Some legacy/API responses contain a JSON object with escaped quotes (e.g. {\"body\":\"text\"}).
-    // Try the unescaped form too, so previously stored wrappers render as plain text.
-    if (source.startsWith("{") && source.includes('\\"')) {
-      candidates.push(source.replace(/\\"/g, '"'));
-    }
-    if ((source.startsWith('"') && source.endsWith('"')) || source.startsWith('\\\\u007b') || source.startsWith('\\\\\\\\{')) {
-      try { candidates.push(JSON.parse(source)); } catch {}
-    }
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string") continue;
-      const text = candidate.trim();
-      // LLMの出力がJSONの途中で切れていても、body値だけは復元できる場合がある。
-      const bodyStart = text.match(/^\\s*\\{\\s*["']body["']\\s*:\\s*["']/);
-      if (bodyStart && !(text.endsWith("}") || text.endsWith('"}'))) {
-        const start = bodyStart[0].length;
-        let raw = "", escaped = false;
-        for (let index = start; index < text.length; index++) {
-          const char = text[index];
-          if (escaped) { raw += char === "n" ? "\\n" : char === "r" ? "\\r" : char === "t" ? "\\t" : char; escaped = false; continue; }
-          if (char === "\\\\") { escaped = true; continue; }
-          if (char === '"') break;
-          raw += char;
+  let text = value.trim();
+  for (let pass = 0; pass < 6 && text; pass++) {
+    // Valid JSON wrapper: {"body":"..."} / {"content":"..."} / {"message":"..."}
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (typeof parsed === "string") { text = parsed.trim(); continue; }
+      if (parsed && typeof parsed === "object") {
+        const record = parsed as { body?: unknown; content?: unknown; message?: unknown; replies?: unknown };
+        if (typeof record.body === "string") { text = record.body.trim(); continue; }
+        if (typeof record.content === "string") { text = record.content.trim(); continue; }
+        if (typeof record.message === "string") { text = record.message.trim(); continue; }
+        if (Array.isArray(record.replies)) {
+          const item = record.replies.find((entry: { body?: unknown }) => typeof entry?.body === "string") || record.replies[0];
+          if (item && typeof item.body === "string") { text = item.body.trim(); continue; }
         }
-        if (raw) return normalizeDmBody(raw, depth + 1);
       }
-      if (!text.startsWith("{") || !text.endsWith("}")) continue;
-      try {
-        const parsed = JSON.parse(text);
-        if (typeof parsed?.body === "string") return normalizeDmBody(parsed.body, depth + 1);
-        if (typeof parsed?.content === "string") return normalizeDmBody(parsed.content, depth + 1);
-        if (typeof parsed?.message === "string") return normalizeDmBody(parsed.message, depth + 1);
-        if (Array.isArray(parsed?.replies)) {
-          const item = parsed.replies.find((entry: { body?: unknown }) => typeof entry?.body === "string") || parsed.replies[0];
-          if (typeof item?.body === "string") return normalizeDmBody(item.body, depth + 1);
+      break;
+    } catch {
+      // Broken/truncated JSON: strip the wrapper and keep its body value.
+      const prefix = text.match(/^\s*\{\s*["'](?:body|content|message)["']\s*:\s*["']/);
+      if (prefix) {
+        const raw = text.slice(prefix[0].length);
+        let output = "";
+        let escaped = false;
+        for (let i = 0; i < raw.length; i++) {
+          const ch = raw[i];
+          if (escaped) {
+            output += ch === "n" ? "\n" : ch === "r" ? "\r" : ch === "t" ? "\t" : ch;
+            escaped = false;
+            continue;
+          }
+          if (ch === "\\") { escaped = true; continue; }
+          if (ch === '"') break;
+          output += ch;
         }
-      } catch {}
+        text = output.trim();
+        continue;
+      }
+      break;
     }
   }
-  // JSON文字列内に残った改行エスケープも表示用の改行へ戻す。
-  return source.replace(/\\\\n/g, "\n").replace(/\\\\r/g, "\r").replace(/\\\\t/g, "\t");
+
+  return text
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\\\r/g, "\r")
+    .replace(/\\r/g, "\r")
+    .replace(/\\\\t/g, "\t")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\"/g, '"')
+    .replace(/\\\\/g, "\\")
+    .trim();
 }
 
 type Announcement = {
