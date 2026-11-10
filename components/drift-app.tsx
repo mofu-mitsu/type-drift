@@ -507,18 +507,11 @@ export default function DriftApp() {
       if (data?.authenticated && data?.user?.email) {
         const email = String(data.user.email).trim().toLowerCase();
         const provider = String(data.provider || data.user.provider || "").toLowerCase();
-        // ログインしたブラウザに残るゲストプロフィールを、本人のセッションへ安全に紐付ける。
-        // 表示名や投稿数ではなく、ブラウザ固有のゲストキーが一致するものだけを移行する。
-        try {
-          await fetch("/api/account-migrate", {
-            method: "POST",
-            credentials: "include",
-            headers: { "X-Guest-Key": getGuestKey() },
-            cache: "no-store",
-          });
-        } catch (migrationError) {
-          console.error("[Type Drift] guest profile migration failed", migrationError);
-        }
+        // Each OAuth account gets its own stable identity key in this browser.
+        // Do not automatically attach the browser's legacy guest profile: the same
+        // browser may have been used by a different X/Google account.
+        const accountId = String(data.user.id || "").trim();
+        if (accountId) localStorage.setItem("type-drift-user-key", accountId);
         const isAdmin = data.isAdmin === true;
         setIsAuthenticated(true);
         setAuthProvider(provider);
@@ -558,7 +551,9 @@ export default function DriftApp() {
       "type-drift-user-email",
       "type-drift-user-key",
     ]);
-    const isAppKey = (key: string) => key.startsWith("type-drift-") && !excludedKeys.has(key);
+    const isAppKey = (key: string) => key.startsWith("type-drift-")
+      && !excludedKeys.has(key)
+      && !key.startsWith("type-drift-guest-key:user:");
     const clearLocalAccountState = () => {
       const keys: string[] = [];
       for (let index = 0; index < localStorage.length; index++) {
@@ -6097,7 +6092,7 @@ export default function DriftApp() {
           <p className="eyebrow">WELCOME BACK</p>
           <h2>海へ戻る</h2>
           <p>ログイン方法を選んでください。認証後も、海に流すボトルは匿名のままです。</p>
-          {isAuthenticated && <div className="admin-login-box" style={{ marginTop: 14 }}><p className="admin-logged-in-label">{authProvider.includes("google") ? "G Google" : authProvider === "x" || authProvider.includes("twitter") ? "𝕏 X" : "✓"}  ログイン中</p><p style={{ margin: "6px 0 0", overflowWrap: "anywhere" }}>{authName}</p>{isAdminLoggedIn && <small>管理者アカウント</small>}<button type="button" className="clean-secondary-btn" style={{ marginTop: 10, width: "100%" }} onClick={async () => { try { const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include", cache: "no-store" }); if (!response.ok) throw new Error("logout_failed"); setIsAuthenticated(false); setAuthProvider(""); setAuthName(""); setIsAdminLoggedIn(false); setAdminEmail(""); setPlazaToast("ログアウトしました"); setLoginOpen(false); window.location.reload(); } catch (error) { console.error("[Type Drift auth] logout failed", error); setPlazaToast("ログアウトできませんでした。もう一度お試しください。"); } }}>ログアウト</button></div>}
+          {isAuthenticated && <div className="admin-login-box" style={{ marginTop: 14 }}><p className="admin-logged-in-label">{authProvider.includes("google") ? "G Google" : authProvider === "x" || authProvider.includes("twitter") ? "𝕏 X" : "✓"}  ログイン中</p><p style={{ margin: "6px 0 0", overflowWrap: "anywhere" }}>{authName}</p>{isAdminLoggedIn && <small>管理者アカウント</small>}<button type="button" className="clean-secondary-btn" style={{ marginTop: 10, width: "100%" }} onClick={async () => { try { const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include", cache: "no-store" }); if (!response.ok) throw new Error("logout_failed"); setIsAuthenticated(false); setAuthProvider(""); setAuthName(""); setIsAdminLoggedIn(false); setAdminEmail(""); localStorage.removeItem("type-drift-user-key"); setPlazaToast("ログアウトしました"); setLoginOpen(false); window.location.reload(); } catch (error) { console.error("[Type Drift auth] logout failed", error); setPlazaToast("ログアウトできませんでした。もう一度お試しください。"); } }}>ログアウト</button></div>}
 
           <button
             type="button"
