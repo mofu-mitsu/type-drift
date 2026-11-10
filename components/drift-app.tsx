@@ -4607,6 +4607,19 @@ export default function DriftApp() {
                           <p>{notification.message}</p>
                           <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" })}</time>
                         </div>
+                        {notification.type === "consultation_reaction" && notification.entity_id != null && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSharedConsultId(String(notification.entity_id));
+                              setActivePage("consult");
+                              void markServerNotificationsRead(undefined, notification.id, "groupedIds" in notification ? notification.groupedIds : undefined);
+                            }}
+                            aria-label="リアクションが届いた相談室へ移動して既読にする"
+                          >
+                            相談室へ移動
+                          </button>
+                        )}
                         <button type="button" onClick={() => void markServerNotificationsRead(undefined, notification.id, "groupedIds" in notification ? notification.groupedIds : undefined)} aria-label="この通知を既読にする">既読</button>
                       </article>
                     ))}
