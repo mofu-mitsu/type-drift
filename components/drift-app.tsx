@@ -760,14 +760,17 @@ export default function DriftApp() {
     return () => window.removeEventListener("type-drift:open-feedback", openFeedbackFromAiError);
   }, []);
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_API_URL) return;
+    if (!isAuthenticated && !process.env.NEXT_PUBLIC_API_URL) return;
     let busy = false;
     let warnedAboutDmSync = false;
     const refresh = async () => {
       if (busy || document.visibilityState !== "visible") return;
       busy = true;
       try {
-        const response = await apiFetch('/api/direct-messages', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
+        // ログイン中は同一オリジンの認証済みAPIを使い、guest keyを送らない。
+        const response = isAuthenticated
+          ? await fetch("/api/direct-messages", { credentials: "include", cache: "no-store" })
+          : await apiFetch('/api/direct-messages', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
         if (!response.ok) {
           if (!warnedAboutDmSync) console.error("[Type Drift DM] inbox sync rejected", { status: response.status, detail: await response.clone().text().catch(() => "") });
           warnedAboutDmSync = true;
@@ -798,6 +801,12 @@ export default function DriftApp() {
           } : undefined,
         }));
         setDirectMessages(current => {
+          // ログイン済みでは、ローカルに残った別アカウント/ゲストのDMを混ぜずサーバー結果で置換。
+          if (isAuthenticated) {
+            const scoped = [...remote].sort((a, b) => a.createdAt - b.createdAt);
+            try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(scoped)); } catch {}
+            return scoped;
+          }
           const merged = [...current];
           for (const incoming of remote) {
             const index = merged.findIndex(item => item.serverId === incoming.serverId || (!item.serverId && item.threadId === incoming.threadId && item.isMine === incoming.isMine && item.body === incoming.body && Math.abs(item.createdAt - incoming.createdAt) < 120_000));
@@ -817,7 +826,7 @@ export default function DriftApp() {
     const timer = window.setInterval(() => void refresh(), 7000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     try {
