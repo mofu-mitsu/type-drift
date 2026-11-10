@@ -767,10 +767,12 @@ export default function DriftApp() {
       if (busy || document.visibilityState !== "visible") return;
       busy = true;
       try {
-        // ログイン中は同一オリジンの認証済みAPIを使い、guest keyを送らない。
-        const response = isAuthenticated
-          ? await fetch("/api/direct-messages", { credentials: "include", cache: "no-store" })
-          : await apiFetch('/api/direct-messages', { credentials: "include", headers: { "X-Guest-Key": getGuestKey() }, cache: "no-store" });
+        // 既存DMはguest keyを含む既存APIの識別方式で取得する（認証済み専用APIへ切替えない）。
+        const response = await apiFetch('/api/direct-messages', {
+          credentials: "include",
+          headers: { "X-Guest-Key": getGuestKey() },
+          cache: "no-store",
+        });
         if (!response.ok) {
           if (!warnedAboutDmSync) console.error("[Type Drift DM] inbox sync rejected", { status: response.status, detail: await response.clone().text().catch(() => "") });
           warnedAboutDmSync = true;
@@ -801,12 +803,6 @@ export default function DriftApp() {
           } : undefined,
         }));
         setDirectMessages(current => {
-          // ログイン済みでは、ローカルに残った別アカウント/ゲストのDMを混ぜずサーバー結果で置換。
-          if (isAuthenticated) {
-            const scoped = [...remote].sort((a, b) => a.createdAt - b.createdAt);
-            try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(scoped)); } catch {}
-            return scoped;
-          }
           const merged = [...current];
           for (const incoming of remote) {
             const index = merged.findIndex(item => item.serverId === incoming.serverId || (!item.serverId && item.threadId === incoming.threadId && item.isMine === incoming.isMine && item.body === incoming.body && Math.abs(item.createdAt - incoming.createdAt) < 120_000));
@@ -2796,19 +2792,12 @@ export default function DriftApp() {
           : isSessionKey
             ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
             : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot };
-        const response = isAuthenticated
-          ? await fetch("/api/direct-messages", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            })
-          : await apiFetch("/api/direct-messages", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
-              body: JSON.stringify(payload),
-            });
+        const response = await apiFetch("/api/direct-messages", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+          body: JSON.stringify(payload),
+        });
         if (!response.ok) {
           const detail = await response.clone().text().catch(() => "");
           setPlazaToast(`メッセージを送信できませんでした（${response.status}）`);
