@@ -4039,7 +4039,10 @@ export default function DriftApp() {
                     type="button"
                     className="clean-primary-btn"
                     onClick={() => {
-                      const target = inspectProfile.id as "darling" | "worm" | "guest";
+                      const target: "darling" | "worm" | `player:${string}` =
+                        inspectProfile.id === "darling" || inspectProfile.id === "worm"
+                          ? inspectProfile.id
+                          : `player:${inspectProfile.id}`;
                       setInspectProfile(null);
                       giftBuri(target);
                     }}
