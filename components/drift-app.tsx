@@ -2234,7 +2234,7 @@ export default function DriftApp() {
   };
 
   // ユーザー側から届いた回答にさらに返信する処理
-  const handleSendUserInquiryReply = (feedbackId: string) => {
+  const handleSendUserInquiryReply = async (feedbackId: string) => {
     const text = userInquiryReplyText[feedbackId]?.trim();
     if (!text) return;
 
