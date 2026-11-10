@@ -61,9 +61,9 @@ function normalizeAiReplyBody(value: unknown): string {
     }
   }
   return text
-    .replace(/\\\\n/g, '\n')
-    .replace(/\\\\r/g, '\r')
-    .replace(/\\\\t/g, '\t')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
     .replace(/\\\"/g, '"')
     .replace(/\\\\\\\\/g, '\\\\')
     .trim();
