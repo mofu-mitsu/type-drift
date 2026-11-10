@@ -449,6 +449,54 @@ export default function DriftApp() {
   const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string | null; message: string; created_at: string }>>([]);
 
   // 広場AIのエラーから、意見箱を直接開けるようにする
+  // OAuthのセッションをサーバーで検証し、登録済みの管理者アカウントだけ管理者UIを表示する。
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams(window.location.search);
+    const loginResult = params.get("login");
+    if (loginResult === "success") {
+      setPlazaToast("Googleアカウントでログインしました");
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    } else if (loginResult === "error") {
+      const reason = params.get("reason");
+      const messages: Record<string, string> = {
+        cancelled: "Googleログインがキャンセルされました",
+        state_mismatch: "ログイン状態の確認に失敗しました。もう一度お試しください",
+        configuration_or_code_missing: "Googleログインの設定を確認してください",
+        callback_failed: "Googleログインに失敗しました。設定とサーバーログを確認してください",
+      };
+      setPlazaToast(messages[reason || ""] || "ログインに失敗しました");
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    }
+
+    const syncSession = async () => {
+      const response = await fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Session lookup failed");
+      const data = await response.json();
+      if (cancelled) return;
+      if (data?.authenticated && data?.user?.email) {
+        const email = String(data.user.email).trim().toLowerCase();
+        const isAdmin = data.isAdmin === true;
+        setIsAdminLoggedIn(isAdmin);
+        setAdminEmail(isAdmin ? email : "");
+        if (isAdmin) localStorage.setItem("type-drift-is-admin", "true");
+        else localStorage.removeItem("type-drift-is-admin");
+      } else {
+        setIsAdminLoggedIn(false);
+        setAdminEmail("");
+        localStorage.removeItem("type-drift-is-admin");
+      }
+    };
+    void syncSession().catch(error => {
+      console.error("[Type Drift] session sync failed", error);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     const openFeedbackFromAiError = (event: Event) => {
       const detail = (event as CustomEvent<{ category?: string; body?: string }>).detail;
@@ -1916,11 +1964,8 @@ export default function DriftApp() {
         setGasInputUrl(savedGas);
         fetchSpreadsheetAnnouncements(savedGas);
       }
-      // 管理者ログイン状態の復元
-      const isAdminSaved = localStorage.getItem("type-drift-is-admin") === "true";
-      if (isAdminSaved) {
-        setIsAdminLoggedIn(true);
-      }
+      // 管理者状態はサーバー側のOAuthセッションから取得する。localStorageは権限判定に使わない。
+      localStorage.removeItem("type-drift-is-admin");
       // 自分が返信したメッセージ履歴の復元
       const savedMyReplies = localStorage.getItem("type-drift-my-replies");
       if (savedMyReplies) {
