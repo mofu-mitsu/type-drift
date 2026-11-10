@@ -2279,7 +2279,15 @@ export default function DriftApp() {
     } catch {}
 
     // 3. GASスプレッドシートへ送信（API経由で保存結果を確認する）
-    const targetInq = userInquiries.find(inq => inq.id === feedbackId);
+    // React state が古い場合に備え、保存済み問い合わせ履歴からも送信元を探す。
+    let targetInq = userInquiries.find(inq => inq.id === feedbackId);
+    if (!targetInq) {
+      try {
+        const saved = localStorage.getItem("type-drift-my-inquiries");
+        const savedList: FeedbackItem[] = saved ? JSON.parse(saved) : [];
+        targetInq = savedList.find(inq => inq.id === feedbackId);
+      } catch {}
+    }
     let delivered = false;
     let deliveryMessage = "";
     if (gasUrl && targetInq) {
@@ -2314,8 +2322,13 @@ export default function DriftApp() {
       deliveryMessage = targetInq ? "受付連携URLが設定されていません。" : "送信元のお問い合わせを見つけられませんでした。";
     }
 
-    setUserInquiryReplyText(prev => ({ ...prev, [feedbackId]: "" }));
-    setPlazaToast(delivered ? "運営への追加返信をスプレッドシートに保存しました" : `画面には追加しましたが、運営への送信を確認できませんでした。（${deliveryMessage}）`);
+    if (delivered) {
+      setUserInquiryReplyText(prev => ({ ...prev, [feedbackId]: "" }));
+      setPlazaToast("運営への追加返信をスプレッドシートに保存しました");
+    } else {
+      // 配信失敗時は入力欄を消さず、本文を復元できるようにする。
+      setPlazaToast(`画面には追加しましたが、運営への送信を確認できませんでした。入力欄の本文は残しています。（${deliveryMessage}）`);
+    }
   };
 
   const saveGasUrl = (url: string) => {
