@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/server-auth";
+import { INITIAL_CONSULTATION_POSTS } from "@/types/consultation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,10 +42,6 @@ export async function GET() {
       LIMIT 100
     ` as Entry[];
 
-    if (!threads.length) {
-      return NextResponse.json({ entries: [] }, { headers: { "Cache-Control": "no-store" } });
-    }
-
     // Replies are stored as separate rows. Fetch them and attach them to their parent
     // thread so the consultation UI can render comments after reloads and on other devices.
     const children = await sql`
@@ -75,7 +72,26 @@ export async function GET() {
       commentsByThread.set(entry.parent_external_id, group);
     }
 
-    const entries = threads.map((thread) => {
+    // The two demo threads in the UI are static seeds, not database rows. Include them
+    // in the API response too, otherwise replies to those visible threads become orphans.
+    const threadById = new Map<string, Entry>();
+    for (const thread of threads) threadById.set(thread.external_id, thread);
+    for (const seed of INITIAL_CONSULTATION_POSTS) {
+      if (!threadById.has(seed.id)) {
+        threadById.set(seed.id, {
+          id: -1,
+          external_id: seed.id,
+          parent_external_id: null,
+          entry_type: "thread",
+          category: seed.category,
+          body: seed.freeText,
+          payload: seed as unknown as Record<string, unknown>,
+          created_at: seed.createdAt,
+        });
+      }
+    }
+
+    const entries = Array.from(threadById.values()).map((thread) => {
       const payload = objectPayload(thread.payload);
       const savedComments = commentsByThread.get(thread.external_id) || [];
       const legacyComments = Array.isArray(payload.comments)
