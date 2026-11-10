@@ -5359,7 +5359,9 @@ export default function DriftApp() {
                     <h5 style={{ margin: "0 0 8px", fontSize: "12px", color: "#0f766e" }}>お返事・メッセージ履歴</h5>
                     {(!inq.replies || inq.replies.length === 0) ? (
                       <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
-                        現在、運営にて内容を確認中です。お返事が届くまでしばらくお待ちください。
+                        {inq.needsReply
+                          ? "返信を希望しています。運営からのお返事が届くまで、こちらで確認できます。"
+                          : "ご意見を送信しました。返信は不要として受け付けています。追加の補足があれば、下から送れます。"}
                       </p>
                     ) : (
                       inq.replies.map(rep => (
@@ -5500,24 +5502,33 @@ export default function DriftApp() {
                 <p className="admin-empty-feedbacks">まだ届いたご意見はありません。広場の「意見箱」から送信テストを行えます。</p>
               ) : (
                 <div className="admin-inbox-clean">
-                  {adminFeedbacks.map(fb => (
-                    <div key={fb.id} className="admin-inbox-card">
+                  {[...adminFeedbacks.filter(fb => fb.needsReply), ...adminFeedbacks.filter(fb => !fb.needsReply)].map((fb, index, sorted) => (
+                    <React.Fragment key={fb.id}>
+                    {(index === 0 || sorted[index - 1].needsReply !== fb.needsReply) && (
+                      <div style={{ margin: "18px 0 10px", padding: "10px 12px", borderRadius: "12px", background: fb.needsReply ? "#fff7ed" : "#f1f5f9", border: `1px solid ${fb.needsReply ? "#fed7aa" : "#cbd5e1"}` }}>
+                        <strong style={{ fontSize: "13px", color: fb.needsReply ? "#9a3412" : "#475569" }}>
+                          {fb.needsReply ? "✉️ 返信希望のお問い合わせ" : "📨 返信不要のお問い合わせ"}
+                        </strong>
+                        <span style={{ marginLeft: "8px", fontSize: "11px", color: "#64748b" }}>
+                          {sorted.filter(item => Boolean(item.needsReply) === Boolean(fb.needsReply)).length}件
+                        </span>
+                      </div>
+                    )}
+                    <div className="admin-inbox-card">
                       <div className="admin-inbox-head">
                         <span className="admin-inbox-author">
                           投稿者: {fb.author} ({fb.userType})
-                          {fb.needsReply && (
-                            <span style={{
-                              marginLeft: "8px",
-                              background: readAdminFeedbackIds.includes(fb.id) ? "#f1f5f9" : "#fef3c7",
-                              color: readAdminFeedbackIds.includes(fb.id) ? "#64748b" : "#b45309",
-                              padding: "2px 6px",
-                              borderRadius: "6px",
-                              fontSize: "10px",
-                              fontWeight: "bold"
-                            }}>
-                              {readAdminFeedbackIds.includes(fb.id) ? "既読・対応中" : "★ 返信希望"}
-                            </span>
-                          )}
+                          <span style={{
+                            marginLeft: "8px",
+                            background: fb.needsReply ? (readAdminFeedbackIds.includes(fb.id) ? "#f1f5f9" : "#fef3c7") : "#f1f5f9",
+                            color: fb.needsReply ? (readAdminFeedbackIds.includes(fb.id) ? "#64748b" : "#b45309") : "#64748b",
+                            padding: "2px 6px",
+                            borderRadius: "6px",
+                            fontSize: "10px",
+                            fontWeight: "bold"
+                          }}>
+                            {fb.needsReply ? (readAdminFeedbackIds.includes(fb.id) ? "既読・返信希望" : "★ 返信希望") : "返信不要"}
+                          </span>
                         </span>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                           <span className="admin-fb-category">{fb.category}</span>
@@ -5582,6 +5593,7 @@ export default function DriftApp() {
                         </div>
                       </div>
                     </div>
+                    </React.Fragment>
                   ))}
                 </div>
               )}
