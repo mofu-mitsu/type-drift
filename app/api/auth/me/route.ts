@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const rows = await db`SELECT id, name, email FROM users WHERE id = ${userId} LIMIT 1`;
+    const sql = db();
+    const rows = await sql`SELECT id, name, email FROM users WHERE id = ${userId} LIMIT 1`;
     const user = rows[0] as { id: number; name: string; email: string } | undefined;
     if (!user) {
       return NextResponse.json(
