@@ -390,6 +390,18 @@ function doGet(e) {
         });
       }
 
+      // 既存シートがヘッダーだけの場合も、空の配列で過去のお知らせを消さず案内を返す。
+      if (notices.length === 0) {
+        notices.push({
+          id: "notice-1",
+          date: Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd"),
+          title: "Type Driftへようこそ！",
+          body: "思考を海へ流したり、広場での自認相談やミニゲームをお楽しみいただけます。ご意見・自認相談はいつでもお寄せください。",
+          badge: "new",
+          important: true
+        });
+      }
+
       notices.reverse();
 
       return createJsonResponse({
