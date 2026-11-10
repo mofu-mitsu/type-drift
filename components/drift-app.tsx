@@ -597,7 +597,7 @@ export default function DriftApp() {
             for (const [key, value] of Object.entries(merged)) localStorage.setItem(key, value);
             await saveState(merged);
             // 初期化済みReact stateも復元データで読み直す。1回だけリロードする。
-            const reloadMarker = "type-drift-account-state-restored";
+            const reloadMarker = `type-drift-account-state-restored:${remote.userId || "current"}`;
             if (sessionStorage.getItem(reloadMarker) !== "1") {
               sessionStorage.setItem(reloadMarker, "1");
               window.location.reload();
