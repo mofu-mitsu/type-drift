@@ -32,7 +32,8 @@ const displayName = (nickname?: string) => nickname?.trim() || '匿名の誰か'
 // AIが {"body":"..."} の形で返した本文や、JSONの途中で切れた返答を表示用テキストに戻す。
 function normalizeAiReplyBody(value: unknown): string {
   let text = typeof value === 'string' ? value.trim() : '';
-  for (let depth = 0; depth < 5 && text; depth++) {
+  // JSON wrapper (including double-encoded / truncated legacy responses) is never user-facing.
+  for (let depth = 0; depth < 6 && text; depth++) {
     try {
       const parsed = JSON.parse(text);
       if (typeof parsed === 'string') { text = parsed.trim(); continue; }
@@ -41,8 +42,7 @@ function normalizeAiReplyBody(value: unknown): string {
       if (parsed && typeof parsed.message === 'string') { text = parsed.message.trim(); continue; }
       break;
     } catch {
-      // JSON全体の解析に失敗しても、先頭の {"body":" と末尾の "} を表示から取り除く。
-      const prefix = text.match(/^\s*\{\s*["']body["']\s*:\s*["']/);
+      const prefix = text.match(/^\s*\{\s*["'](?:body|content|message)["']\s*:\s*["']/);
       if (prefix) {
         let raw = text.slice(prefix[0].length);
         let escaped = false;
@@ -52,20 +52,26 @@ function normalizeAiReplyBody(value: unknown): string {
           if (raw[i] === '\\\\') { escaped = true; continue; }
           if (raw[i] === '"') { end = i; break; }
         }
-        if (end >= 0) raw = raw.slice(0, end);
-        else raw = raw.replace(/["']?\s*\}?\s*$/, '');
-        text = raw;
+        text = end >= 0 ? raw.slice(0, end) : raw.replace(/["']?\s*\}?\s*$/, '');
         continue;
       }
       break;
     }
   }
   return text
+    .replace(/\\\\n/g, '\n')
     .replace(/\\n/g, '\n')
+    .replace(/\\\\r/g, '\r')
     .replace(/\\r/g, '\r')
+    .replace(/\\\\t/g, '\t')
     .replace(/\\t/g, '\t')
+    .replace(/\\\\\\\"/g, '"')
     .replace(/\\\"/g, '"')
     .replace(/\\\\\\\\/g, '\\\\')
+    .replace(/\\n\//g, '\n')
+    .replace(/\bn\//g, '\n')
+    .replace(/^\s*\{\s*["'](?:body|content|message)["']\s*:\s*["']?/, '')
+    .replace(/["']?\s*\}\s*$/, '')
     .trim();
 }
 
