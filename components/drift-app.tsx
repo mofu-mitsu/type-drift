@@ -3799,6 +3799,7 @@ export default function DriftApp() {
                 psycho: user.otherType || user.identity?.otherType || user.identity?.other_type || "",
                 overview: user.bio || "この住人は、まだ自己紹介を公開していません。",
                 image: user.avatarUrl,
+                isSelf: user.sessionKey === getGuestKey() || Boolean(nickname && user.nickname === nickname),
                 links: Array.isArray(user.links) ? user.links : [],
               })}
             >
