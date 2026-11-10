@@ -58,11 +58,11 @@ type DirectMessage = {
   isAiError?: boolean;
 };
 
-// AI/サーバーが本文をJSON文字列として返した場合も、画面には本文だけを表示する。
+// AI/サーバーがJSON形式や壊れたJSONで保存した本文も、表示直前に必ず整形する。
 function normalizeDmBody(value: unknown, depth = 0): string {
   if (value == null) return "";
   if (typeof value === "object") {
-    const record = value as { body?: unknown; content?: unknown; message?: unknown; replies?: unknown };
+    const record = value as { body?: unknown; content?: unknown; message?: unknown };
     if (typeof record.body === "string") return normalizeDmBody(record.body, depth + 1);
     if (typeof record.content === "string") return normalizeDmBody(record.content, depth + 1);
     if (typeof record.message === "string") return normalizeDmBody(record.message, depth + 1);
@@ -72,7 +72,6 @@ function normalizeDmBody(value: unknown, depth = 0): string {
 
   let text = value.trim();
   for (let pass = 0; pass < 6 && text; pass++) {
-    // Valid JSON wrapper: {"body":"..."} / {"content":"..."} / {"message":"..."}
     try {
       const parsed: unknown = JSON.parse(text);
       if (typeof parsed === "string") { text = parsed.trim(); continue; }
@@ -88,28 +87,17 @@ function normalizeDmBody(value: unknown, depth = 0): string {
       }
       break;
     } catch {
-      // Broken/truncated JSON: strip the wrapper and keep its body value.
-      const prefix = text.match(/^\s*\{\s*["'](?:body|content|message)["']\s*:\s*["']/);
-      if (prefix) {
-        const raw = text.slice(prefix[0].length);
-        let output = "";
-        let escaped = false;
-        for (let i = 0; i < raw.length; i++) {
-          const ch = raw[i];
-          if (escaped) {
-            output += ch === "n" ? "\n" : ch === "r" ? "\r" : ch === "t" ? "\t" : ch;
-            escaped = false;
-            continue;
-          }
-          if (ch === "\\") { escaped = true; continue; }
-          if (ch === '"') break;
-          output += ch;
-        }
-        text = output.trim();
-        continue;
-      }
       break;
     }
+  }
+
+  // JSON.parseで読めない壊れたラッパーも強制的に除去する。
+  const wrapper = text.match(/^\s*\\?\{\s*\\?["'](?:body|content|message)\\?["']\s*:\s*\\?["']/i);
+  if (wrapper) {
+    text = text.slice(wrapper[0].length);
+    // 最後のJSON用の閉じ引用符・波括弧だけを除去。
+    text = text.replace(/\\?["']?\s*\\?}\s*$/, "");
+    text = text.replace(/\\?["']\s*$/, "");
   }
 
   return text
@@ -121,6 +109,7 @@ function normalizeDmBody(value: unknown, depth = 0): string {
     .replace(/\\t/g, "\t")
     .replace(/\\\"/g, '"')
     .replace(/\\\\/g, "\\")
+    .replace(/\/n/g, "\n")
     .trim();
 }
 
