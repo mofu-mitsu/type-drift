@@ -849,3 +849,25 @@
   .announcement-list { padding:14px; }
   .announcement-modal__foot { padding:10px 14px 14px; }
 }
+
+
+/* Registration links are secondary profile actions, styled as small sea-glass pills. */
+.profile-inspect-links { padding-top:4px; }
+.profile-links-chip-list { display:flex; flex-wrap:wrap; gap:9px; }
+.profile-chip-link {
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  max-width:100%; min-height:42px; padding:10px 14px;
+  border:1px solid rgba(67,143,148,.28); border-radius:999px;
+  color:#287c7b; background:linear-gradient(135deg,#f0fbf7,#e7f6f3);
+  box-shadow:0 4px 12px rgba(60,137,133,.08);
+  font-size:13px; font-weight:650; line-height:1.4;
+  overflow-wrap:anywhere; transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.profile-chip-link svg { flex:0 0 auto; width:15px; height:15px; stroke-width:2.2; color:#3c9997; }
+.profile-chip-link::after {
+  content:""; display:inline-block; flex:0 0 12px; width:12px; height:12px;
+  background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233c9997' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3h7v7'/%3E%3Cpath d='M10 14 21 3'/%3E%3Cpath d='M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6'/%3E%3C/svg%3E");
+}
+.profile-chip-link:hover { transform:translateY(-2px); background:linear-gradient(135deg,#e4f8f1,#d9f0ed); box-shadow:0 8px 20px rgba(43,121,120,.15); }
+.profile-chip-link:focus-visible { outline:3px solid rgba(76,165,160,.35); outline-offset:3px; }
+@media(max-width:600px) { .profile-chip-link { min-height:40px; padding:9px 13px; font-size:12px; } }
