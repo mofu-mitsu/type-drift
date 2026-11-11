@@ -12,7 +12,7 @@ const json = (data: unknown, status = 200, env?: Env, request?: Request) =>
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": originFor(request, env),
       "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Allow-Headers": "Content-Type, X-Guest-Key, Authorization, X-Requested-With",
+      "Access-Control-Allow-Headers": "Content-Type, X-Guest-Key, X-User-Key, Authorization, X-Requested-With",
       "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       "Access-Control-Max-Age": "86400",
       "Vary": "Origin",
@@ -238,7 +238,14 @@ export default {
     try {
       const sql = neon(env.DATABASE_URL);
       const method = request.method;
-      const key = guest(request);
+      const rawKey = guest(request);
+      // Authenticated accounts keep their own canonical profile key even when the same browser previously used another account.
+      // Resolve the account's existing profile key for DM history and notifications; never identify accounts by nickname or type strings.
+      const accountKey = clean(request.headers.get("X-User-Key"), 120);
+      const accountProfile = accountKey
+        ? await sql`SELECT guest_key FROM profiles WHERE user_id::text = ${accountKey} LIMIT 1`
+        : [];
+      const key = String(accountProfile[0]?.guest_key || rawKey);
       const bottleMatch = path.match(/^\/api\/bottles\/(\d+)(?:\/(reactions|replies|votes))?$/);
       const replyReactionMatch = path.match(/^\/api\/replies\/(\d+)\/reactions$/);
       const notificationMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
