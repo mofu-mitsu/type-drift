@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const userId = readSession(request);
-  if (!userId) {
+  const guestKey = request.headers.get("x-guest-key")?.trim().slice(0, 200) || "";
+  if (!userId && !/^[0-9a-f-]{36}$/i.test(guestKey)) {
     return NextResponse.json({ authenticated: false, messages: [] }, {
       status: 401,
       headers: { "Cache-Control": "no-store" },
@@ -16,17 +17,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const sql = db();
-    // Authenticated inboxes are strictly scoped to the current user's database ID.
-    // Guest-key messages are intentionally excluded from this endpoint.
+    // Signed-in inboxes use the account ID; guest inboxes use their own canonical guest key.
     const rows = await sql`
       SELECT
         id, thread_id, sender_name, recipient_name, body, bottle_id,
         bottle_snippet, bottle_author, bottle_type, created_at,
         (read_at IS NOT NULL) AS read,
-        (sender_user_id = ${userId}) AS is_mine,
+        (CASE WHEN ${userId}::int IS NOT NULL THEN sender_user_id = ${userId}::int ELSE sender_guest_key = ${guestKey} END) AS is_mine,
         sender_profile, recipient_profile
       FROM direct_messages
-      WHERE sender_user_id = ${userId} OR recipient_user_id = ${userId}
+      WHERE (${userId}::int IS NOT NULL AND (sender_user_id = ${userId}::int OR recipient_user_id = ${userId}::int))
+         OR (${userId}::int IS NULL AND (sender_guest_key = ${guestKey} OR recipient_guest_key = ${guestKey}))
       ORDER BY created_at ASC
       LIMIT 500
     `;
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
       ? payload.recipient_session_key.slice(0, 200) : "";
     const requestedThreadId = typeof payload?.thread_id === "string"
       ? payload.thread_id.slice(0, 200) : "";
-    const threadId = requestedThreadId || (bottleId ? `bottle-${bottleId}` : recipientSessionKey || `dm-${randomUUID()}`);
+    const threadId = requestedThreadId || (bottleId ? `bottle-${bottleId}-user-${userId}` : recipientSessionKey || `dm-${randomUUID()}`);
     const senderName = typeof payload?.sender_name === "string" ? payload.sender_name.slice(0, 120) : "匿名の誰か";
     const recipientName = typeof payload?.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "匿名の誰か";
     const senderProfile = payload?.sender_profile && typeof payload.sender_profile === "object" ? JSON.stringify(payload.sender_profile) : null;
