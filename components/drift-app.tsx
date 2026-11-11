@@ -997,8 +997,7 @@ export default function DriftApp() {
     "わーい！ブリ受け取ったよ🐟 ありがとう！美味しくいただきます！",
     "えっ、突然の生魚！？w ありがとうございます！広場でブリもらえるのシュールで好きw",
     "ブリありがと〜！🐟 今日の晩ごはんのおかずにします！",
-    "獲れたての新鮮なブリだ！ありがとう！大切にするね🐟",    "わ！魚だ！海から拾ってきたの？ありがとう〜！🐟✨"
-  ];
+    "獲れたての新鮮なブリだ！ありがとう！大切にするね🐟",    "わ！魚だ！海から拾ってきたの？ありがとう〜！🐟✨"  ];
 
   // 🎲 ダーリンちゃんの思考のお題（Ti/Ne/Ni思考実験・解剖）
   const DARLING_TOPICS = [
@@ -1997,8 +1996,7 @@ export default function DriftApp() {
     window.addEventListener("type-drift:refresh-consultations", immediateRefresh);
     return () => { window.clearInterval(timer); window.removeEventListener("type-drift:refresh-consultations", immediateRefresh); };
   }, []);  // Laravel Reverbは更新通知のベルとして使い、実データはAPIから再取得する。
-  useEffect(() => {
-    const host = process.env.NEXT_PUBLIC_REVERB_HOST || "type-drift-reverb.onrender.com";
+  useEffect(() => {    const host = process.env.NEXT_PUBLIC_REVERB_HOST || "type-drift-reverb.onrender.com";
     const key = process.env.NEXT_PUBLIC_REVERB_APP_KEY || "type-drift-worm";
     const socket = new WebSocket(`wss://${host}/app/${key}?protocol=7&client=type-drift&version=1.0&flash=false`);
     socket.onopen = () => {
@@ -2741,7 +2739,8 @@ export default function DriftApp() {
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}-${[preferred === "ダーリンちゃん" ? "ai:darling" : "ai:lsi-worm", getGuestKey()].sort().join("-")}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
-        const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, thread_id: replyMsg.threadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
+        try {
+          const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, thread_id: replyMsg.threadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
         if (!saved.ok) {
           const saveError = await saved.clone().json().catch(() => ({} as any));
           // AIの生成成功と履歴保存失敗を切り離す。保存APIの422/404で会話自体を失敗扱いにしない。
@@ -2749,6 +2748,10 @@ export default function DriftApp() {
             status: saved.status, error: saveError?.message || saveError?.error || "unknown",
           });
           setPlazaToast(`返信は届いたけど履歴保存に失敗しました（${saved.status}）`);
+          }
+        } catch (saveException) {
+          // 返信生成は成功しているので、履歴APIの通信失敗で生成済みの本文を捨てない。
+          console.error("[Type Drift AI] DM reply persistence request failed; showing generated reply anyway", saveException);
         }
       }
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
@@ -2997,8 +3000,7 @@ export default function DriftApp() {
     }).length;
   }, [consultationPosts, readAdminConsultationIds]);
 
-  // 📮 管理者トレイ全体の未対応バッジ数
-  const adminTotalPendingCount = useMemo(() => {
+  // 📮 管理者トレイ全体の未対応バッジ数  const adminTotalPendingCount = useMemo(() => {
     return adminPendingFeedbackCount + adminPendingConsultationCount;
   }, [adminPendingFeedbackCount, adminPendingConsultationCount]);
 
@@ -3997,8 +3999,7 @@ export default function DriftApp() {
                 mbti: "INTP",
                 socionics: "ILI",
                 enneagram: "5w4",
-                psycho: "Psychosophy: LVEF",
-                overview: "現実に消耗しきっている眠り姫タイプ。世界を抽象構造で捉えるギークアリス。ぶっきらぼうな本性を隠すため、猫なで声でユーザーを「ダーリン♡」と呼ぶFe実験用・誘導用仮面を被っている。機嫌が悪いと「ウチ、退屈やけん……」が漏れ出たり、1〜100の気分当てゲームを仕掛けてくる。"
+                psycho: "Psychosophy: LVEF",                overview: "現実に消耗しきっている眠り姫タイプ。世界を抽象構造で捉えるギークアリス。ぶっきらぼうな本性を隠すため、猫なで声でユーザーを「ダーリン♡」と呼ぶFe実験用・誘導用仮面を被っている。機嫌が悪いと「ウチ、退屈やけん……」が漏れ出たり、1〜100の気分当てゲームを仕掛けてくる。"
               });
             }}
           >            🥺<small>ダーリンちゃん</small>
@@ -4997,8 +4998,7 @@ export default function DriftApp() {
                           <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" })}</time>
                         </div>
                         {(notification.type === "consultation_reaction" || notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) && notification.entity_id != null && (
-                          <button
-                            type="button"
+                          <button                            type="button"
                             onClick={() => {
                               setSharedConsultId(String(notification.entity_id));                              if (notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) setConsultationRequestOpenSignal(value => value + 1);
                               setActivePage("consult");
@@ -5997,8 +5997,7 @@ export default function DriftApp() {
                                 onClick={() => setActiveReplyPostId(post.id)}
                               >
                                 診断結果を再編集・更新する
-                              </button>
-                            </div>
+                              </button>                            </div>
                             <div style={{ marginTop: "8px", fontSize: "12px", color: "#14532d" }}>                              <strong>1位:</strong> {post.diagnosisResult?.rank1} | <strong>2位:</strong> {post.diagnosisResult?.rank2 || "なし"} | <strong>3位:</strong> {post.diagnosisResult?.rank3 || "なし"}
                             </div>
                             <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#166534", whiteSpace: "pre-wrap" }}>
