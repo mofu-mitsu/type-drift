@@ -2904,9 +2904,11 @@ export default function DriftApp() {
     if (isDarling || isWorm) {
       const replied = await requestDmAiReply({ ...target, id: isDarling ? "darling" : "worm" }, body);
       if (!replied) {
-        // 返信APIが失敗しても、送信済みの本文を消さずに会話へ残す。
-        setPlazaToast("AIから返信を受け取れませんでした。送信した本文はDMに残しています");
-        return false;
+        // AI返信の保存・生成に失敗しても、送信したDMを開いてエラー内容を確認できるようにする。
+        // 送信本文とエラー通知はローカルのDM履歴に残し、個別メッセージ画面へ必ず遷移する。
+        setPlazaToast("AIの返信に失敗しました。送信内容とエラーは個別メッセージに残しています");
+        logActivity("direct_message_sent", { target: target.name, bodyLength: body.length, aiReplyFailed: true }, { type: "direct_message", id: target.id });
+        return target.id;
       }
     }
 
