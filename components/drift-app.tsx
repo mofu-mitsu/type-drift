@@ -3010,7 +3010,7 @@ export default function DriftApp() {
       const isBottleThread = threadId.startsWith("bottle-");
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
         plazaUsers.find(item => item.nickname === otherName && item.nickname !== nickname);
-      const otherEmoji = otherName.includes("ダーリン") ? "🥺" : otherName.includes("芋虫") ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
+      const bottleNpcName = isBottleThread ? (m.bottleAuthor || "") : ""; const otherEmoji = otherName.includes("ダーリン") || bottleNpcName.includes("ダーリンちゃん") ? "🥺" : otherName.includes("芋虫") || bottleNpcName.includes("LSI芋虫") ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
       if (!map[threadId]) {
         map[threadId] = {
           targetId: threadId,
@@ -3045,9 +3045,12 @@ export default function DriftApp() {
       const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
       const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
       if (thread.targetId.startsWith("bottle-")) {
-        // ボトル経由のDMは相手のプロフィール画像ではなく、海のアイコンで統一する。
+        // NPCが投稿したボトルは広場と同じキャラアイコン、それ以外のボトルは海のアイコン。
+        const bottleId = messages.find(message => message.bottleId)?.bottleId || Number(thread.targetId.match(/^bottle-(\\d+)/)?.[1] || 0);
+        const originalBottle = bottles.find(bottle => bottle.id === bottleId);
+        const bottleAuthor = originalBottle?.author || messages.find(message => message.bottleAuthor)?.bottleAuthor || "";
         thread.avatarUrl = undefined;
-        thread.emoji = "🌊";
+        thread.emoji = bottleAuthor.includes("LSI芋虫") ? "🐛" : bottleAuthor.includes("ダーリンちゃん") ? "🥺" : "🌊";
       } else {
         thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
         thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
