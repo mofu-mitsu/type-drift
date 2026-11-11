@@ -2717,7 +2717,7 @@ export default function DriftApp() {
     const targetLabel = `${target.name} ${target.id} ${target.bottleInfo?.author || ""}`;
     const preferred = /ダーリン|darling|🥺/i.test(targetLabel) ? "ダーリンちゃん" : "LSI芋虫";
     try {
-      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => message.threadId === (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id)).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
+      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => target.bottleInfo ? message.threadId.startsWith(`bottle-${target.bottleInfo.id}-`) || message.threadId === `bottle-${target.bottleInfo.id}` : message.threadId === target.id).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const hasError = !response.ok || data?.source !== "groq";
@@ -2873,7 +2873,9 @@ export default function DriftApp() {
 
     const newMsg: DirectMessage = {
       id: `dm-${Date.now()}`,
-      threadId: target.id,
+      threadId: target.bottleInfo
+        ? `bottle-${target.bottleInfo.id}-${isAiTarget ? [target.id === "darling" || /ダーリン/.test(target.name) ? "ai:darling" : "ai:lsi-worm", getGuestKey()].sort().join("-") : getGuestKey()}`
+        : target.id,
       sender: myDisplayName,
       recipient: target.name,
       targetEmoji: target.emoji,
