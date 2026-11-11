@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       const bottleId = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
       const threadId = typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`;
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
-      const recipientGuestKey = userId ? `user:${userId}` : guestKey;
+      const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
       const sql = db();
       let bottleSnippet: string | null = null;
       let bottleAuthor: string | null = null;
