@@ -2897,8 +2897,8 @@ export default function DriftApp() {
     });
 
     // AI宛ては返信生成まで待ち、失敗したら送信扱いにせず入力欄を残す。
-    const isDarling = target.id === "darling" || target.name.includes("ダーリン");
-    const isWorm = target.id === "worm" || target.name.includes("芋虫");
+    const isDarling = target.id === "darling" || target.name.includes("ダーリン") || target.emoji === "🥺" || /ダーリンちゃん/.test(target.type || "") || /ダーリンちゃん/.test(target.bottleInfo?.type || "");
+    const isWorm = target.id === "worm" || target.name.includes("芋虫") || target.emoji === "🐛" || /LSI芋虫/.test(target.type || "") || /LSI芋虫/.test(target.bottleInfo?.type || "");
     if (isDarling || isWorm) {
       const replied = await requestDmAiReply({ ...target, id: isDarling ? "darling" : "worm" }, body);
       if (!replied) {
