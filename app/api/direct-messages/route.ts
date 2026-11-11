@@ -47,7 +47,52 @@ export async function POST(request: NextRequest) {
   const userId = readSession(request);
   const guestKey = request.headers.get("x-guest-key")?.trim().slice(0, 200) || "";
 
-  // NPC replies use dedicated AI identities and can be saved for guest sessions.
+  // NPC replies use dedicated AI identities for both guest and signed-in recipients.
+  // Unlike human messages, NPC reply persistence does not require the NPC to own the bottle.
+  try {
+    const payload = await request.clone().json();
+    if (payload?.ai_reply === true) {
+      const character = String(payload.ai_character || "");
+      const npcKey = character.includes("ダーリン") ? "ai:darling" : character.includes("芋虫") ? "ai:lsi-worm" : "";
+      if (!npcKey) return NextResponse.json({ error: "unknown_ai_character" }, { status: 422 });
+      if (!userId && !/^[0-9a-f-]{36}$/i.test(guestKey)) return NextResponse.json({ error: "invalid_guest_key" }, { status: 400 });
+      const body = typeof payload.body === "string" ? payload.body.trim() : "";
+      if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+      const bottleId = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
+      const threadId = typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`;
+      const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
+      const recipientGuestKey = userId ? `user:${userId}` : guestKey;
+      const sql = db();
+      let bottleSnippet: string | null = null;
+      let bottleAuthor: string | null = null;
+      let bottleType: string | null = null;
+      if (bottleId) {
+        const bottleRows = await sql`SELECT body, ai_character, mbti, socionics, enneagram FROM bottles WHERE id = ${bottleId} AND deleted_at IS NULL LIMIT 1`;
+        const bottle = bottleRows[0] as { body?: string; ai_character?: string; mbti?: string; socionics?: string; enneagram?: string } | undefined;
+        if (!bottle) return NextResponse.json({ error: "bottle_not_found" }, { status: 404 });
+        bottleSnippet = String(bottle.body || "").slice(0, 500);
+        bottleAuthor = character;
+        bottleType = String(bottle.ai_character || [bottle.socionics, bottle.enneagram, bottle.mbti].filter(Boolean).join(" · ") || "ボトルへの返信");
+      }
+      const inserted = await sql`
+        INSERT INTO direct_messages (
+          sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body,
+          bottle_id, bottle_snippet, bottle_author, bottle_type, sender_user_id, recipient_user_id,
+          sender_profile, recipient_profile, created_at, updated_at
+        ) VALUES (
+          ${npcKey}, ${recipientGuestKey}, ${threadId}, ${character}, ${recipientName}, ${body},
+          ${bottleId}, ${bottleSnippet}, ${bottleAuthor}, ${bottleType}, NULL, ${userId},
+          NULL, ${payload.recipient_profile && typeof payload.recipient_profile === "object" ? JSON.stringify(payload.recipient_profile) : null}::json, NOW(), NOW()
+        ) RETURNING id, thread_id, sender_name, recipient_name, body, bottle_id, bottle_snippet, bottle_author, bottle_type, created_at, (read_at IS NOT NULL) AS read, false AS is_mine, sender_profile, recipient_profile
+      `;
+      return NextResponse.json({ ok: true, message: inserted[0] }, { headers: { "Cache-Control": "no-store" } });
+    }
+  } catch (error) {
+    console.error("[Type Drift NPC DM save] POST failed", error);
+    return NextResponse.json({ error: "ai_reply_save_failed" }, { status: 500 });
+  }
+
+  // Non-AI guest messages remain unauthenticated; normal user messages require a session.
   if (!userId) {
     try {
       const payload = await request.clone().json();
