@@ -2797,7 +2797,9 @@ export default function DriftApp() {
       /^AI(?:\s|·|$)/i.test(target.type || "") ||
       /ダーリンちゃん|LSI芋虫/.test(target.name) ||
       /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.author || "") ||
-      /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.type || "");
+      /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.type || "") ||
+      target.emoji === "🥺" || target.emoji === "🐛" ||
+      /ダーリンちゃん|LSI芋虫/.test(target.type || "");
     const isSessionKey = !isAiTarget && (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-"));
     const isServerThread = target.id.startsWith("dm-") || (target.id.startsWith("bottle-") && !hasMatchingBottle);
     const isAiBottleTarget = isAiTarget;
