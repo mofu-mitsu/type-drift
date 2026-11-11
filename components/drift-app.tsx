@@ -2780,6 +2780,7 @@ export default function DriftApp() {
       enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "",
       bio: profileBio || "", links: profileLinks || [], profileImageUrl: profileImage || "",
     };
+    const originalBottleForDm = target.bottleInfo ? bottles.find(item => item.id === target.bottleInfo?.id) : undefined;
     const recipientProfileSnapshot = targetUser ? {
       nickname: targetUser.nickname || target.name,
       mbti: targetUser.mbti || targetUser.identity?.mbti || "",
@@ -2798,6 +2799,8 @@ export default function DriftApp() {
       /ダーリンちゃん|LSI芋虫/.test(target.name) ||
       /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.author || "") ||
       /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.type || "") ||
+      /ダーリンちゃん|LSI芋虫/.test(originalBottleForDm?.author || "") ||
+      /ダーリンちゃん|LSI芋虫/.test(originalBottleForDm?.ai_character || "") ||
       target.emoji === "🥺" || target.emoji === "🐛" ||
       /ダーリンちゃん|LSI芋虫/.test(target.type || "");
     const isSessionKey = !isAiTarget && (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-"));
