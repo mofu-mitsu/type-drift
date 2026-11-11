@@ -29,9 +29,16 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   let lastError: unknown;
   let lastResponse: Response | undefined;
 
+  // Keep the authenticated account ID alongside its isolated guest key so the Worker can resolve the account's canonical profile key. This restores DM/notification delivery without merging separate accounts that shared a browser.
+  const requestInit: RequestInit = { ...init, headers: new Headers(init?.headers) };
+  if (typeof window !== "undefined") {
+    const userKey = window.localStorage.getItem("type-drift-user-key");
+    if (userKey) (requestInit.headers as Headers).set("X-User-Key", userKey);
+  }
+
   for (const base of targets) {
     try {
-      const response = await fetch(`${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`, init);
+      const response = await fetch(`${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`, requestInit);
       if (response.ok || response.status < 500 || base === targets[targets.length - 1]) return response;
       console.warn(`[Type Drift API] ${base} returned ${response.status}; retrying with ${targets[targets.indexOf(base) + 1]}`);
       lastResponse = response;
