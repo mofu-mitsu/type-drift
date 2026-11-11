@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
     character?: unknown;
     mode?: unknown;
     history?: unknown;
+    profile?: unknown;
   } | null;
   const body = typeof input?.body === "string" ? input.body.trim() : "";
   if (!body) return NextResponse.json({ source: "error", reason: "empty_prompt", model: MODEL }, { status: 422 });
@@ -114,12 +115,16 @@ export async function POST(request: NextRequest) {
         kind: String(item?.kind || "").slice(0, 16),
       }))
     : [];
+  const rawProfile = input?.profile && typeof input.profile === "object" ? input.profile as Record<string, unknown> : {};
+  const profile = { nickname: String(rawProfile.nickname || "").trim().slice(0,32), mbti: String(rawProfile.mbti || "").trim().slice(0,24), socionics: String(rawProfile.socionics || "").trim().slice(0,24), enneagram: String(rawProfile.enneagram || "").trim().slice(0,24), otherType: String(rawProfile.otherType || "").trim().slice(0,60), bio: String(rawProfile.bio || "").trim().slice(0,240) };
+  const profileContext = [profile.nickname ? `会話相手の現在のプロフィール名: ${profile.nickname}` : "", profile.mbti ? `会話相手のMBTI自認: ${profile.mbti}` : "", profile.socionics ? `会話相手のソシオニクス自認: ${profile.socionics}` : "", profile.enneagram ? `会話相手のエニアグラム自認: ${profile.enneagram}` : "", profile.otherType ? `会話相手のその他の自認: ${profile.otherType}` : "", profile.bio ? `会話相手のプロフィール紹介: ${profile.bio}` : ""].filter(Boolean).join("\n");
   const requested = typeof input?.character === "string" ? input.character : undefined;
   const character = chooseCharacter(body, history, requested);
   const isBottle = input?.mode === "bottle";
-  const system = isBottle
+  const baseSystem = isBottle
     ? `${characterInstruction(character)} 今回は匿名ボトルの本文を一文だけ書く。相手への呼びかけや会話の返事にはせず、類型や自分についての小さな観測・違和感にする。`
     : characterInstruction(character);
+  const system = profileContext ? `${baseSystem}\n\n${profileContext}\nこのプロフィール情報は今回の会話相手本人の情報。名前や自認を別の利用者と混同せず、必要なときに自然に会話へ反映する。` : baseSystem;
 
   try {
     const requestBody = (model: string, retry = false) => ({
