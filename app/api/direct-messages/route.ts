@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       if (!userId && !/^[0-9a-f-]{36}$/i.test(guestKey)) return NextResponse.json({ error: "invalid_guest_key" }, { status: 400 });
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
-      const bottleId = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
+      let bottleId: number | null = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
       const threadId = typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`;
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
@@ -76,7 +76,8 @@ export async function POST(request: NextRequest) {
           bottleType = String(bottle.ai_character || [bottle.socionics, bottle.enneagram, bottle.mbti].filter(Boolean).join(" · ") || "ボトルへの返信");
         } else {
           // Keep the conversation alive even if its originating bottle was deleted after the DM opened.
-          // bottle_id is intentionally null to avoid a dangling reference.
+          // Clear the stale ID to avoid a dangling foreign-key reference.
+          bottleId = null;
         }
       }
       const inserted = await sql`
