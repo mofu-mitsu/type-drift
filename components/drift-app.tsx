@@ -250,7 +250,7 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
     }
   };
   return <article className={`bottle-card ${bottle.color}`}>
-    <div className="bottle-card__top"><div className="author"><span className="author__emoji">{bottle.emoji}</span><span><strong>{bottle.author}</strong><small>{bottle.type} · {bottle.mbti}{bottle.otherType ? ` · ${bottle.otherType}` : ""}</small></span></div><span className="time">{bottle.time}</span></div>
+    <div className="bottle-card__top"><div className="author"><span className="author__emoji">{bottle.author.includes("LSI芋虫") || bottle.ai?.includes("LSI芋虫") ? "🐛" : bottle.author.includes("ダーリンちゃん") || bottle.ai?.includes("ダーリンちゃん") ? "🥺" : bottle.emoji}</span><span><strong>{bottle.author}</strong><small>{bottle.type} · {bottle.mbti}{bottle.otherType ? ` · ${bottle.otherType}` : ""}</small></span></div><span className="time">{bottle.time}</span></div>
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
     <div className="bottle-text"><BottleTextWithLinks text={normalizeDmBody(bottle.text)} /></div>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
