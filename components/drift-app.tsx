@@ -3461,7 +3461,6 @@ export default function DriftApp() {
     reader.onerror = () => setPlazaToast("画像を読み込めませんでした。別の画像を選んでください。");
     reader.readAsDataURL(file);
   };
-  const guestKey = () => { let key = localStorage.getItem("type-drift-guest-key"); if (!key) { key = crypto.randomUUID(); localStorage.setItem("type-drift-guest-key", key); } return key; };
   const sendReply = async () => {
     if (!reply.trim() || !selected) return;
     const body = reply.trim();
@@ -3477,7 +3476,7 @@ export default function DriftApp() {
     });
     setReply("");
     setReplyParentId(undefined);
-    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) });
+    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) });
     if (!response.ok) {
       console.error("[Type Drift] bottle reply save failed", { bottleId: selected.id, status: response.status, detail: await response.clone().text().catch(() => "") });
       setPlazaToast(`返信を保存できませんでした（${response.status}）`);
