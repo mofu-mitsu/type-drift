@@ -3545,7 +3545,7 @@ export default function DriftApp() {
     setSelected(null);
     setPlazaToast("ボトルを海から回収しました");
   };
-  const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const response = await apiFetch(`/api/replies/${replyId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": guestKey() } }); if (!response.ok) setPlazaToast(`返信への反応を保存できませんでした（${response.status}）`); logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
+  const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const response = await apiFetch(`/api/replies/${replyId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`返信への反応を保存できませんでした（${response.status}）`); logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
   const openBottle = async (bottle: Bottle) => {
     setSelected(bottle);
     setPicked(true);
@@ -3554,7 +3554,7 @@ export default function DriftApp() {
     if (!bottle.mine) { setReplyItems(items => ({ ...items, [bottle.id]: [] })); return; }
     if (!api || !Number.isFinite(bottle.id) || bottle.id > 1_000_000_000_000) return;
     try {
-      const response = await apiFetch(`/api/bottles/${bottle.id}/replies`, { credentials: "include", headers: { "X-Guest-Key": guestKey() } });
+      const response = await apiFetch(`/api/bottles/${bottle.id}/replies`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
       if (!response.ok) return;
       const data = await response.json();
       const flattened: ReplyItem[] = [];
