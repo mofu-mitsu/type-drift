@@ -1,6 +1,19 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+
+// Keep cached DM history isolated per signed-in account or guest identity.
+// The previous global key let separate accounts in the same browser merge conversations.
+function getDirectMessageStorageKey(): string {
+  if (typeof window === "undefined") return getDirectMessageStorageKey();
+  try {
+    const accountKey = window.localStorage.getItem("type-drift-user-key");
+    if (accountKey) return `type-drift-direct-messages:user:${accountKey}`;
+    const guestKey = window.localStorage.getItem("type-drift-guest-key");
+    if (guestKey) return `type-drift-direct-messages:guest:${guestKey}`;
+  } catch {}
+  return "type-drift-direct-messages:guest:anonymous";
+}
 import type { ReactNode } from "react";
 import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
 import WormGame from "./worm-game";
@@ -806,7 +819,7 @@ export default function DriftApp() {
             else merged.push(incoming);
           }
           merged.sort((a, b) => a.createdAt - b.createdAt);
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(merged)); } catch {}
+          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(merged)); } catch {}
           return merged;
         });
       } catch (error) {
@@ -2119,7 +2132,7 @@ export default function DriftApp() {
         } catch {}
       }
       // DMメッセージの復元
-      const savedDm = localStorage.getItem("type-drift-direct-messages");
+      const savedDm = localStorage.getItem(getDirectMessageStorageKey());
       if (savedDm) {
         const parsed = JSON.parse(savedDm);
         if (Array.isArray(parsed) && parsed.length > 0) setDirectMessages(parsed);
@@ -2727,14 +2740,14 @@ export default function DriftApp() {
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
-      setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
+      setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       logActivity("direct_message_ai_reply", { target: preferred, bodyLength: replyBody.length }, { type: "direct_message", id: target.id });
       setPlazaToast(`💌 ${preferred}から返信が届きました`);
       return !hasError;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const replyMsg: DirectMessage = { id: `dm-ai-error-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: `待っていたわよ♡\nAI応答でエラーが起きたみたい。\nエラー内容「network_error」\n詳細: ${detail.slice(0, 180)}\n気になる場合は意見箱へ送ってね。`, createdAt: Date.now(), read: false, isMine: false, isAiError: true, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
-      setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {} return updated; });
+      setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       console.error("[Type Drift AI] DM request failed", { character: preferred, detail });
       return false;
     }
@@ -2840,7 +2853,7 @@ export default function DriftApp() {
         };
         setDirectMessages(current => {
           const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
           return updated;
         });
         logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
@@ -2872,7 +2885,7 @@ export default function DriftApp() {
 
     setDirectMessages(prev => {
       const updated = [...prev, newMsg];
-      try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
       return updated;
     });
 
@@ -2884,7 +2897,7 @@ export default function DriftApp() {
       if (!replied) {
         setDirectMessages(prev => {
           const updated = prev.filter(message => message.id !== newMsg.id);
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
           return updated;
         });
         setPlazaToast("AIから返信を受け取れませんでした。本文は入力欄に残しています");
@@ -2916,7 +2929,7 @@ export default function DriftApp() {
       setDirectMessages(prev => {
         if (prev.some(item => item.id === incoming.id)) return prev;
         const updated = [...prev, incoming];
-        try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+        try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
         return updated;
       });
       setPlazaToast(`💌 ${incoming.sender}からメッセージが届きました`);
@@ -3105,7 +3118,7 @@ export default function DriftApp() {
         }
         return m;
       });
-      try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
       return updated;
     });
   };
@@ -3263,7 +3276,7 @@ export default function DriftApp() {
     }
     setDirectMessages(prev => {
       const updated = prev.map(m => ({ ...m, read: true }));
-      try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
       return updated;
     });
     markAllDiagnosesAsRead();
@@ -3511,7 +3524,7 @@ export default function DriftApp() {
         };
         setDirectMessages(current => {
           const updated = [...current.filter(message => message.serverId !== persistedMessage.serverId), persistedMessage];
-          try { localStorage.setItem("type-drift-direct-messages", JSON.stringify(updated)); } catch {}
+          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
           return updated;
         });
         setPlazaToast("返信を保存し、個別メッセージにも記録しました");
