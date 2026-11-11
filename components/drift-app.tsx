@@ -2770,7 +2770,7 @@ export default function DriftApp() {
     const myDisplayName = isBottleConversation && !isProfileRevealed ? "匿名のあなた" : (nickname || "匿名のあなた");
     const targetBottleMatch = target.id.match(/^bottle-(\d+)/);
     const targetBottleId = targetBottleMatch ? Number(targetBottleMatch[1]) : 0;
-    const hasMatchingBottle = Boolean(target.id === `bottle-${target.bottleInfo?.id}` && target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
+    const hasMatchingBottle = Boolean(target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
     const targetUser = plazaUsers.find(item => item.sessionKey === target.id) ||
       plazaUsers.find(item => item.nickname === target.name && item.nickname !== nickname) ||
       dmProfileCache[target.id] || dmProfileCache[target.name];
