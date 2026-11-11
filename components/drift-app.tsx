@@ -35,7 +35,7 @@ import {
 
 const DEFAULT_GAS_URL = process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
 
-type Bottle = { id: number; author: string; emoji: string; type: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; color: string };
+type Bottle = { id: number; author: string; emoji: string; type: string; ai_character?: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; color: string };
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number; author?: string; emoji?: string };
 
 const BOTTLE_PROMPTS = [
@@ -998,7 +998,6 @@ export default function DriftApp() {
     "えっ、突然の生魚！？w ありがとうございます！広場でブリもらえるのシュールで好きw",
     "ブリありがと〜！🐟 今日の晩ごはんのおかずにします！",
     "獲れたての新鮮なブリだ！ありがとう！大切にするね🐟",    "わ！魚だ！海から拾ってきたの？ありがとう〜！🐟✨"  ];
-
   // 🎲 ダーリンちゃんの思考のお題（Ti/Ne/Ni思考実験・解剖）
   const DARLING_TOPICS = [
     // 【ライト・答えやすい系（Fe仮面の軽いお戯れ）】
@@ -1997,8 +1996,7 @@ export default function DriftApp() {
     return () => { window.clearInterval(timer); window.removeEventListener("type-drift:refresh-consultations", immediateRefresh); };
   }, []);  // Laravel Reverbは更新通知のベルとして使い、実データはAPIから再取得する。
   useEffect(() => {    const host = process.env.NEXT_PUBLIC_REVERB_HOST || "type-drift-reverb.onrender.com";
-    const key = process.env.NEXT_PUBLIC_REVERB_APP_KEY || "type-drift-worm";
-    const socket = new WebSocket(`wss://${host}/app/${key}?protocol=7&client=type-drift&version=1.0&flash=false`);
+    const key = process.env.NEXT_PUBLIC_REVERB_APP_KEY || "type-drift-worm";    const socket = new WebSocket(`wss://${host}/app/${key}?protocol=7&client=type-drift&version=1.0&flash=false`);
     socket.onopen = () => {
       socket.send(JSON.stringify({ event: "pusher:subscribe", data: { channel: "bottles" } }));
       socket.send(JSON.stringify({ event: "pusher:subscribe", data: { channel: "consultations" } }));
@@ -2997,8 +2995,7 @@ export default function DriftApp() {
       const isUndiagnosed = p.category === "request" && p.status !== "diagnosed";
       const isDismissed = readAdminConsultationIds.includes(p.id);
       return isUndiagnosed && !isDismissed;
-    }).length;
-  }, [consultationPosts, readAdminConsultationIds]);
+    }).length;  }, [consultationPosts, readAdminConsultationIds]);
 
   // 📮 管理者トレイ全体の未対応バッジ数  const adminTotalPendingCount = useMemo(() => {
     return adminPendingFeedbackCount + adminPendingConsultationCount;
@@ -3997,8 +3994,7 @@ export default function DriftApp() {
                 name: "ダーリンちゃん",
                 emoji: "🥺",
                 mbti: "INTP",
-                socionics: "ILI",
-                enneagram: "5w4",
+                socionics: "ILI",                enneagram: "5w4",
                 psycho: "Psychosophy: LVEF",                overview: "現実に消耗しきっている眠り姫タイプ。世界を抽象構造で捉えるギークアリス。ぶっきらぼうな本性を隠すため、猫なで声でユーザーを「ダーリン♡」と呼ぶFe実験用・誘導用仮面を被っている。機嫌が悪いと「ウチ、退屈やけん……」が漏れ出たり、1〜100の気分当てゲームを仕掛けてくる。"
               });
             }}
@@ -4997,8 +4993,7 @@ export default function DriftApp() {
                           <p>{notification.message}</p>
                           <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" })}</time>
                         </div>
-                        {(notification.type === "consultation_reaction" || notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) && notification.entity_id != null && (
-                          <button                            type="button"
+                        {(notification.type === "consultation_reaction" || notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) && notification.entity_id != null && (                          <button                            type="button"
                             onClick={() => {
                               setSharedConsultId(String(notification.entity_id));                              if (notification.type.includes("diagnosis") || notification.message.includes("自認診断") || notification.message.includes("診断結果")) setConsultationRequestOpenSignal(value => value + 1);
                               setActivePage("consult");
@@ -5997,8 +5992,7 @@ export default function DriftApp() {
                                 onClick={() => setActiveReplyPostId(post.id)}
                               >
                                 診断結果を再編集・更新する
-                              </button>                            </div>
-                            <div style={{ marginTop: "8px", fontSize: "12px", color: "#14532d" }}>                              <strong>1位:</strong> {post.diagnosisResult?.rank1} | <strong>2位:</strong> {post.diagnosisResult?.rank2 || "なし"} | <strong>3位:</strong> {post.diagnosisResult?.rank3 || "なし"}
+                              </button>                            </div>                            <div style={{ marginTop: "8px", fontSize: "12px", color: "#14532d" }}>                              <strong>1位:</strong> {post.diagnosisResult?.rank1} | <strong>2位:</strong> {post.diagnosisResult?.rank2 || "なし"} | <strong>3位:</strong> {post.diagnosisResult?.rank3 || "なし"}
                             </div>
                             <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#166534", whiteSpace: "pre-wrap" }}>
                               {post.diagnosisResult?.reasoning}
