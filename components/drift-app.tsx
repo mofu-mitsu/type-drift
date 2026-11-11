@@ -2794,14 +2794,15 @@ export default function DriftApp() {
     const isAiTarget = target.id === "darling" || target.id === "worm" ||
       /^AI(?:\s|·|$)/i.test(target.type || "") ||
       /ダーリンちゃん|LSI芋虫/.test(target.name) ||
-      /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.author || "");
+      /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.author || "") ||
+      /ダーリンちゃん|LSI芋虫/.test(target.bottleInfo?.type || "");
     const isSessionKey = !isAiTarget && (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(target.id) || target.id.startsWith("plaza-"));
     const isServerThread = target.id.startsWith("dm-") || (target.id.startsWith("bottle-") && !hasMatchingBottle);
     const isAiBottleTarget = isAiTarget;
     if (!isAiTarget && ((hasMatchingBottle && !isAiBottleTarget) || isSessionKey || (isServerThread && !isAiBottleTarget))) {
       try {
         const payload = hasMatchingBottle
-          ? { bottle_id: target.bottleInfo!.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
+          ? { bottle_id: target.bottleInfo!.id, thread_id: `bottle-${target.bottleInfo!.id}-${getGuestKey()}`, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
           : isSessionKey
             ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
             : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot };
@@ -2899,12 +2900,8 @@ export default function DriftApp() {
     if (isDarling || isWorm) {
       const replied = await requestDmAiReply({ ...target, id: isDarling ? "darling" : "worm" }, body);
       if (!replied) {
-        setDirectMessages(prev => {
-          const updated = prev.filter(message => message.id !== newMsg.id);
-          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-        setPlazaToast("AIから返信を受け取れませんでした。本文は入力欄に残しています");
+        // 返信APIが失敗しても、送信済みの本文を消さずに会話へ残す。
+        setPlazaToast("AIから返信を受け取れませんでした。送信した本文はDMに残しています");
         return false;
       }
     }
