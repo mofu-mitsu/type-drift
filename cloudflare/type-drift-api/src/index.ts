@@ -503,28 +503,32 @@ export default {
           const recipientSnapshot = row.recipient_profile && typeof row.recipient_profile === "object" ? row.recipient_profile : {};
           // Snapshot objects may exist but contain empty strings. Fill each blank field
           // from the live profile join instead of letting an empty JSON object mask it.
+          // Always prefer the participant's current profile over the message-time snapshot.
+          // Snapshots are only a fallback for deleted/unlinked legacy profiles.
           const senderProfile = {
-            nickname: senderSnapshot.nickname || row.live_sender_nickname || row.sender_name || "",
-            mbti: senderSnapshot.mbti || row.live_sender_mbti || "",
-            socionics: senderSnapshot.socionics || row.live_sender_socionics || "",
-            enneagram: senderSnapshot.enneagram || row.live_sender_enneagram || "",
-            other_type: senderSnapshot.other_type || senderSnapshot.otherType || row.live_sender_other_type || "",
-            bio: senderSnapshot.bio || row.live_sender_bio || "",
-            links: Array.isArray(senderSnapshot.links) && senderSnapshot.links.length ? senderSnapshot.links : (row.live_sender_links || []),
-            profile_image_url: senderSnapshot.profile_image_url || senderSnapshot.profileImageUrl || row.live_sender_image || "",
+            nickname: row.live_sender_nickname || senderSnapshot.nickname || row.sender_name || "",
+            mbti: row.live_sender_mbti || senderSnapshot.mbti || "",
+            socionics: row.live_sender_socionics || senderSnapshot.socionics || "",
+            enneagram: row.live_sender_enneagram || senderSnapshot.enneagram || "",
+            other_type: row.live_sender_other_type || senderSnapshot.other_type || senderSnapshot.otherType || "",
+            bio: row.live_sender_bio || senderSnapshot.bio || "",
+            links: Array.isArray(row.live_sender_links) && row.live_sender_links.length ? row.live_sender_links : (Array.isArray(senderSnapshot.links) ? senderSnapshot.links : []),
+            profile_image_url: row.live_sender_image || senderSnapshot.profile_image_url || senderSnapshot.profileImageUrl || "",
           };
           const recipientProfile = {
-            nickname: recipientSnapshot.nickname || row.live_recipient_nickname || row.recipient_name || "",
-            mbti: recipientSnapshot.mbti || row.live_recipient_mbti || "",
-            socionics: recipientSnapshot.socionics || row.live_recipient_socionics || "",
-            enneagram: recipientSnapshot.enneagram || row.live_recipient_enneagram || "",
-            other_type: recipientSnapshot.other_type || recipientSnapshot.otherType || row.live_recipient_other_type || "",
-            bio: recipientSnapshot.bio || row.live_recipient_bio || "",
-            links: Array.isArray(recipientSnapshot.links) && recipientSnapshot.links.length ? recipientSnapshot.links : (row.live_recipient_links || []),
-            profile_image_url: recipientSnapshot.profile_image_url || recipientSnapshot.profileImageUrl || row.live_recipient_image || "",
+            nickname: row.live_recipient_nickname || recipientSnapshot.nickname || row.recipient_name || "",
+            mbti: row.live_recipient_mbti || recipientSnapshot.mbti || "",
+            socionics: row.live_recipient_socionics || recipientSnapshot.socionics || "",
+            enneagram: row.live_recipient_enneagram || recipientSnapshot.enneagram || "",
+            other_type: row.live_recipient_other_type || recipientSnapshot.other_type || recipientSnapshot.otherType || "",
+            bio: row.live_recipient_bio || recipientSnapshot.bio || "",
+            links: Array.isArray(row.live_recipient_links) && row.live_recipient_links.length ? row.live_recipient_links : (Array.isArray(recipientSnapshot.links) ? recipientSnapshot.links : []),
+            profile_image_url: row.live_recipient_image || recipientSnapshot.profile_image_url || recipientSnapshot.profileImageUrl || "",
           };
           return {
-            id: row.id, thread_id: row.thread_id, sender_name: row.sender_name, recipient_name: row.recipient_name,
+            id: row.id, thread_id: row.thread_id,
+            sender_name: senderProfile.nickname || row.sender_name,
+            recipient_name: recipientProfile.nickname || row.recipient_name,
             body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
             bottle_type: row.bottle_type, created_at: row.created_at,
             sender_profile: senderProfile, recipient_profile: recipientProfile,
