@@ -5,7 +5,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 // Keep cached DM history isolated per signed-in account or guest identity.
 // The previous global key let separate accounts in the same browser merge conversations.
 function getDirectMessageStorageKey(): string {
-  if (typeof window === "undefined") return getDirectMessageStorageKey();
+  if (typeof window === "undefined") return "type-drift-direct-messages";
   try {
     const accountKey = window.localStorage.getItem("type-drift-user-key");
     if (accountKey) return `type-drift-direct-messages:user:${accountKey}`;
