@@ -402,6 +402,20 @@ export default {
         let context: any = null;
         let bottleId: number | null = null;
 
+        if (b.ai_reply === true) {
+          const actorName = clean(b.ai_character, 40);
+          const actor = AI_ACTORS.find(item => item.name === actorName);
+          if (!actor) return json({ message: "unknown_ai_character" }, 422, env, request);
+          const requestedThread = clean(b.thread_id, 240);
+          const thread = requestedThread || `ai-${actor.key}-${key}`;
+          const recipientRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
+          const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (recipientRows[0] || {});
+          const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
+            VALUES (${actor.key},${key},${thread},${actor.name},${clean(b.recipient_name,24) || recipientProfile.nickname || "あなた"},${text},${b.bottle_id ? Number(b.bottle_id) : null},${clean(b.bottle_snippet,180) || null},${clean(b.bottle_author,80) || null},${clean(b.bottle_type,180) || null},${JSON.stringify({nickname:actor.name,mbti:actor.key === "ai:darling" ? "INTP" : "INTJ",socionics:actor.key === "ai:darling" ? "ILI" : "LSI",enneagram:actor.key === "ai:darling" ? "5w4" : "5w6",emoji:actor.emoji})}::jsonb,${JSON.stringify(recipientProfile)}::jsonb,NOW(),NOW()) RETURNING *`;
+          await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${key},'direct_message',${thread},${actor.emoji + " " + actor.name + "から返信が届きました。"},NOW(),NOW())`;
+          return json({ message: { id:saved[0].id, thread_id:saved[0].thread_id, sender_name:saved[0].sender_name, recipient_name:saved[0].recipient_name, body:saved[0].body, created_at:saved[0].created_at, read:false, is_mine:false, bottle_id:saved[0].bottle_id, bottle_snippet:saved[0].bottle_snippet, bottle_author:saved[0].bottle_author, bottle_type:saved[0].bottle_type, sender_profile:saved[0].sender_profile || {}, recipient_profile:saved[0].recipient_profile || {} } }, 201, env, request);
+        }
+
         if (b.bottle_id || b.thread_id) {
           const requestedThreadId = clean(b.thread_id, 240);
           const legacyBottleMatch = !b.bottle_id ? requestedThreadId.match(/^bottle-(\d+)$/) : null;
