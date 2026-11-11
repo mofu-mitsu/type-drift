@@ -252,14 +252,19 @@ export default {
         const q = url.searchParams.get("q") || null;
         const rows = await sql`
           SELECT b.*,
+            COALESCE(p.mbti, b.mbti) AS mbti,
+            COALESCE(p.socionics, b.socionics) AS socionics,
+            COALESCE(p.enneagram, b.enneagram) AS enneagram,
+            COALESCE(p.other_type, b.other_type) AS other_type,
+            p.nickname AS live_author_nickname,
             (SELECT COUNT(*)::int FROM replies r WHERE r.bottle_id=b.id AND r.deleted_at IS NULL) AS replies_count,
             (SELECT COALESCE(SUM(rx.level),0)::int FROM reactions rx WHERE rx.bottle_id=b.id) AS reactions_sum_level,
             COALESCE((SELECT rx.level FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key=${key || null} ORDER BY rx.id DESC LIMIT 1),0)::int AS reaction_level,
             (SELECT COALESCE(array_agg(CASE rx.guest_key WHEN 'ai:darling' THEN '🥺 ダーリンちゃん' WHEN 'ai:lsi-worm' THEN '🐛 LSI芋虫' END), ARRAY[]::text[])
               FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key IN ('ai:darling','ai:lsi-worm') AND rx.level > 0) AS ai_likers,
             (b.guest_key = ${key || null}) AS is_mine
-          FROM bottles b WHERE b.deleted_at IS NULL AND (${mbti}::text IS NULL OR LOWER(b.mbti)=${mbti})
-            AND (${soc}::text IS NULL OR LOWER(b.socionics)=${soc}) AND (${q}::text IS NULL OR b.body ILIKE '%'||${q}||'%')
+          FROM bottles b LEFT JOIN profiles p ON p.guest_key = b.guest_key WHERE b.deleted_at IS NULL AND (${mbti}::text IS NULL OR LOWER(COALESCE(p.mbti,b.mbti))=${mbti})
+            AND (${soc}::text IS NULL OR LOWER(COALESCE(p.socionics,b.socionics))=${soc}) AND (${q}::text IS NULL OR b.body ILIKE '%'||${q}||'%')
           ORDER BY b.created_at DESC LIMIT 20 OFFSET ${offset}`;
         const totalRows = await sql`SELECT COUNT(*)::int AS total FROM bottles b WHERE b.deleted_at IS NULL AND (${mbti}::text IS NULL OR LOWER(b.mbti)=${mbti}) AND (${soc}::text IS NULL OR LOWER(b.socionics)=${soc}) AND (${q}::text IS NULL OR b.body ILIKE '%'||${q}||'%')`;
         return json({ bottles: { data: rows, current_page: page, last_page: Math.max(1, Math.ceil(Number(totalRows[0]?.total || 0) / 20)), total: Number(totalRows[0]?.total || 0) } }, 200, env, request);
