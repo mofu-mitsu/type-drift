@@ -790,7 +790,9 @@ export default function DriftApp() {
         warnedAboutDmSync = false;
         const data = await response.json();
         const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => ({
-          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: String(row.thread_id || `bottle-${row.bottle_id}`),
+          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: row.bottle_id
+            ? `bottle-${row.bottle_id}-${String(row.is_mine ? row.recipient_guest_key : row.sender_guest_key || row.thread_id || "anonymous")}`
+            : String(row.thread_id || `dm-${row.id}`),
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
           targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
@@ -3019,7 +3021,9 @@ export default function DriftApp() {
           type: isBottleThread
             ? (m.isMine
                 ? (m.bottleType || "ボトル主へのトーク")
-                : ([m.senderIdentity?.mbti, m.senderIdentity?.socionics, m.senderIdentity?.enneagram].filter(Boolean).join(" · ") || "匿名の誰か"))
+                : (m.sender.includes("ダーリンちゃん") || m.sender.includes("LSI芋虫")
+                    ? ([m.senderIdentity?.mbti, m.senderIdentity?.socionics, m.senderIdentity?.enneagram].filter(Boolean).join(" · ") || "NPC")
+                    : "匿名の誰か"))
             : ([
                 plazaUser?.mbti || plazaUser?.identity?.mbti,
                 plazaUser?.socionics || plazaUser?.identity?.socionics,
