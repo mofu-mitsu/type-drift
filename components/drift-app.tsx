@@ -791,7 +791,7 @@ export default function DriftApp() {
         const data = await response.json();
         const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: row.bottle_id
-            ? `bottle-${row.bottle_id}-${String(row.is_mine ? row.recipient_guest_key : row.sender_guest_key || row.thread_id || "anonymous")}`
+            ? `bottle-${row.bottle_id}-${[String(row.sender_guest_key || (row.sender_user_id ? `user:${row.sender_user_id}` : "anonymous")), String(row.recipient_guest_key || (row.recipient_user_id ? `user:${row.recipient_user_id}` : "anonymous"))].sort().join("-")}`
             : String(row.thread_id || `dm-${row.id}`),
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
           targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
@@ -2719,7 +2719,7 @@ export default function DriftApp() {
     const targetLabel = `${target.name} ${target.id} ${target.bottleInfo?.author || ""}`;
     const preferred = /ダーリン|darling|🥺/i.test(targetLabel) ? "ダーリンちゃん" : "LSI芋虫";
     try {
-      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => target.bottleInfo ? message.threadId.startsWith(`bottle-${target.bottleInfo.id}-`) || message.threadId === `bottle-${target.bottleInfo.id}` : message.threadId === target.id).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
+      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => target.bottleInfo ? message.threadId === `bottle-${target.bottleInfo.id}-${[preferred === "ダーリンちゃん" ? "ai:darling" : "ai:lsi-worm", getGuestKey()].sort().join("-")}` || message.threadId === `bottle-${target.bottleInfo.id}` : message.threadId === target.id).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       const hasError = !response.ok || data?.source !== "groq";
