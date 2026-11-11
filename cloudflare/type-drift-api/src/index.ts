@@ -498,7 +498,23 @@ export default {
       }
       if (path === "/api/direct-messages" && method === "GET") {
         if (!key) return json({ messages: [] }, 200, env, request);
-        const rows = await sql`SELECT dm.*,
+        // Backfill NPC replies when the inbox loads so older replies do not depend on a scheduled run.
+        const ownedBottles = await sql\`SELECT id,guest_key,body,mbti,socionics,enneagram,other_type FROM bottles WHERE guest_key=${key} AND deleted_at IS NULL AND COALESCE(is_ai,FALSE)=FALSE\`;
+        const ownerProfileRows = await sql\`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1\`;
+        const ownerProfile = ownerProfileRows[0] || {};
+        for (const bottle of ownedBottles as Array<{id:number;guest_key:string;body:string;mbti:string|null;socionics:string|null;enneagram:string|null;other_type:string|null}>) {
+          const aiReplies = await sql\`SELECT id,guest_key,body,created_at FROM replies WHERE bottle_id=${bottle.id} AND guest_key = ANY(${AI_ACTORS.map(actor => actor.key)}) AND deleted_at IS NULL ORDER BY created_at ASC\`;
+          for (const reply of aiReplies as Array<{id:number;guest_key:string;body:string;created_at:string}>) {
+            const actor = AI_ACTORS.find(item => item.key === reply.guest_key);
+            if (!actor) continue;
+            const exists = await sql\`SELECT 1 FROM direct_messages WHERE bottle_id=${bottle.id} AND sender_guest_key=${actor.key} AND recipient_guest_key=${key} AND body=${reply.body} LIMIT 1\`;
+            if (exists.length) continue;
+            const actorProfile = { nickname: actor.name, mbti: actor.key === "ai:darling" ? "INTP" : "INTJ", socionics: actor.key === "ai:darling" ? "ILI" : "LSI", enneagram: "5w6", emoji: actor.emoji };
+            await sql\`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at) VALUES (${actor.key},${key},${"bottle-" + String(bottle.id)},${actor.name},${ownerProfile.nickname || "匿名のあなた"},${reply.body},${bottle.id},${bottle.body.slice(0,180)},${"匿名ボトル"},${[bottle.mbti,bottle.socionics,bottle.enneagram,bottle.other_type].filter(Boolean).join(" · ") || null},${JSON.stringify(actorProfile)}::jsonb,${JSON.stringify(ownerProfile)}::jsonb,${reply.created_at},NOW())\`;
+            await sql\`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${key},${"bottle_reply"},${String(bottle.id)},${actor.emoji + " " + actor.name + "からボトル返信が届きました。"},NOW(),NOW())\`;
+          }
+        }
+        const rows = await sql\`SELECT dm.*,
             sp.nickname AS live_sender_nickname, sp.mbti AS live_sender_mbti, sp.socionics AS live_sender_socionics,
             sp.enneagram AS live_sender_enneagram, sp.other_type AS live_sender_other_type, sp.bio AS live_sender_bio,
             sp.links AS live_sender_links, sp.profile_image_url AS live_sender_image,
