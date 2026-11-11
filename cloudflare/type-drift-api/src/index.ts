@@ -538,7 +538,9 @@ export default {
             profile_image_url: row.live_recipient_image || recipientSnapshot.profile_image_url || recipientSnapshot.profileImageUrl || "",
           };
           return {
-            id: row.id, thread_id: row.thread_id,
+            id: row.id, thread_id: row.bottle_id && row.sender_guest_key && row.recipient_guest_key
+              ? `bottle-${row.bottle_id}-${[String(row.sender_guest_key), String(row.recipient_guest_key)].sort().join("-")}`
+              : row.thread_id,
             sender_name: senderProfile.nickname || row.sender_name,
             recipient_name: recipientProfile.nickname || row.recipient_name,
             body: row.body, bottle_id: row.bottle_id, bottle_snippet: row.bottle_snippet, bottle_author: row.bottle_author,
