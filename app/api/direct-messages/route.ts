@@ -201,8 +201,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ブロック一覧のキーは会話thread_idではなく、相手の識別ID（user:<id> / guest key）。
+    // 受信側が相手をブロックしている場合は、別スレッドIDで送られてきても保存しない。
+    const senderIdentityKey = `user:${userId}`;
     const recipientBlocked = await sql`SELECT id FROM direct_message_blocks
-      WHERE thread_id = ${threadId}
+      WHERE thread_id IN (${threadId}, ${senderIdentityKey})
         AND ((owner_user_id = ${recipientUserId}::int AND ${recipientUserId}::int IS NOT NULL)
           OR (owner_guest_key = ${recipientGuestKey} AND ${recipientUserId}::int IS NULL))
       LIMIT 1`;
