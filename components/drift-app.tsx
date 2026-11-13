@@ -2743,7 +2743,8 @@ export default function DriftApp() {
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => target.bottleInfo ? message.threadId === `bottle-${target.bottleInfo.id}-${[preferred === "ダーリンちゃん" ? "ai:darling" : "ai:lsi-worm", getGuestKey()].sort().join("-")}` || message.threadId === `bottle-${target.bottleInfo.id}` : message.threadId === target.id).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
-      const hasError = !response.ok || data?.source !== "groq";
+      // AIプロバイダー名がGroq以外でも、有効な返信本文が返っていれば正常な返信としてDM保存する。
+      const hasError = !response.ok || typeof reply?.body !== "string" || !reply.body.trim();
       const cleanAiBody = (value: unknown, depth = 0): string => {
         if (typeof value !== "string") return "";
         const text = value.trim().replace(/^\`\`\`(?:json)?\\s*|\\s*\`\`\`$/g, "");
