@@ -821,8 +821,11 @@ export default function DriftApp() {
           const bottleThreadId = row.bottle_id
             ? `bottle-${row.bottle_id}-${[senderKey, recipientKey].sort().join("-")}`
             : String(row.thread_id || `dm-${row.id}`);
+          // NPC返信は保存時に作ったthread_idが送信側のローカル会話IDと一致する。
+          // ここで別のIDを再構成すると、ボトル返信が別スレッドに分裂して一覧から見えなくなる。
+          const resolvedThreadId = String(row.thread_id || bottleThreadId || `dm-${row.id}`);
           return ({
-          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: bottleThreadId,
+          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
           targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
