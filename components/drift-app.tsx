@@ -789,10 +789,31 @@ export default function DriftApp() {
         }
         warnedAboutDmSync = false;
         const data = await response.json();
-        const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => ({
-          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: row.bottle_id
-            ? `bottle-${row.bottle_id}-${[String(row.sender_guest_key || (row.sender_user_id ? `user:${row.sender_user_id}` : "anonymous")), String(row.recipient_guest_key || (row.recipient_user_id ? `user:${row.recipient_user_id}` : "anonymous"))].sort().join("-")}`
-            : String(row.thread_id || `dm-${row.id}`),
+        const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => {
+          // ボトルDMはサーバーのthread_idだけに依存せず、送信者と受信者の安定した識別子から会話を分ける。
+          // APIの返却フィールド名に差がある場合も、利用可能なIDを順に拾う。
+          const senderKey = String(
+            row.sender_guest_key || row.sender_session_key || row.sender_user_key ||
+            row.sender_key || row.sender_id || (row.sender_user_id ? `user:${row.sender_user_id}` : "") ||
+            (row.sender_profile && [
+              row.sender_profile.nickname, row.sender_profile.mbti, row.sender_profile.socionics,
+              row.sender_profile.enneagram, row.sender_profile.otherType || row.sender_profile.other_type,
+            ].filter(Boolean).join("|") ? `profile:${[
+              row.sender_profile.nickname, row.sender_profile.mbti, row.sender_profile.socionics,
+              row.sender_profile.enneagram, row.sender_profile.otherType || row.sender_profile.other_type,
+            ].filter(Boolean).join("|")}` : "") ||
+            (row.sender_name ? `name:${row.sender_name}` : `message:${row.id}`)
+          );
+          const recipientKey = String(
+            row.recipient_guest_key || row.recipient_session_key || row.recipient_user_key ||
+            row.recipient_key || row.recipient_id || (row.recipient_user_id ? `user:${row.recipient_user_id}` : "") ||
+            (row.recipient_name ? `name:${row.recipient_name}` : `bottle-owner:${row.bottle_id}`)
+          );
+          const bottleThreadId = row.bottle_id
+            ? `bottle-${row.bottle_id}-${[senderKey, recipientKey].sort().join("-")}`
+            : String(row.thread_id || `dm-${row.id}`);
+          return ({
+          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: bottleThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
           targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
@@ -812,7 +833,8 @@ export default function DriftApp() {
             otherType: row.recipient_profile.otherType || row.recipient_profile.other_type || "",
             profileImageUrl: row.recipient_profile.profileImageUrl || row.recipient_profile.profile_image_url || "",
           } : undefined,
-        }));
+          });
+        });
         setDirectMessages(current => {
           const merged = [...current];
           for (const incoming of remote) {
