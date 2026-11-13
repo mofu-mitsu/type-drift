@@ -1898,7 +1898,7 @@ export default function DriftApp() {
     } catch {}
   }, [directMessages]);
 
-  const filters = ["すべて", "AIの漂着"];
+  const filters = ["すべて", "AIの漂着", "人間の漂着"];
   useEffect(() => {
     const api = process.env.NEXT_PUBLIC_API_URL;
     if (!api) return;
@@ -2093,7 +2093,7 @@ export default function DriftApp() {
             aiLikers: Array.isArray(row.ai_likers) ? row.ai_likers.map(String) : [],
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
-            mine: Boolean(row.is_mine),
+            ai: row.is_ai ? String(row.ai_character || "AI") : undefined, ai_character: row.ai_character || undefined, mine: Boolean(row.is_mine),
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
@@ -3403,12 +3403,14 @@ export default function DriftApp() {
     setProfileSaved(false);
   };
   const visible = useMemo(() => bottles.filter(b => {
-    const matchesFilter = filter === "すべて" ? true : filter === "AIの漂着" ? Boolean(b.ai) : b.socionics === filter;
+    const matchesFilter = filter === "すべて" ? true : filter === "AIの漂着" ? Boolean(b.ai) : filter === "人間の漂着" ? !b.ai : b.socionics === filter;
     const haystack = `${b.text} ${b.author} ${b.mbti} ${b.socionics} ${b.enneagram}`.toLowerCase();
     const matchesMbti = !mbtiFilter || b.mbti.toUpperCase() === mbtiFilter;
     const matchesSocionics = !socionicsFilter || b.socionics.toUpperCase() === socionicsFilter;
     return matchesFilter && matchesMbti && matchesSocionics && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
+  // 取得済みの全期間ボトルからランダムに漂着させ、新着順の先頭だけに偏らないようにする。
+  const randomizedVisible = useMemo(() => [...visible].sort(() => Math.random() - 0.5), [visible]);
   const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
   const editBottle = (bottle: Bottle) => {
     if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
@@ -3943,7 +3945,7 @@ export default function DriftApp() {
           ))}
         </div>
         <div className={`bottle-stream ${isPlaying ? "is-playing" : ""}`} aria-label="流れてくるボトル">
-          {visible.slice(0, 5).map((bottle, index) => (
+          {randomizedVisible.slice(0, 5).map((bottle, index) => (
             <button
               type="button"
               key={`stream-${bottle.id}`}
