@@ -77,6 +77,25 @@ export async function POST(request: NextRequest) {
           await sql`INSERT INTO direct_message_blocks (owner_user_id, owner_guest_key, thread_id, target_name, target_emoji) VALUES (${userId}, ${userId ? null : guestKey}, ${threadId}, ${String(actionPayload.target_name || "相手").slice(0, 120)}, ${String(actionPayload.target_emoji || "◌").slice(0, 20)})`;
         }
       } else {
+        // ブロック中に誤って保存されていた受信メッセージは、解除後にも復活しないよう除去する。
+        // ブロック開始時刻以降かつ、ブロックした相手から届いた行だけを対象にする。
+        const blockStarted = await sql`SELECT created_at FROM direct_message_blocks
+          WHERE thread_id = ${threadId}
+            AND ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL)
+              OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL))
+          ORDER BY created_at DESC LIMIT 1`;
+        if (blockStarted.length) {
+          const blockedAt = blockStarted[0].created_at;
+          await sql`DELETE FROM direct_messages
+            WHERE created_at >= ${blockedAt}
+              AND (
+                (recipient_user_id = ${userId}::int AND ${userId}::int IS NOT NULL
+                  AND (sender_guest_key = ${threadId} OR thread_id = ${threadId}))
+                OR
+                (recipient_guest_key = ${guestKey} AND ${userId}::int IS NULL
+                  AND (sender_guest_key = ${threadId} OR thread_id = ${threadId}))
+              )`;
+        }
         await sql`DELETE FROM direct_message_blocks WHERE thread_id = ${threadId} AND ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL))`;
       }
       return NextResponse.json({ ok: true, action: actionPayload.action }, { headers: { "Cache-Control": "no-store" } });
