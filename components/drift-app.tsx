@@ -792,6 +792,12 @@ export default function DriftApp() {
         }
         warnedAboutDmSync = false;
         const data = await response.json();
+        if (Array.isArray(data?.blocked_threads)) {
+          const serverBlocks: Record<string, { name: string; emoji: string; blockedAt: number }> = {};
+          for (const row of data.blocked_threads) if (row?.thread_id) serverBlocks[String(row.thread_id)] = { name: String(row.target_name || "相手"), emoji: String(row.target_emoji || "◌"), blockedAt: new Date(row.created_at).getTime() || Date.now() };
+          setDmBlockedThreads(serverBlocks);
+          try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(serverBlocks)); } catch {}
+        }
         const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => {
           // ボトルDMはサーバーのthread_idだけに依存せず、送信者と受信者の安定した識別子から会話を分ける。
           // APIの返却フィールド名に差がある場合も、利用可能なIDを順に拾う。
@@ -5127,7 +5133,7 @@ export default function DriftApp() {
                         <div key={thread.targetId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 0", borderTop: "1px solid #fecaca" }}>
                           <span style={{ fontSize: "20px" }}>{thread.avatarUrl ? <img src={thread.avatarUrl} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} /> : thread.emoji}</span>
                           <span style={{ flex: 1, minWidth: 0, fontSize: "12px", color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dmBlockedThreads[thread.targetId]?.name || thread.name}</span>
-                          <button type="button" onClick={() => { const next = { ...dmBlockedThreads }; delete next[thread.targetId]; setDmBlockedThreads(next); setDmMenuOpenId(null); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} }} style={{ border: "1px solid #fca5a5", borderRadius: "7px", padding: "5px 9px", background: "#fff", color: "#b91c1c", fontSize: "11px", cursor: "pointer", flexShrink: 0 }}>解除</button>
+                          <button type="button" onClick={() => { const next = { ...dmBlockedThreads }; delete next[thread.targetId]; setDmBlockedThreads(next); setDmMenuOpenId(null); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} void apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ action: "unblock_thread", thread_id: thread.targetId }) }).then(response => { if (!response.ok) setPlazaToast("ブロック解除をサーバーに保存できませんでした"); }).catch(() => setPlazaToast("ブロック解除をサーバーに保存できませんでした")); }} style={{ border: "1px solid #fca5a5", borderRadius: "7px", padding: "5px 9px", background: "#fff", color: "#b91c1c", fontSize: "11px", cursor: "pointer", flexShrink: 0 }}>解除</button>
                         </div>
                       ))}
                     </div>
@@ -5203,7 +5209,7 @@ export default function DriftApp() {
                             <button type="button" title="トークの操作" aria-label={`${thread.name}とのトークの操作`} aria-expanded={dmMenuOpenId === thread.targetId} onClick={event => { event.stopPropagation(); setDmMenuOpenId(current => current === thread.targetId ? null : thread.targetId); }} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#64748b", cursor: "pointer" }}><MoreHorizontal size={17} /></button>
                             {dmMenuOpenId === thread.targetId && <div onClick={event => event.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 5px)", zIndex: 40, minWidth: 150, padding: 6, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", boxShadow: "0 8px 22px #0f172a1a", display: "grid", gap: 4 }}>
                               <button type="button" onClick={() => { const next = { ...dmHiddenAt, [thread.targetId]: thread.lastMsg.createdAt }; setDmHiddenAt(next); try { localStorage.setItem("type-drift-dm-hidden-at", JSON.stringify(next)); } catch {} setDmMenuOpenId(null); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff", color: "#475569", cursor: "pointer", fontSize: 12 }}>非表示にする</button>
-                              <button type="button" onClick={() => { const next = { ...dmBlockedThreads, [thread.targetId]: { name: thread.name, emoji: thread.emoji, blockedAt: Date.now() } }; setDmBlockedThreads(next); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} setDmMenuOpenId(null); if (activeDmThreadId === thread.targetId) setActiveDmThreadId(null); setPlazaToast(`${thread.name}をブロックしました`); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff7f7", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>ブロックする</button>
+                              <button type="button" onClick={() => { const next = { ...dmBlockedThreads, [thread.targetId]: { name: thread.name, emoji: thread.emoji, blockedAt: Date.now() } }; setDmBlockedThreads(next); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} void apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ action: "block_thread", thread_id: thread.targetId, target_name: thread.name, target_emoji: thread.emoji }) }).then(response => { if (!response.ok) setPlazaToast("ブロックをサーバーに保存できませんでした"); }).catch(() => setPlazaToast("ブロックをサーバーに保存できませんでした")); setDmMenuOpenId(null); if (activeDmThreadId === thread.targetId) setActiveDmThreadId(null); setPlazaToast(`${thread.name}をブロックしました`); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff7f7", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>ブロックする</button>
                             </div>}
                           </div>
                         </div>
