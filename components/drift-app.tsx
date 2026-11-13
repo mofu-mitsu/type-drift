@@ -823,7 +823,11 @@ export default function DriftApp() {
             : String(row.thread_id || `dm-${row.id}`);
           // NPC返信は保存時に作ったthread_idが送信側のローカル会話IDと一致する。
           // NPC以外のボトルDMは従来どおり送受信者の識別子で分離する。
-          const resolvedThreadId = senderKey.startsWith("ai:")
+          const isNpcMessage =
+            senderKey.startsWith("ai:") ||
+            /ダーリンちゃん|LSI芋虫/.test(String(row.sender_name || "")) ||
+            /ダーリンちゃん|LSI芋虫/.test(String(row.bottle_author || ""));
+          const resolvedThreadId = isNpcMessage
             ? String(row.thread_id || bottleThreadId || `dm-${row.id}`)
             : bottleThreadId;
           return ({
