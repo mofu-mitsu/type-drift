@@ -5,6 +5,19 @@ import { db, readSession } from "@/lib/server-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function ensureDmBlockTable(sql: ReturnType<typeof db>) {
+  await sql`CREATE TABLE IF NOT EXISTS direct_message_blocks (
+    id BIGSERIAL PRIMARY KEY,
+    owner_user_id INTEGER NULL,
+    owner_guest_key TEXT NULL,
+    thread_id TEXT NOT NULL,
+    target_name TEXT NOT NULL DEFAULT '相手',
+    target_emoji TEXT NOT NULL DEFAULT '◌',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (owner_user_id IS NOT NULL OR owner_guest_key IS NOT NULL)
+  )`;
+}
+
 export async function GET(request: NextRequest) {
   const userId = readSession(request);
   const guestKey = request.headers.get("x-guest-key")?.trim().slice(0, 200) || "";
@@ -17,6 +30,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const sql = db();
+    await ensureDmBlockTable(sql);
+    const blockRows = await sql`SELECT thread_id, target_name, target_emoji, created_at FROM direct_message_blocks WHERE (owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL)`;
     // Signed-in inboxes use the account ID; guest inboxes use their own canonical guest key.
     const rows = await sql`
       SELECT
@@ -31,7 +46,7 @@ export async function GET(request: NextRequest) {
       ORDER BY created_at ASC
       LIMIT 500
     `;
-    return NextResponse.json({ authenticated: true, userId, messages: rows }, {
+    return NextResponse.json({ authenticated: true, userId, messages: rows, blocked_threads: blockRows }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
@@ -46,6 +61,30 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const userId = readSession(request);
   const guestKey = request.headers.get("x-guest-key")?.trim().slice(0, 200) || "";
+
+  // Block-list changes are persisted server-side for this account/guest identity.
+  try {
+    const actionPayload = await request.clone().json();
+    if (actionPayload?.action === "block_thread" || actionPayload?.action === "unblock_thread") {
+      if (!userId && !/^[0-9a-f-]{36}$/i.test(guestKey)) return NextResponse.json({ error: "invalid_guest_key" }, { status: 400 });
+      const threadId = typeof actionPayload.thread_id === "string" ? actionPayload.thread_id.slice(0, 200) : "";
+      if (!threadId) return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+      const sql = db();
+      await ensureDmBlockTable(sql);
+      if (actionPayload.action === "block_thread") {
+        const existing = await sql`SELECT id FROM direct_message_blocks WHERE thread_id = ${threadId} AND ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL)) LIMIT 1`;
+        if (!existing.length) {
+          await sql`INSERT INTO direct_message_blocks (owner_user_id, owner_guest_key, thread_id, target_name, target_emoji) VALUES (${userId}, ${userId ? null : guestKey}, ${threadId}, ${String(actionPayload.target_name || "相手").slice(0, 120)}, ${String(actionPayload.target_emoji || "◌").slice(0, 20)})`;
+        }
+      } else {
+        await sql`DELETE FROM direct_message_blocks WHERE thread_id = ${threadId} AND ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL))`;
+      }
+      return NextResponse.json({ ok: true, action: actionPayload.action }, { headers: { "Cache-Control": "no-store" } });
+    }
+  } catch (error) {
+    console.error("[Type Drift DM blocks] request failed", error);
+    return NextResponse.json({ error: "dm_block_action_failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  }
 
   // NPC replies use dedicated AI identities for both guest and signed-in recipients.
   // Unlike human messages, NPC reply persistence does not require the NPC to own the bottle.
@@ -63,6 +102,7 @@ export async function POST(request: NextRequest) {
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
       const sql = db();
+      await ensureDmBlockTable(sql);
       let bottleSnippet: string | null = null;
       let bottleAuthor: string | null = null;
       let bottleType: string | null = null;
@@ -124,6 +164,7 @@ export async function POST(request: NextRequest) {
     const recipientProfile = payload?.recipient_profile && typeof payload.recipient_profile === "object" ? JSON.stringify(payload.recipient_profile) : null;
 
     const sql = db();
+    await ensureDmBlockTable(sql);
     let recipientUserId: number | null = null;
     let recipientGuestKey = recipientSessionKey || `thread:${threadId}`;
     let bottleSnippet: string | null = null;
@@ -159,6 +200,13 @@ export async function POST(request: NextRequest) {
         recipientGuestKey = row.other_guest_key || recipientGuestKey;
       }
     }
+
+    const recipientBlocked = await sql`SELECT id FROM direct_message_blocks
+      WHERE thread_id = ${threadId}
+        AND ((owner_user_id = ${recipientUserId}::int AND ${recipientUserId}::int IS NOT NULL)
+          OR (owner_guest_key = ${recipientGuestKey} AND ${recipientUserId}::int IS NULL))
+      LIMIT 1`;
+    if (recipientBlocked.length) return NextResponse.json({ error: "recipient_blocked_this_thread" }, { status: 403, headers: { "Cache-Control": "no-store" } });
 
     const inserted = await sql`
       INSERT INTO direct_messages (
