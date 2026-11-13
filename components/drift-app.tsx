@@ -15,7 +15,7 @@ function getDirectMessageStorageKey(): string {
   return "type-drift-direct-messages:guest:anonymous";
 }
 import type { ReactNode } from "react";
-import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
+import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, MoreHorizontal, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
 import WormGame from "./worm-game";
 import PlazaPanel, { type PlazaUser } from "./plaza-panel";
 import CognitiveConstellation from "./cognitive-constellation";
@@ -468,6 +468,9 @@ export default function DriftApp() {
   const [dmSortMode, setDmSortMode] = useState<"recent" | "oldest" | "unread" | "manual">("recent");
   const [dmOrder, setDmOrder] = useState<string[]>([]);
   const [dmShowHidden, setDmShowHidden] = useState(false);
+  const [dmBlockedThreads, setDmBlockedThreads] = useState<Record<string, { name: string; emoji: string; blockedAt: number }>>({});
+  const [dmShowBlocked, setDmShowBlocked] = useState(false);
+  const [dmMenuOpenId, setDmMenuOpenId] = useState<string | null>(null);
   const [dmToolsOpen, setDmToolsOpen] = useState(false);
   const [draggingDmId, setDraggingDmId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -863,6 +866,8 @@ export default function DriftApp() {
       if (raw) setDmProfileCache(JSON.parse(raw));
       const hiddenRaw = localStorage.getItem("type-drift-dm-hidden-at");
       if (hiddenRaw) setDmHiddenAt(JSON.parse(hiddenRaw));
+      const blockedRaw = localStorage.getItem("type-drift-dm-blocked-threads");
+      if (blockedRaw) setDmBlockedThreads(JSON.parse(blockedRaw));
       const sortRaw = localStorage.getItem("type-drift-dm-sort-mode");
       if (sortRaw === "recent" || sortRaw === "oldest" || sortRaw === "unread" || sortRaw === "manual") setDmSortMode(sortRaw);
       const orderRaw = localStorage.getItem("type-drift-dm-order");
@@ -2078,8 +2083,8 @@ export default function DriftApp() {
           const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
           return {
             id: Number(row.id),
-            author: row.is_ai ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`,
-            emoji: row.is_ai ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌",
+            author: (row.is_ai === true || row.is_ai === "true") ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`,
+            emoji: (row.is_ai === true || row.is_ai === "true") ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌",
             type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`,
             mbti: row.mbti || "未設定",
             socionics: row.socionics || "未設定",
@@ -2093,7 +2098,7 @@ export default function DriftApp() {
             aiLikers: Array.isArray(row.ai_likers) ? row.ai_likers.map(String) : [],
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
-            ai: row.is_ai ? String(row.ai_character || "AI") : undefined, ai_character: row.ai_character || undefined, mine: Boolean(row.is_mine),
+            ai: (row.is_ai === true || row.is_ai === "true") ? String(row.ai_character || "AI") : undefined, ai_character: row.ai_character || undefined, mine: row.is_mine === true || row.is_mine === "true",
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
@@ -2791,6 +2796,7 @@ export default function DriftApp() {
     target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
   ): Promise<string | false> => {
+    if (dmBlockedThreads[target.id]) { setPlazaToast("ブロック中の相手にはメッセージを送れません"); return false; }
     const body = text.trim();
     if (!body) return false;
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
@@ -3134,8 +3140,9 @@ export default function DriftApp() {
     });
   }, [directMessages, plazaUsers, bottles, dmProfileCache, dmSortMode, dmOrder]);
 
-  const dmThreads = useMemo(() => dmAllThreads.filter(thread => !(dmHiddenAt[thread.targetId] && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId])), [dmAllThreads, dmHiddenAt]);
-  const dmHiddenThreads = useMemo(() => dmAllThreads.filter(thread => Boolean(dmHiddenAt[thread.targetId]) && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId]), [dmAllThreads, dmHiddenAt]);
+  const dmThreads = useMemo(() => dmAllThreads.filter(thread => !dmBlockedThreads[thread.targetId] && !(dmHiddenAt[thread.targetId] && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId])), [dmAllThreads, dmHiddenAt, dmBlockedThreads]);
+  const dmHiddenThreads = useMemo(() => dmAllThreads.filter(thread => !dmBlockedThreads[thread.targetId] && Boolean(dmHiddenAt[thread.targetId]) && thread.lastMsg.createdAt <= dmHiddenAt[thread.targetId]), [dmAllThreads, dmHiddenAt, dmBlockedThreads]);
+  const dmBlockedThreadItems = useMemo(() => dmAllThreads.filter(thread => Boolean(dmBlockedThreads[thread.targetId])), [dmAllThreads, dmBlockedThreads]);
 
   const reorderDmThread = (fromId: string, toId: string) => {
     if (!fromId || fromId === toId) return;
@@ -3580,7 +3587,8 @@ export default function DriftApp() {
       window.dispatchEvent(new Event("type-drift:refresh-notifications"));
     }
     window.dispatchEvent(new Event("type-drift:refresh-bottles"));
-    if (selected.ai) { const darling = /ダーリン/.test(selected.author); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
+    // API由来の最新NPCボトルは、選択時の表示用フラグが欠ける場合があるため、作者名・ai_characterも確認する。
+    if (selected.ai || selected.ai_character || /ダーリンちゃん|LSI芋虫/.test(selected.author)) { const darling = /ダーリン|🥺/.test(`${selected.author} ${selected.ai || ""} ${selected.ai_character || ""}`); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
   const deleteBottle = async (bottle: Bottle) => {
@@ -5105,10 +5113,24 @@ export default function DriftApp() {
                       {dmToolsOpen && <div className="dm-tools-menu" style={{ position: "absolute", right: 0, top: "calc(100% + 7px)", zIndex: 30, width: 220, padding: 12, border: "1px solid #dce9e5", borderRadius: 14, background: "#fff", boxShadow: "0 12px 30px #355d501c", display: "grid", gap: 10 }}>
                         <label style={{ display: "grid", gap: 5, fontSize: 12, color: "#64748b" }}>並び替え<select aria-label="トークの並び替え" value={dmSortMode} onChange={event => { const value = event.target.value as "recent" | "oldest" | "unread" | "manual"; setDmSortMode(value); try { localStorage.setItem("type-drift-dm-sort-mode", value); } catch {} }} style={{ width: "100%", border: "1px solid #dbe4ee", borderRadius: 9, padding: "8px", background: "#fff", color: "#334155" }}><option value="recent">新しい順</option><option value="oldest">古い順</option><option value="unread">未読優先</option><option value="manual">自由並び</option></select></label>
                         {dmSortMode === "manual" && <p style={{ margin: 0, fontSize: 11, color: "#8b7ca8" }}>三本線をつかんで並び替え</p>}
-                        <button type="button" onClick={() => setDmShowHidden(value => !value)} style={{ border: "1px solid #e2e8f0", borderRadius: 9, padding: "8px", background: dmShowHidden ? "#fce7f3" : "#fff", color: "#9d174d", fontSize: 12, cursor: "pointer" }}>非表示リスト {dmHiddenThreads.length}件 {dmShowHidden ? "▲" : "▼"}</button>
+                        <button type="button" onClick={() => { setDmShowHidden(value => !value); setDmShowBlocked(false); }} style={{ border: "1px solid #e2e8f0", borderRadius: 9, padding: "8px", background: dmShowHidden ? "#fce7f3" : "#fff", color: "#9d174d", fontSize: 12, cursor: "pointer" }}>非表示リスト {dmHiddenThreads.length}件 {dmShowHidden ? "▲" : "▼"}</button>
+                        <button type="button" onClick={() => { setDmShowBlocked(value => !value); setDmShowHidden(false); }} style={{ border: "1px solid #fecaca", borderRadius: 9, padding: "8px", background: dmShowBlocked ? "#fee2e2" : "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>ブロックリスト {dmBlockedThreadItems.length}件 {dmShowBlocked ? "▲" : "▼"}</button>
                       </div>}
                     </div>
                   </div>
+
+                  {dmShowBlocked && (
+                    <div style={{ padding: "10px 14px", background: "#fff7f7", borderBottom: "1px solid #fecaca" }}>
+                      <strong style={{ display: "block", fontSize: "12px", color: "#b91c1c", marginBottom: "8px" }}>ブロックした相手</strong>
+                      {dmBlockedThreadItems.length === 0 ? <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>ブロック中の相手はいません。</p> : dmBlockedThreadItems.map(thread => (
+                        <div key={thread.targetId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 0", borderTop: "1px solid #fecaca" }}>
+                          <span style={{ fontSize: "20px" }}>{thread.avatarUrl ? <img src={thread.avatarUrl} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} /> : thread.emoji}</span>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: "12px", color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dmBlockedThreads[thread.targetId]?.name || thread.name}</span>
+                          <button type="button" onClick={() => { const next = { ...dmBlockedThreads }; delete next[thread.targetId]; setDmBlockedThreads(next); setDmMenuOpenId(null); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} }} style={{ border: "1px solid #fca5a5", borderRadius: "7px", padding: "5px 9px", background: "#fff", color: "#b91c1c", fontSize: "11px", cursor: "pointer", flexShrink: 0 }}>解除</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {dmShowHidden && (
                     <div style={{ padding: "10px 14px", background: "#fff7fb", borderBottom: "1px solid #fce7f3" }}>
@@ -5176,7 +5198,13 @@ export default function DriftApp() {
                               {thread.unread}
                             </span>
                           )}
-                          <button type="button" title="このトークを非表示" aria-label={`${thread.name}とのトークを非表示`} onClick={event => { event.stopPropagation(); const next = { ...dmHiddenAt, [thread.targetId]: thread.lastMsg.createdAt }; setDmHiddenAt(next); try { localStorage.setItem("type-drift-dm-hidden-at", JSON.stringify(next)); } catch {} }} style={{ marginLeft: "8px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 8px", background: "#fff", color: "#64748b", cursor: "pointer", flexShrink: 0 }}><span style={{ fontSize: "11px" }}>非表示</span></button>
+                          <div style={{ position: "relative", marginLeft: "8px", flexShrink: 0 }}>
+                            <button type="button" title="トークの操作" aria-label={`${thread.name}とのトークの操作`} aria-expanded={dmMenuOpenId === thread.targetId} onClick={event => { event.stopPropagation(); setDmMenuOpenId(current => current === thread.targetId ? null : thread.targetId); }} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#64748b", cursor: "pointer" }}><MoreHorizontal size={17} /></button>
+                            {dmMenuOpenId === thread.targetId && <div onClick={event => event.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 5px)", zIndex: 40, minWidth: 150, padding: 6, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", boxShadow: "0 8px 22px #0f172a1a", display: "grid", gap: 4 }}>
+                              <button type="button" onClick={() => { const next = { ...dmHiddenAt, [thread.targetId]: thread.lastMsg.createdAt }; setDmHiddenAt(next); try { localStorage.setItem("type-drift-dm-hidden-at", JSON.stringify(next)); } catch {} setDmMenuOpenId(null); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff", color: "#475569", cursor: "pointer", fontSize: 12 }}>非表示にする</button>
+                              <button type="button" onClick={() => { const next = { ...dmBlockedThreads, [thread.targetId]: { name: thread.name, emoji: thread.emoji, blockedAt: Date.now() } }; setDmBlockedThreads(next); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} setDmMenuOpenId(null); if (activeDmThreadId === thread.targetId) setActiveDmThreadId(null); setPlazaToast(`${thread.name}をブロックしました`); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff7f7", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>ブロックする</button>
+                            </div>}
+                          </div>
                         </div>
                       );
                     })
