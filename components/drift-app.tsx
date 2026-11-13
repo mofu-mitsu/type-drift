@@ -6611,7 +6611,44 @@ export default function DriftApp() {
           <BottleCard bottle={selected} onReact={react} onOpen={() => {}} />
           {selected.mine && <button type="button" className="bottle-delete-btn" onClick={() => void deleteBottle(selected)}>このボトルを回収する</button>}
 
-          <ReplyThread replies={replyItems[selected.id] || []} onReact={replyId => reactToReply(selected.id, replyId)} onReply={replyId => setReplyParentId(replyId)} />
+          <ReplyThread
+            replies={replyItems[selected.id] || []}
+            onReact={replyId => reactToReply(selected.id, replyId)}
+            onReply={replyId => {
+              const replyItem = (replyItems[selected.id] || []).find(item => item.id === replyId);
+              const npcName = /ダーリンちゃん|LSI芋虫/.test(replyItem?.author || "")
+                ? (replyItem?.author?.includes("ダーリンちゃん") ? "ダーリンちゃん" : "LSI芋虫")
+                : "";
+              // 自分のボトルにNPCが返したコメントへ返信する場合、公開返信欄ではなくNPCとのDMへ誘導する。
+              if (selected.mine && npcName) {
+                const isDarling = npcName === "ダーリンちゃん";
+                const npcEmoji = isDarling ? "🥺" : "🐛";
+                const existing = directMessages.find(message =>
+                  message.bottleId === selected.id &&
+                  (message.sender.includes(npcName) || message.recipient.includes(npcName) || message.targetEmoji === npcEmoji)
+                );
+                setReplyParentId(undefined);
+                setReply("");
+                setActivePage("activity");
+                setActivityTab("messages");
+                if (existing) {
+                  setActiveDmThreadId(existing.threadId);
+                  setDmModalTarget(null);
+                } else {
+                  setActiveDmThreadId(null);
+                  setDmModalTarget({
+                    id: isDarling ? "darling" : "worm",
+                    name: npcName,
+                    emoji: npcEmoji,
+                    type: isDarling ? "AI · ILI" : "AI · LSI",
+                    bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type },
+                  });
+                }
+                return;
+              }
+              setReplyParentId(replyId);
+            }}
+          />
           <div className="reply-box">
             <textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={replyParentId ? "この返信に返す…" : "そっと返信する…"} maxLength={1000} />
             <button aria-label="返信を送る" onClick={sendReply}><Send size={16} /></button>
