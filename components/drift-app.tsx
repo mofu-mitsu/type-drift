@@ -2997,11 +2997,13 @@ export default function DriftApp() {
       return isUndiagnosed && !isDismissed;
     }).length;  }, [consultationPosts, readAdminConsultationIds]);
 
-  // 📮 管理者トレイ全体の未対応バッジ数  const adminTotalPendingCount = useMemo(() => {
+  // 📮 管理者トレイ全体の未対応バッジ数
+  const adminTotalPendingCount = useMemo(() => {
     return adminPendingFeedbackCount + adminPendingConsultationCount;
   }, [adminPendingFeedbackCount, adminPendingConsultationCount]);
 
-  // 活動カテゴリ別の未読バッジ。通知種別をカテゴリごとに分け、全件合算にはしない。  const unreadBottleActivityCount = useMemo(() => Number(serverNotificationCounts.bottle_reply || 0) + Number(serverNotificationCounts.bottle_reaction || 0), [serverNotificationCounts]);
+  // 活動カテゴリ別の未読バッジ。通知種別をカテゴリごとに分け、全件合算にはしない。
+  const unreadBottleActivityCount = useMemo(() => Number(serverNotificationCounts.bottle_reply || 0) + Number(serverNotificationCounts.bottle_reaction || 0), [serverNotificationCounts]);
   const unreadReplyActivityCount = useMemo(() => Number(serverNotificationCounts.reply_reply || 0) + Number(serverNotificationCounts.reply_reaction || 0), [serverNotificationCounts]);
 
   // 🧭 「自分の活動」全体の直接通知バッジ数
