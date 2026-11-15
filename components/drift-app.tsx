@@ -2818,7 +2818,11 @@ export default function DriftApp() {
             status: saved.status, error: saveError?.message || saveError?.error || "unknown",
           });
           setPlazaToast(`返信は届いたけど履歴保存に失敗しました（${saved.status}）`);
-          }
+        } else {
+          const savedData = await saved.clone().json().catch(() => null);
+          const persistedThreadId = savedData?.message?.thread_id;
+          if (typeof persistedThreadId === "string" && persistedThreadId) replyMsg.threadId = persistedThreadId;
+        }
         } catch (saveException) {
           // 返信生成は成功しているので、履歴APIの通信失敗で生成済みの本文を捨てない。
           console.error("[Type Drift AI] DM reply persistence request failed; showing generated reply anyway", saveException);
@@ -3110,7 +3114,7 @@ export default function DriftApp() {
       // ボトルIDだけでは統合しない。同じ相手との会話はthreadIdでまとめ、別の相手は分ける。
       const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
-      const isBottleThread = threadId.startsWith("bottle-");
+      const isBottleThread = threadId.startsWith("bottle-") || Boolean(m.bottleId);
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
         plazaUsers.find(item => item.nickname === otherName && item.nickname !== nickname);
       const bottleNpcName = isBottleThread ? (m.bottleAuthor || "") : ""; const otherEmoji = otherName.includes("ダーリン") || bottleNpcName.includes("ダーリンちゃん") ? "🥺" : otherName.includes("芋虫") || bottleNpcName.includes("LSI芋虫") ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
@@ -3149,7 +3153,7 @@ export default function DriftApp() {
       const profileMessage = messages.find(message => message.isMine ? Boolean(message.recipientProfile?.profileImageUrl || message.recipientProfile?.emoji || message.recipientProfile?.mbti || message.recipientProfile?.nickname) : Boolean(message.senderProfile?.profileImageUrl || message.senderProfile?.emoji || message.senderProfile?.mbti || message.senderProfile?.nickname));
       const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
       const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
-      if (thread.targetId.startsWith("bottle-")) {
+      if (thread.targetId.startsWith("bottle-") || messages.some(message => Boolean(message.bottleId))) {
         // NPCが投稿したボトルは広場と同じキャラアイコン、それ以外のボトルは海のアイコン。
         const bottleId = messages.find(message => message.bottleId)?.bottleId || Number(thread.targetId.match(/^bottle-(\\d+)/)?.[1] || 0);
         const originalBottle = bottles.find(bottle => bottle.id === bottleId);
@@ -3169,7 +3173,7 @@ export default function DriftApp() {
     // 会話相手の自認は、最後のメッセージの向きで決める。
     // 自分が送ったメッセージなら相手はボトル主、相手から届いたものなら送信者本人。
     for (const thread of threads) {
-      if (!thread.targetId.startsWith("bottle-")) continue;
+      if (!thread.targetId.startsWith("bottle-") && !directMessages.some(message => message.threadId === thread.targetId && Boolean(message.bottleId))) continue;
       const last = thread.lastMsg;
       const bottleId = last.bottleId || Number(thread.targetId.match(/^bottle-(\d+)/)?.[1] || 0);
       const originalBottle = bottles.find(bottle => bottle.id === bottleId);
@@ -5232,7 +5236,7 @@ export default function DriftApp() {
                     </div>
                   ) : (
                     dmThreads.map(thread => {
-                      const isBottleThread = thread.targetId.startsWith("bottle-");
+                      const isBottleThread = thread.targetId.startsWith("bottle-") || directMessages.some(message => message.threadId === thread.targetId && Boolean(message.bottleId));
                       return (
                         <div
                           key={thread.targetId}
@@ -5299,7 +5303,7 @@ export default function DriftApp() {
                     unread: 0,
                     lastMsg: { isMine: false, body: "", createdAt: Date.now() } as DirectMessage
                   };
-                  const isBottleThread = activeDmThreadId.startsWith("bottle-");
+                  const isBottleThread = activeDmThreadId.startsWith("bottle-") || directMessages.some(message => message.threadId === activeDmThreadId && Boolean(message.bottleId));
                   const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
                   const activePlazaUser = !isBottleThread ? (plazaUsers.find(item => item.sessionKey === activeDmThreadId) || plazaUsers.find(item => item.nickname === currentThread.name && item.nickname !== nickname)) : undefined;
                   const threadMessages = directMessages.filter(
