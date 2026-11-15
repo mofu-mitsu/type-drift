@@ -2027,7 +2027,8 @@ export default function DriftApp() {
         const isAi = row.is_ai === true || row.is_ai === "true";
         const isMine = row.is_mine === true || row.is_mine === "true";
         const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
-        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), allowLikes: row.allow_likes !== false && row.allow_likes !== "false" && row.allow_likes !== 0 && row.allow_likes !== "0", allowReplies: row.allow_replies !== false && row.allow_replies !== "false" && row.allow_replies !== 0 && row.allow_replies !== "0", userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
+        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), allowLikes: ![false, "false", 0, "0", "f"].includes(row.allow_likes ?? row.allowLikes ?? true as any),
+            allowReplies: ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
       });
       // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
       const npcSeeds = initialBottles.filter(item => Boolean(item.ai)).map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
@@ -2134,8 +2135,8 @@ export default function DriftApp() {
             poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined,
             reactions: Number(row.reactions_sum_level || 0),
             replies: Number(row.replies_count || 0),
-            allowLikes: row.allow_likes !== false && row.allow_likes !== "false" && row.allow_likes !== 0 && row.allow_likes !== "0",
-            allowReplies: row.allow_replies !== false && row.allow_replies !== "false" && row.allow_replies !== 0 && row.allow_replies !== "0",
+            allowLikes: ![false, "false", 0, "0", "f"].includes(row.allow_likes ?? row.allowLikes ?? true as any),
+            allowReplies: ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any),
             aiLikers: Array.isArray(row.ai_likers) ? row.ai_likers.map(String) : [],
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
@@ -3103,7 +3104,8 @@ export default function DriftApp() {
   const dmAllThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
-      const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
+      // 古い端末内データに送信者ごとの旧スレッドIDが残っていても、同じボトルなら一つに統合。
+      const threadId = m.bottleId ? `bottle-${m.bottleId}` : (m.threadId || (m.isMine ? m.recipient : m.sender));
       const otherName = m.isMine ? m.recipient : m.sender;
       const isBottleThread = threadId.startsWith("bottle-");
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
@@ -3140,7 +3142,7 @@ export default function DriftApp() {
     }
     // オフライン相手のアイコン・自認は、DM履歴に保存したプロフィールを優先的なフォールバックとして使う。
     for (const thread of Object.values(map)) {
-      const messages = directMessages.filter(message => message.threadId === thread.targetId).sort((a, b) => b.createdAt - a.createdAt);
+      const messages = directMessages.filter(message => (message.bottleId ? `bottle-${message.bottleId}` : message.threadId) === thread.targetId).sort((a, b) => b.createdAt - a.createdAt);
       const profileMessage = messages.find(message => message.isMine ? Boolean(message.recipientProfile?.profileImageUrl || message.recipientProfile?.emoji || message.recipientProfile?.mbti || message.recipientProfile?.nickname) : Boolean(message.senderProfile?.profileImageUrl || message.senderProfile?.emoji || message.senderProfile?.mbti || message.senderProfile?.nickname));
       const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
       const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
