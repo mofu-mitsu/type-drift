@@ -478,6 +478,25 @@ export default function DriftApp() {
   const [serverNotificationCount, setServerNotificationCount] = useState(0);
   const [serverNotificationCounts, setServerNotificationCounts] = useState<Record<string, number>>({});
   const [serverNotifications, setServerNotifications] = useState<Array<{ id: number; type: string; entity_id: string | null; message: string; created_at: string }>>([]);
+  const [notificationPrefs, setNotificationPrefs] = useState({ likes: true, replies: true, messages: true, other: true });
+  const [notificationPrefsOpen, setNotificationPrefsOpen] = useState(false);
+  const [postInteractionPrefs, setPostInteractionPrefs] = useState({ likes: true, replies: true });
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("type-drift-notification-prefs");
+      if (saved) setNotificationPrefs(prev => ({ ...prev, ...JSON.parse(saved) }));
+      const postSaved = localStorage.getItem("type-drift-post-interaction-prefs");
+      if (postSaved) setPostInteractionPrefs(prev => ({ ...prev, ...JSON.parse(postSaved) }));
+    } catch {}
+  }, []);
+  const saveNotificationPrefs = (next: typeof notificationPrefs) => {
+    setNotificationPrefs(next);
+    try { localStorage.setItem("type-drift-notification-prefs", JSON.stringify(next)); } catch {}
+  };
+  const savePostInteractionPrefs = (next: typeof postInteractionPrefs) => {
+    setPostInteractionPrefs(next);
+    try { localStorage.setItem("type-drift-post-interaction-prefs", JSON.stringify(next)); } catch {}
+  };
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authProvider, setAuthProvider] = useState<string>("");
   const [authName, setAuthName] = useState("");
@@ -4903,6 +4922,13 @@ export default function DriftApp() {
             </div>
           )}
 
+          <div style={{ margin: "12px 0", padding: "12px 14px", border: "1px solid #dcebe8", borderRadius: 12, background: "#f8fcfb" }}>
+            <button type="button" onClick={() => setNotificationPrefsOpen(value => !value)} style={{ border: 0, background: "transparent", color: "#426d6b", fontWeight: 700, cursor: "pointer", padding: 0 }}>🔔 通知設定 {notificationPrefsOpen ? "▲" : "▼"}</button>
+            {notificationPrefsOpen && <div style={{ display: "grid", gap: 8, marginTop: 12, fontSize: 13, color: "#526b6a" }}>
+              {([["likes", "いいね通知"], ["replies", "返信通知"], ["messages", "個別メッセージ通知"], ["other", "その他の通知"]] as const).map(([key, label]) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={notificationPrefs[key]} onChange={event => saveNotificationPrefs({ ...notificationPrefs, [key]: event.target.checked })} />{label}</label>)}
+              <p style={{ margin: 0, fontSize: 11, color: "#819694" }}>設定はこの端末に保存されます。サーバー通知そのものを止める設定は、通知API側にも反映が必要です。</p>
+            </div>}
+          </div>
           {/* 5つのパステル丸アイコンナビゲーション (画像完全再現) */}
           <div className="activity-v2-nav-grid">
             <button
