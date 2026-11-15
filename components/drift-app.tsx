@@ -833,9 +833,21 @@ export default function DriftApp() {
           // APIの返却フィールド名に差がある場合も、利用可能なIDを順に拾う。
           // Stable account/guest/NPC identifiers only. Names and profile snapshots are presentation data,
           // never conversation identity (they can change and can accidentally merge unrelated people).
-          // APIが保存時に確定したthread_idを正とする。画面側でIDを再生成すると、
-          // guest keyとaccount IDの揺れで別人が混ざったり、同じ会話が分裂したりする。
-          const resolvedThreadId = String(row.thread_id || `legacy-thread-${row.id}`);
+          // 会話の表示キーは参加者の正規IDから作る。古いDB行でthread_idが誤って共有されていても、
+          // A-BとA-Cを混ぜない。ボトル返信はボトルIDも含めて別会話として扱う。
+          const identityKey = (userId: any, guestKey: any) => userId != null
+            ? `user:${userId}`
+            : String(guestKey || "");
+          const senderKey = identityKey(row.sender_user_id, row.sender_guest_key);
+          const recipientKey = identityKey(row.recipient_user_id, row.recipient_guest_key);
+          const participantPair = senderKey && recipientKey
+            ? [senderKey, recipientKey].sort().join("--")
+            : "";
+          const resolvedThreadId = participantPair
+            ? (row.bottle_id != null
+                ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
+                : `dm-pair-${participantPair}`)
+            : String(row.thread_id || `legacy-thread-${row.id}`);
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
@@ -2801,6 +2813,7 @@ export default function DriftApp() {
         if (saved.ok) {
           const savedData = await saved.clone().json().catch(() => null);
           if (typeof savedData?.message?.thread_id === "string") replyThreadId = savedData.message.thread_id;
+          if (savedData?.message?.id != null) replyMsg.serverId = Number(savedData.message.id);
         }
         if (!saved.ok) {
           const saveError = await saved.clone().json().catch(() => ({} as any));
