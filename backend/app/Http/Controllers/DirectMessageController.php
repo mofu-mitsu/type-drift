@@ -109,6 +109,22 @@ class DirectMessageController extends Controller
             $recipientName = $lastMessage->sender_name;
         }
 
+        $senderIdentity = $userId ? 'user:'.$userId : $guestKey;
+        if ($senderIdentity && $recipientGuestKey) {
+            try {
+                $blocked = \\Illuminate\\Support\\Facades\\DB::table('direct_message_blocks')
+                    ->where(function ($q) use ($recipientUserId, $recipientGuestKey) {
+                        if ($recipientUserId) $q->where('owner_user_id', $recipientUserId);
+                        else $q->where('owner_guest_key', $recipientGuestKey);
+                    })
+                    ->whereIn('thread_id', [$threadId, $senderIdentity])
+                    ->exists();
+                abort_if($blocked, 403, 'The recipient has blocked messages from this account.');
+            } catch (\\Illuminate\\Database\\QueryException $exception) {
+                if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
+            }
+        }
+
         $message = DirectMessage::create([
             'sender_guest_key' => $lookupKey,
             'recipient_guest_key' => $recipientGuestKey,
