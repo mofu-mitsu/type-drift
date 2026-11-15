@@ -287,10 +287,14 @@ class BottleController extends Controller
                         if ($ownerId) $query->where('owner_user_id', $ownerId);
                         else $query->where('owner_guest_key', $ownerGuestKey);
                     })
-                    ->whereIn('thread_id', array_values(array_filter([
-                        $actorIdentity,
-                        $type === 'bottle_reply' || $type === 'bottle_reaction' ? 'bottle-'.$entityId : null,
-                    ])))
+                    ->where(function ($query) use ($actorIdentity, $type, $entityId) {
+                        $query->where('thread_id', $actorIdentity)
+                            ->orWhere('thread_id', 'like', '%'.$actorIdentity.'%');
+                        if ($type === 'bottle_reply' || $type === 'bottle_reaction') {
+                            $query->orWhere('thread_id', 'bottle-'.$entityId)
+                                ->orWhere('thread_id', 'like', 'bottle-'.$entityId.'-pair-%');
+                        }
+                    })
                     ->exists();
                 if ($blocked) return;
             } catch (\\Illuminate\\Database\\QueryException $exception) {
