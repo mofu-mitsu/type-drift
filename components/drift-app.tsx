@@ -843,16 +843,19 @@ export default function DriftApp() {
           const participantPair = senderKey && recipientKey
             ? [senderKey, recipientKey].sort().join("--")
             : "";
+          // Legacy messages without both participant IDs must not be grouped by a guessed name or bottle alone.
+          // Keep their persisted server thread ID, which is the only trustworthy grouping key for those rows.
           const resolvedThreadId = participantPair
             ? (row.bottle_id != null
                 ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
                 : `dm-pair-${participantPair}`)
             : String(row.thread_id || `legacy-thread-${row.id}`);
+          const asBoolean = (value: any) => value === true || value === 1 || value === "1" || value === "true" || value === "t";
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
           targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
-          createdAt: new Date(row.created_at).getTime() || Date.now(), read: Boolean(row.read), isMine: Boolean(row.is_mine),
+          createdAt: new Date(row.created_at).getTime() || Date.now(), read: asBoolean(row.read), isMine: asBoolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
           senderIdentity: row.sender_identity && typeof row.sender_identity === "object" ? {
