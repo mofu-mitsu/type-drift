@@ -847,8 +847,12 @@ export default function DriftApp() {
             : "";
           // Legacy messages without both participant IDs must not be grouped by a guessed name or bottle alone.
           // Keep their persisted server thread ID, which is the only trustworthy grouping key for those rows.
-          const isNpcMessage = String(row.sender_guest_key || "").startsWith("ai:");
-          // NPCはボトルごとではなく、NPC本人と受信者のペアで一つの会話にする。
+          const senderNpcKey = String(row.sender_guest_key || "").startsWith("ai:") ? String(row.sender_guest_key) : "";
+          const recipientNpcKey = String(row.recipient_guest_key || "").startsWith("ai:") ? String(row.recipient_guest_key) : "";
+          const npcKey = senderNpcKey || recipientNpcKey;
+          const isNpcMessage = Boolean(npcKey);
+          // NPCとの会話は、ユーザー発言・NPC返信のどちらも同じ参加者ペアに統一する。
+          // NPC宛てのユーザー発言だけボトルID付きスレッドに分岐していたのが、別スレ化の原因。
           const resolvedThreadId = participantPair
             ? (isNpcMessage
                 ? `dm-pair-${participantPair}`
@@ -864,7 +868,7 @@ export default function DriftApp() {
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
-          targetEmoji: "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
+          targetEmoji: npcKey === "ai:darling" ? "🥺" : npcKey === "ai:lsi-worm" ? "🐛" : "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: asBoolean(row.read), isMine: asBoolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
