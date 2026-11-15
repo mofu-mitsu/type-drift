@@ -2984,9 +2984,29 @@ export default function DriftApp() {
     const isWormTarget = target.id === "worm" || target.name.includes("芋虫") || target.emoji === "🐛" || /LSI芋虫/.test(target.type || "") || /LSI芋虫/.test(target.bottleInfo?.author || "") || /LSI芋虫/.test(target.bottleInfo?.type || "");
     const npcKeyForThread = isDarlingTarget ? "ai:darling" : isWormTarget ? "ai:lsi-worm" : "";
     const localNpcThreadId = npcKeyForThread ? `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}` : "";
+    let npcSavedMessage: any = null;
+    if (npcKeyForThread) {
+      try {
+        const npcSaveResponse = await apiFetch("/api/direct-messages", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+          body: JSON.stringify({
+            npc_message: true, target_name: isDarlingTarget ? "ダーリンちゃん" : "LSI芋虫",
+            sender_name: myDisplayName, body,
+            sender_profile: senderProfileSnapshot,
+          }),
+        });
+        const npcSaveData = await npcSaveResponse.json().catch(() => null);
+        if (npcSaveResponse.ok) npcSavedMessage = npcSaveData?.message || null;
+        else console.error("[Type Drift NPC DM] user message persistence failed", { status: npcSaveResponse.status, error: npcSaveData?.error });
+      } catch (error) {
+        console.error("[Type Drift NPC DM] user message persistence failed", error);
+      }
+    }
     const newMsg: DirectMessage = {
-      id: `dm-${Date.now()}`,
-      threadId: localNpcThreadId || (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id),
+      id: npcSavedMessage?.id != null ? `server-dm-${npcSavedMessage.id}` : `dm-${Date.now()}`,
+      serverId: npcSavedMessage?.id != null ? Number(npcSavedMessage.id) : undefined,
+      threadId: String(npcSavedMessage?.thread_id || localNpcThreadId || (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id)),
       sender: myDisplayName,
       recipient: target.name,
       targetEmoji: target.emoji,
