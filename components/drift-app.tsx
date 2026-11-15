@@ -3194,7 +3194,7 @@ export default function DriftApp() {
         cleanDmIdentity(originalBottle?.mbti),
         cleanDmIdentity(originalBottle?.socionics),
         cleanDmIdentity(originalBottle?.enneagram),
-        originalBottle?.otherType,
+        cleanDmIdentity(originalBottle?.otherType),
       ].filter(Boolean).join(" · ");
       const senderSnapshot = last.senderProfile;
       const recipientSnapshot = last.recipientProfile;
@@ -3204,8 +3204,8 @@ export default function DriftApp() {
       // ボトルの会話では、主の自認は会話元のボトル記録を最優先にする。
       // 「匿名の誰か」側は、メッセージに保存された送信者プロフィールを使う。
       thread.type = last.isMine
-        ? (originalBottleIdentity || messageIdentity || last.bottleType || thread.type || "ボトル主への返信")
-        : (messageIdentity || originalBottleIdentity || last.bottleType || thread.type || "匿名の誰か");
+        ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "ボトル主への返信")
+        : (messageIdentity || originalBottleIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "匿名の誰か");
     }
     return threads.sort((a, b) => {
       if (dmSortMode === "manual") {
