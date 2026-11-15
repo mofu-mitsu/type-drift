@@ -835,9 +835,11 @@ export default function DriftApp() {
           // never conversation identity (they can change and can accidentally merge unrelated people).
           // 会話の表示キーは参加者の正規IDから作る。古いDB行でthread_idが誤って共有されていても、
           // A-BとA-Cを混ぜない。ボトル返信はボトルIDも含めて別会話として扱う。
-          const identityKey = (userId: any, guestKey: any) => userId != null
-            ? `user:${userId}`
-            : String(guestKey || "");
+          const identityKey = (userId: any, guestKey: any) => {
+            // Signed-in identities take precedence; NPC keys remain stable participant IDs.
+            if (userId != null) return `user:${userId}`;
+            return String(guestKey || "");
+          };
           const senderKey = identityKey(row.sender_user_id, row.sender_guest_key);
           const recipientKey = identityKey(row.recipient_user_id, row.recipient_guest_key);
           const participantPair = senderKey && recipientKey
@@ -853,7 +855,11 @@ export default function DriftApp() {
                 : row.bottle_id != null
                   ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
                   : `dm-pair-${participantPair}`)
-            : String(row.thread_id || `legacy-thread-${row.id}`);
+            // If either participant ID is absent, never trust a shared legacy bottle-ID
+            // as a conversation key. Give that row its own stable identity instead.
+            : (/^bottle-\\d+$/.test(String(row.thread_id || ""))
+                ? `legacy-server-dm-${row.id}`
+                : String(row.thread_id || `legacy-server-dm-${row.id}`));
           const asBoolean = (value: any) => value === true || value === 1 || value === "1" || value === "true" || value === "t";
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
@@ -2787,7 +2793,7 @@ export default function DriftApp() {
     const targetLabel = `${target.name} ${target.id} ${target.bottleInfo?.author || ""}`;
     const preferred = /ダーリン|darling|🥺/i.test(targetLabel) ? "ダーリンちゃん" : "LSI芋虫";
     try {
-      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => target.bottleInfo ? (message.threadId === `bottle-${target.bottleInfo.id}` || message.threadId.startsWith(`bottle-${target.bottleInfo.id}-`)) : message.threadId === target.id).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
+      const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => message.threadId === replyThreadId || (target.bottleInfo && Number(message.bottleId) === Number(target.bottleInfo.id) && (message.sender === preferred || message.recipient === preferred))).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
       const reply = Array.isArray(data?.replies) ? data.replies.find((item: { character?: string }) => item.character === preferred) || data.replies[0] : null;
       // AIプロバイダー名がGroq以外でも、有効な返信本文が返っていれば正常な返信としてDM保存する。
