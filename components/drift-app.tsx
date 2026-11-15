@@ -2820,7 +2820,7 @@ export default function DriftApp() {
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       // Keep one stable conversation per NPC and recipient, independent of source bottle.
-      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
+      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: preferred.includes("ダーリン") ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
         try {
           const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, thread_id: replyThreadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
@@ -2980,11 +2980,13 @@ export default function DriftApp() {
       }
     }
 
+    const isDarlingTarget = target.id === "darling" || target.name.includes("ダーリン") || target.emoji === "🥺" || /ダーリンちゃん/.test(target.type || "") || /ダーリンちゃん/.test(target.bottleInfo?.author || "") || /ダーリンちゃん/.test(target.bottleInfo?.type || "");
+    const isWormTarget = target.id === "worm" || target.name.includes("芋虫") || target.emoji === "🐛" || /LSI芋虫/.test(target.type || "") || /LSI芋虫/.test(target.bottleInfo?.author || "") || /LSI芋虫/.test(target.bottleInfo?.type || "");
+    const npcKeyForThread = isDarlingTarget ? "ai:darling" : isWormTarget ? "ai:lsi-worm" : "";
+    const localNpcThreadId = npcKeyForThread ? `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}` : "";
     const newMsg: DirectMessage = {
       id: `dm-${Date.now()}`,
-      threadId: target.bottleInfo
-        ? `bottle-${target.bottleInfo.id}`
-        : target.id,
+      threadId: localNpcThreadId || (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id),
       sender: myDisplayName,
       recipient: target.name,
       targetEmoji: target.emoji,
@@ -3147,10 +3149,12 @@ export default function DriftApp() {
         ? `legacy-local-${m.id}`
         : (m.threadId || (m.isMine ? m.recipient : m.sender));
       const otherName = m.isMine ? m.recipient : m.sender;
-      const isBottleThread = threadId.startsWith("bottle-") || Boolean(m.bottleId);
+      const npcLabel = `${threadId} ${otherName} ${m.sender} ${m.recipient} ${m.bottleAuthor || ""}`;
+      const isNpcThread = /ai:darling|ダーリンちゃん/.test(npcLabel) || /ai:lsi-worm|LSI芋虫/.test(npcLabel);
+      const isBottleThread = !isNpcThread && (threadId.startsWith("bottle-") || Boolean(m.bottleId));
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
         plazaUsers.find(item => item.nickname === otherName && item.nickname !== nickname);
-      const bottleNpcName = isBottleThread ? (m.bottleAuthor || "") : ""; const otherEmoji = otherName.includes("ダーリン") || bottleNpcName.includes("ダーリンちゃん") ? "🥺" : otherName.includes("芋虫") || bottleNpcName.includes("LSI芋虫") ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
+      const otherEmoji = /ai:darling|ダーリンちゃん/.test(npcLabel) ? "🥺" : /ai:lsi-worm|LSI芋虫/.test(npcLabel) ? "🐛" : isBottleThread ? "🌊" : (plazaUser?.emoji || "◌");
       if (!map[threadId]) {
         map[threadId] = {
           targetId: threadId,
