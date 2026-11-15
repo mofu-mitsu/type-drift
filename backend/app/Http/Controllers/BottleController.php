@@ -84,6 +84,23 @@ class BottleController extends Controller
         }
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        $senderIdentity = $userId ? 'user:'.$userId : $guestKey;
+        $ownerIdentity = $bottle->user_id ? 'user:'.$bottle->user_id : $bottle->guest_key;
+        if ($senderIdentity && $ownerIdentity && $senderIdentity !== $ownerIdentity) {
+            try {
+                $blocked = DB::table('direct_message_blocks')
+                    ->where(function ($q) use ($bottle, $ownerIdentity) {
+                        if ($bottle->user_id) $q->where('owner_user_id', $bottle->user_id);
+                        else $q->where('owner_guest_key', $bottle->guest_key);
+                    })
+                    ->whereIn('thread_id', ['bottle-'.$bottle->id, $senderIdentity, $guestKey ?: 'user:'.$userId])
+                    ->exists();
+                abort_if($blocked, 403, 'The bottle owner has blocked messages from this account.');
+            } catch (\\Illuminate\\Database\\QueryException $exception) {
+                // Older installations without the block table retain the normal reply flow.
+                if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
+            }
+        }
         $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey]);
 
         // A bottle reply is also delivered to the bottle owner's private inbox.
