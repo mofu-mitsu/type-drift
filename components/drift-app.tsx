@@ -6656,63 +6656,27 @@ export default function DriftApp() {
             replies={replyItems[selected.id] || []}
             onReact={replyId => reactToReply(selected.id, replyId)}
             onReply={replyId => {
-              const replyItem = (replyItems[selected.id] || []).find(item => item.id === replyId);
-              const npcName = /ダーリンちゃん|LSI芋虫/.test(replyItem?.author || "")
-                ? (replyItem?.author?.includes("ダーリンちゃん") ? "ダーリンちゃん" : "LSI芋虫")
-                : "";
-              // 自分のボトルにNPCが返したコメントへ返信する場合、公開返信欄ではなくNPCとのDMへ誘導する。
-              if (selected.mine && npcName) {
-                const isDarling = npcName === "ダーリンちゃん";
-                const npcEmoji = isDarling ? "🥺" : "🐛";
-                const existing = directMessages.find(message =>
-                  message.bottleId === selected.id &&
-                  (message.sender.includes(npcName) || message.recipient.includes(npcName) || message.targetEmoji === npcEmoji)
-                );
+              // ボトル主が返信者へ送るメッセージは、公開リプではなく匿名ボトルの個別メッセージへ。
+              // 自認プロフィールやplazaUsers上の表示名を相手の特定条件にしない。
+              if (selected.mine) {
                 setReplyParentId(undefined);
                 setReply("");
+                setSelected(null);
                 setActivePage("activity");
                 setActivityTab("messages");
-                if (existing) {
-                  setActiveDmThreadId(existing.threadId);
-                  setDmModalTarget(null);
-                } else {
-                  setActiveDmThreadId(null);
-                  setDmModalTarget({
-                    id: isDarling ? "darling" : "worm",
-                    name: npcName,
-                    emoji: npcEmoji,
-                    type: isDarling ? "AI · ILI" : "AI · LSI",
-                    bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type },
-                  });
-                }
+                setActiveDmThreadId(`bottle-${selected.id}`);
+                setDmModalTarget(null);
                 return;
               }
-              // 自分のボトルへの返信は、返信ツリーを増やさず相手との個別メッセージへつなぐ。
-              if (selected.mine && replyItem?.author) {
-                const recipient = plazaUsers.find(user => user.nickname === replyItem.author);
-                if (recipient?.sessionKey) {
-                  setReplyParentId(undefined);
-                  setReply("");
-                  setActivePage("activity");
-                  setActivityTab("messages");
-                  setActiveDmThreadId(null);
-                  setDmModalTarget({
-                    id: recipient.sessionKey,
-                    name: recipient.nickname,
-                    emoji: recipient.emoji || "◌",
-                    type: [recipient.mbti || recipient.identity?.mbti, recipient.socionics || recipient.identity?.socionics, recipient.enneagram || recipient.identity?.enneagram].filter(Boolean).join(" · "),
-                  });
-                  return;
-                }
-              }
+              // 他人のボトルでは従来どおり、返信ツリーに返答できる。
               setReplyParentId(replyId);
             }}
           />
-          <div className="reply-box">
+          {!selected.mine && <div className="reply-box">
             <textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={replyParentId ? "この返信に返す…" : "そっと返信する…"} maxLength={1000} />
             <button aria-label="返信を送る" onClick={sendReply}><Send size={16} /></button>
-          </div>
-          <small className="reply-count">{reply.length} / 1000</small>
+          </div>}
+          {!selected.mine && <small className="reply-count">{reply.length} / 1000</small>}
         </div>
       </div>
     )}
