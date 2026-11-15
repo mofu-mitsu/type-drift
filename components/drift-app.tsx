@@ -848,11 +848,11 @@ export default function DriftApp() {
             row.recipient_key || row.recipient_id || (row.recipient_user_id ? `user:${row.recipient_user_id}` : "") ||
             (row.recipient_name ? `name:${row.recipient_name}` : `bottle-owner:${row.bottle_id}`)
           );
+          // 同じボトルでも、送信者・受信者の組ごとに会話を分ける。
+          // 返信方向が逆になっても同じ2人なら同じスレッドになるよう、識別子をソートする。
           const bottleThreadId = row.bottle_id
-            ? `bottle-${row.bottle_id}`
+            ? `bottle-${row.bottle_id}-${[senderKey, recipientKey].sort().join("-")}`
             : String(row.thread_id || `dm-${row.id}`);
-          // ボトル由来のDMは送信者・受信者やNPCかどうかに関係なく、
-          // 同じボトルIDを会話キーにして一つのトークへまとめる。
           const resolvedThreadId = bottleThreadId;
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
@@ -3104,8 +3104,8 @@ export default function DriftApp() {
   const dmAllThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
-      // 古い端末内データに送信者ごとの旧スレッドIDが残っていても、同じボトルなら一つに統合。
-      const threadId = m.bottleId ? `bottle-${m.bottleId}` : (m.threadId || (m.isMine ? m.recipient : m.sender));
+      // ボトルIDだけでは統合しない。同じ相手との会話はthreadIdでまとめ、別の相手は分ける。
+      const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
       const otherName = m.isMine ? m.recipient : m.sender;
       const isBottleThread = threadId.startsWith("bottle-");
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
@@ -3142,7 +3142,7 @@ export default function DriftApp() {
     }
     // オフライン相手のアイコン・自認は、DM履歴に保存したプロフィールを優先的なフォールバックとして使う。
     for (const thread of Object.values(map)) {
-      const messages = directMessages.filter(message => (message.bottleId ? `bottle-${message.bottleId}` : message.threadId) === thread.targetId).sort((a, b) => b.createdAt - a.createdAt);
+      const messages = directMessages.filter(message => (message.threadId || (message.isMine ? message.recipient : message.sender)) === thread.targetId).sort((a, b) => b.createdAt - a.createdAt);
       const profileMessage = messages.find(message => message.isMine ? Boolean(message.recipientProfile?.profileImageUrl || message.recipientProfile?.emoji || message.recipientProfile?.mbti || message.recipientProfile?.nickname) : Boolean(message.senderProfile?.profileImageUrl || message.senderProfile?.emoji || message.senderProfile?.mbti || message.senderProfile?.nickname));
       const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
       const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
