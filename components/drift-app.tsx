@@ -3079,17 +3079,32 @@ export default function DriftApp() {
   }, [adminPendingFeedbackCount, adminPendingConsultationCount]);
 
   // 活動カテゴリ別の未読バッジ。通知種別をカテゴリごとに分け、全件合算にはしない。
-  const unreadBottleActivityCount = useMemo(() => Number(serverNotificationCounts.bottle_reply || 0) + Number(serverNotificationCounts.bottle_reaction || 0), [serverNotificationCounts]);
-  const unreadReplyActivityCount = useMemo(() => Number(serverNotificationCounts.reply_reply || 0) + Number(serverNotificationCounts.reply_reaction || 0), [serverNotificationCounts]);
+  const unreadBottleActivityCount = useMemo(() => (notificationPrefs.replies ? Number(serverNotificationCounts.bottle_reply || 0) : 0) + (notificationPrefs.likes ? Number(serverNotificationCounts.bottle_reaction || 0) : 0), [serverNotificationCounts, notificationPrefs]);
+  const unreadReplyActivityCount = useMemo(() => (notificationPrefs.replies ? Number(serverNotificationCounts.reply_reply || 0) : 0) + (notificationPrefs.likes ? Number(serverNotificationCounts.reply_reaction || 0) : 0), [serverNotificationCounts, notificationPrefs]);
+  const visibleServerNotificationCount = useMemo(() => serverNotifications.filter(n => {
+    const type = String(n.type || "").toLowerCase();
+    if (type.includes("reaction") || type.includes("like")) return notificationPrefs.likes;
+    if (type.includes("reply")) return notificationPrefs.replies;
+    if (type.includes("direct_message") || type.includes("message")) return notificationPrefs.messages;
+    return notificationPrefs.other;
+  }).length, [serverNotifications, notificationPrefs]);
+  const visibleServerBadgeCount = useMemo(() => {
+    const known = Object.entries(serverNotificationCounts).reduce((sum, [type, count]) => {
+      const lower = type.toLowerCase();
+      if (lower.includes("reaction") || lower.includes("like")) return sum + (notificationPrefs.likes ? Number(count || 0) : 0);
+      if (lower.includes("reply")) return sum + (notificationPrefs.replies ? Number(count || 0) : 0);
+      if (lower.includes("direct_message") || lower.includes("message")) return sum + (notificationPrefs.messages ? Number(count || 0) : 0);
+      return sum + (notificationPrefs.other ? Number(count || 0) : 0);
+    }, 0);
+    return known || visibleServerNotificationCount;
+  }, [serverNotificationCounts, notificationPrefs, visibleServerNotificationCount]);
 
-  // 🧭 「自分の活動」全体の直接通知バッジ数
+  // 「自分の活動」バッジも、オフにした通知カテゴリを除外する。
   const totalActivityBadgeCount = useMemo(() => {
-    let count = serverNotificationCount + unreadDmCount + unreadConsultationCount + unreadInquiryReplyCount;
-    if (isAdminLoggedIn) {
-      count += adminTotalPendingCount;
-    }
+    let count = visibleServerBadgeCount + (notificationPrefs.messages ? unreadDmCount : 0) + unreadConsultationCount + unreadInquiryReplyCount;
+    if (isAdminLoggedIn) count += adminTotalPendingCount;
     return count;
-  }, [serverNotificationCount, unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount]);
+  }, [visibleServerBadgeCount, unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount, notificationPrefs]);
 
   const dmAllThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
@@ -5104,7 +5119,7 @@ export default function DriftApp() {
                       </article>
                     ))}
                   </div>
-                  {serverNotificationCount > serverNotifications.length && <p className="activity-notification-feed__more">ほかに未読のお知らせが {serverNotificationCount - serverNotifications.length} 件あります。</p>}
+                  {visibleServerBadgeCount > visibleServerNotificationCount && <p className="activity-notification-feed__more">ほかに未読のお知らせが {visibleServerBadgeCount - visibleServerNotificationCount} 件あります。</p>}
                 </section>
               )}
               {/* 下部バナー (画像下部のアバター＋記録テキストを完全再現) */}
