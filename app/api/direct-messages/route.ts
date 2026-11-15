@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
       let bottleId: number | null = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
-      const npcRecipientKey = guestKey || (userId ? `user:${userId}` : "");
+      const npcRecipientKey = userId ? `user:${userId}` : guestKey;
       const threadId = bottleId
         ? `bottle-${bottleId}-pair-${[npcKey, npcRecipientKey].sort().join("--")}`
         : (typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`);
