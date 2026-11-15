@@ -925,3 +925,12 @@
 .reply-to:hover {
   background: #e5f5ee;
 }
+
+
+/* 投稿設定と画像添付の間に呼吸できる余白を確保 */
+.post-interaction-settings {
+  margin-bottom: 16px !important;
+}
+.file-upload-box {
+  margin-top: 0;
+}
