@@ -99,8 +99,9 @@ export async function POST(request: NextRequest) {
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
       let bottleId: number | null = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
+      const npcRecipientKey = guestKey || (userId ? `user:${userId}` : "");
       const threadId = bottleId
-        ? `bottle-${bottleId}-${[npcKey, (guestKey || (userId ? `user:${userId}` : ""))].sort().join("-")}`
+        ? `bottle-${bottleId}-pair-${[npcKey, npcRecipientKey].sort().join("--")}`
         : (typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`);
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
@@ -213,11 +214,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ブロック一覧のキーは会話thread_idではなく、相手の識別ID（user:<id> / guest key）。
-    // 受信側が相手をブロックしている場合は、別スレッドIDで送られてきても保存しない。
+    // 会話IDは送信方向ではなく、参加者2人の正規化した組み合わせで決める。
+    // A→B と B→A が同じトークになり、相手が違えば別スレッドになる。
     const senderIdentityKey = `user:${userId}`;
+    const recipientIdentityKey = recipientUserId != null ? `user:${recipientUserId}` : recipientGuestKey;
+    const canonicalPairThreadId = `dm-pair-${[senderIdentityKey, recipientIdentityKey].sort().join("--")}`;
+    const finalThreadId = bottleId
+      ? `bottle-${bottleId}-pair-${[senderIdentityKey, recipientIdentityKey].sort().join("--")}`
+      : canonicalPairThreadId;
     const recipientBlocked = await sql`SELECT id FROM direct_message_blocks
-      WHERE thread_id IN (${threadId}, ${senderIdentityKey})
+      WHERE thread_id IN (${finalThreadId}, ${senderIdentityKey})
         AND ((owner_user_id = ${recipientUserId}::int AND ${recipientUserId}::int IS NOT NULL)
           OR (owner_guest_key = ${recipientGuestKey} AND ${recipientUserId}::int IS NULL))
       LIMIT 1`;
@@ -229,7 +235,7 @@ export async function POST(request: NextRequest) {
         bottle_id, bottle_snippet, bottle_author, bottle_type, sender_user_id, recipient_user_id,
         sender_profile, recipient_profile, created_at, updated_at
       ) VALUES (
-        ${`user:${userId}`}, ${recipientGuestKey}, ${threadId}, ${senderName}, ${recipientName}, ${body},
+        ${`user:${userId}`}, ${recipientGuestKey}, ${finalThreadId}, ${senderName}, ${recipientName}, ${body},
         ${bottleId}, ${bottleSnippet}, ${bottleAuthor}, ${bottleType}, ${userId}, ${recipientUserId},
         ${senderProfile}::json, ${recipientProfile}::json, NOW(), NOW()
       )
