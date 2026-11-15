@@ -52,6 +52,8 @@ class BottleController extends Controller
             'poll_options.*' => ['string', 'max:100'],
             'is_ai' => ['nullable', 'boolean'],
             'ai_character' => ['nullable', 'string', 'max:60'],
+            'allow_likes' => ['sometimes', 'boolean'],
+            'allow_replies' => ['sometimes', 'boolean'],
         ]);
         $data['user_id'] = $request->user()?->id;
         $data['guest_key'] = $request->user() ? null : $request->header('X-Guest-Key');
@@ -61,6 +63,7 @@ class BottleController extends Controller
 
     public function react(Request $request, Bottle $bottle)
     {
+        abort_if($bottle->allow_likes === false, 403, 'Likes are disabled for this bottle.');
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         abort_unless($userId || $guestKey, 422, 'A guest key is required.');
@@ -74,6 +77,7 @@ class BottleController extends Controller
 
     public function reply(Request $request, Bottle $bottle)
     {
+        abort_if($bottle->allow_replies === false, 403, 'Replies are disabled for this bottle.');
         $data = $request->validate(['body' => ['required', 'string', 'max:5000'], 'parent_reply_id' => ['nullable', 'integer', 'exists:replies,id']]);
         if (!empty($data['parent_reply_id'])) {
             abort_unless(Reply::query()->whereKey($data['parent_reply_id'])->where('bottle_id', $bottle->id)->exists(), 422, 'The parent reply must belong to this bottle.');
@@ -176,6 +180,7 @@ class BottleController extends Controller
 
     public function vote(Request $request, Bottle $bottle)
     {
+        abort_if($bottle->allow_replies === false, 403, 'Interactions are disabled for this bottle.');
         $data = $request->validate(['option_index' => ['required', 'integer', 'min:0']]);
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
