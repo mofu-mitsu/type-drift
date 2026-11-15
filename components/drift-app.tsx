@@ -3693,7 +3693,13 @@ export default function DriftApp() {
       const saved = result?.direct_message;
       if (saved?.id) {
         const persistedMessage: DirectMessage = {
-          id: `server-dm-${saved.id}`, serverId: Number(saved.id), threadId: String(saved.thread_id || `bottle-${selected.id}`),
+          id: `server-dm-${saved.id}`, serverId: Number(saved.id), threadId: (() => {
+            const senderKey = saved.sender_user_id != null ? `user:${saved.sender_user_id}` : String(saved.sender_guest_key || "");
+            const recipientKey = saved.recipient_user_id != null ? `user:${saved.recipient_user_id}` : String(saved.recipient_guest_key || "");
+            return senderKey && recipientKey
+              ? `bottle-${Number(saved.bottle_id || selected.id)}-pair-${[senderKey, recipientKey].sort().join("--")}`
+              : String(saved.thread_id || `bottle-${selected.id}`);
+          })(),
           sender: String(saved.sender_name || "あなた"), recipient: String(saved.recipient_name || "波間に漂うボトルの主（匿名）"),
           targetEmoji: "🌊", targetType: saved.bottle_type || selected.type, body: String(saved.body || body),
           createdAt: new Date(saved.created_at).getTime() || Date.now(), read: false, isMine: true,
