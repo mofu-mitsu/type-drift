@@ -137,6 +137,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "dm_block_action_failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 
+  // Persist the human's message to an NPC in the same canonical pair thread used by the NPC reply.
+  try {
+    const payload = await request.clone().json();
+    if (payload?.npc_message === true) {
+      if (!userId && !/^[0-9a-f-]{36}$/i.test(guestKey)) return NextResponse.json({ error: "invalid_guest_key" }, { status: 400 });
+      const targetName = String(payload.target_name || "");
+      const npcKey = /ダーリン|darling|🥺/i.test(targetName) ? "ai:darling" : /芋虫|worm|🐛/i.test(targetName) ? "ai:lsi-worm" : "";
+      if (!npcKey) return NextResponse.json({ error: "unknown_ai_character" }, { status: 422 });
+      const body = typeof payload.body === "string" ? payload.body.trim() : "";
+      if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+      const senderKey = userId ? `user:${userId}` : guestKey;
+      const threadId = `dm-pair-${[npcKey, senderKey].sort().join("--")}`;
+      const sql = db();
+      const blocked = await sql`SELECT id FROM direct_message_blocks WHERE thread_id IN (${threadId}, ${npcKey}) AND ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL)) LIMIT 1`;
+      if (blocked.length) return NextResponse.json({ error: "blocked_recipient" }, { status: 403 });
+      const inserted = await sql`
+        INSERT INTO direct_messages (
+          sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body,
+          bottle_id, bottle_snippet, bottle_author, bottle_type, sender_user_id, recipient_user_id,
+          sender_profile, recipient_profile, created_at, updated_at
+        ) VALUES (
+          ${senderKey}, ${npcKey}, ${threadId}, ${String(payload.sender_name || "あなた").slice(0,120)}, ${targetName}, ${body},
+          NULL, NULL, ${targetName}, ${targetName}, ${userId ? null : null}, ${userId},
+          ${payload.sender_profile && typeof payload.sender_profile === "object" ? JSON.stringify(payload.sender_profile) : null}::json,
+          NULL, NOW(), NOW()
+        ) RETURNING id, thread_id, sender_name, recipient_name, body, created_at, (read_at IS NOT NULL) AS read
+      `;
+      return NextResponse.json({ ok: true, message: inserted[0] }, { headers: { "Cache-Control": "no-store" } });
+    }
+  } catch (error) {
+    console.error("[Type Drift NPC DM message] POST failed", error);
+    return NextResponse.json({ error: "npc_dm_message_save_failed" }, { status: 500 });
+  }
+
   // NPC replies use dedicated AI identities for both guest and signed-in recipients.
   // Unlike human messages, NPC reply persistence does not require the NPC to own the bottle.
   try {
