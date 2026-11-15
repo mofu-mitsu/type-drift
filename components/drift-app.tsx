@@ -2811,7 +2811,7 @@ export default function DriftApp() {
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
-      const npcRecipientKey = isAuthenticated ? `user:${currentUserId}` : getGuestKey();
+      const npcRecipientKey = getGuestKey();
       const replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
