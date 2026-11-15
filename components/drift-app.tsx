@@ -855,7 +855,9 @@ export default function DriftApp() {
           // NPC宛てのユーザー発言だけボトルID付きスレッドに分岐していたのが、別スレ化の原因。
           const resolvedThreadId = participantPair
             ? (isNpcMessage
-                ? `dm-pair-${participantPair}`
+                ? row.bottle_id != null
+                  ? `bottle-${Number(row.bottle_id)}-npc-pair-${participantPair}`
+                  : `dm-pair-${participantPair}`
                 : row.bottle_id != null
                   ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
                   : `dm-pair-${participantPair}`)
@@ -2798,7 +2800,9 @@ export default function DriftApp() {
     const preferred = /ダーリン|darling|🥺/i.test(targetLabel) ? "ダーリンちゃん" : "LSI芋虫";
     const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
     const npcRecipientKey = getGuestKey();
-    let replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
+    let replyThreadId = target.bottleInfo
+      ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`
+      : `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
     try {
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => message.threadId === replyThreadId || (target.bottleInfo && Number(message.bottleId) === Number(target.bottleInfo.id) && (message.sender === preferred || message.recipient === preferred))).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
@@ -2824,10 +2828,10 @@ export default function DriftApp() {
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       // Keep one stable conversation per NPC and recipient, independent of source bottle.
-      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: preferred.includes("ダーリン") ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
+      const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: npcIdentityKey === "ai:darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
         try {
-          const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, thread_id: replyThreadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
+          const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, conversation_mode: target.bottleInfo ? "bottle" : "plaza", thread_id: replyThreadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
         if (saved.ok) {
           const savedData = await saved.clone().json().catch(() => null);
           if (typeof savedData?.message?.thread_id === "string") replyThreadId = savedData.message.thread_id;
@@ -2857,7 +2861,7 @@ export default function DriftApp() {
       return !hasError;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const replyMsg: DirectMessage = { id: `dm-ai-error-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: `AI応答でエラーが起きたみたい。\nエラー内容「network_error」\n詳細: ${detail.slice(0, 180)}\n気になる場合は意見箱へ送ってね。`, createdAt: Date.now(), read: false, isMine: false, isAiError: true, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
+      const replyMsg: DirectMessage = { id: `dm-ai-error-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcIdentityKey, getGuestKey()].sort().join("--")}` : `dm-pair-${[npcIdentityKey, getGuestKey()].sort().join("--")}`, sender: preferred, recipient: nickname || "あなた", targetEmoji: npcIdentityKey === "ai:darling" ? "🥺" : "🐛", targetType: target.type, body: `AI応答でエラーが起きたみたい。\nエラー内容「network_error」\n詳細: ${detail.slice(0, 180)}\n気になる場合は意見箱へ送ってね。`, createdAt: Date.now(), read: false, isMine: false, isAiError: true, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       console.error("[Type Drift AI] DM request failed", { character: preferred, detail });
       return false;
@@ -2987,7 +2991,9 @@ export default function DriftApp() {
     const isDarlingTarget = target.id === "darling" || target.name.includes("ダーリン") || target.emoji === "🥺" || /ダーリンちゃん/.test(target.type || "") || /ダーリンちゃん/.test(target.bottleInfo?.author || "") || /ダーリンちゃん/.test(target.bottleInfo?.type || "");
     const isWormTarget = target.id === "worm" || target.name.includes("芋虫") || target.emoji === "🐛" || /LSI芋虫/.test(target.type || "") || /LSI芋虫/.test(target.bottleInfo?.author || "") || /LSI芋虫/.test(target.bottleInfo?.type || "");
     const npcKeyForThread = isDarlingTarget ? "ai:darling" : isWormTarget ? "ai:lsi-worm" : "";
-    const localNpcThreadId = npcKeyForThread ? `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}` : "";
+    const localNpcThreadId = npcKeyForThread ? (target.bottleInfo
+      ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}`
+      : `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}`) : "";
     let npcSavedMessage: any = null;
     if (npcKeyForThread) {
       try {
@@ -2997,6 +3003,9 @@ export default function DriftApp() {
           body: JSON.stringify({
             npc_message: true, target_name: isDarlingTarget ? "ダーリンちゃん" : "LSI芋虫",
             sender_name: myDisplayName, body,
+            conversation_mode: target.bottleInfo ? "bottle" : "plaza",
+            bottle_id: target.bottleInfo?.id || null,
+            bottle_snippet: target.bottleInfo?.text || null,
             sender_profile: senderProfileSnapshot,
           }),
         });
@@ -3013,7 +3022,7 @@ export default function DriftApp() {
       threadId: String(npcSavedMessage?.thread_id || localNpcThreadId || (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id)),
       sender: myDisplayName,
       recipient: target.name,
-      targetEmoji: target.emoji,
+      targetEmoji: npcKeyForThread === "ai:darling" ? "🥺" : npcKeyForThread === "ai:lsi-worm" ? "🐛" : target.emoji,
       targetType: target.type,
       body,
       createdAt: Date.now(),
