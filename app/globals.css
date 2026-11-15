@@ -871,3 +871,57 @@
 .profile-chip-link:hover { transform:translateY(-2px); background:linear-gradient(135deg,#e4f8f1,#d9f0ed); box-shadow:0 8px 20px rgba(43,121,120,.15); }
 .profile-chip-link:focus-visible { outline:3px solid rgba(76,165,160,.35); outline-offset:3px; }
 @media(max-width:600px) { .profile-chip-link { min-height:40px; padding:9px 13px; font-size:12px; } }
+
+
+/* Shared pastel styling for interaction and notification preferences */
+.notification-prefs-note {
+  margin: 4px 0 0;
+  color: #7d9995;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.notification-prefs-panel {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid #d6e9e3;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f0faf5 0%, #fffaf2 100%);
+  box-shadow: 0 4px 14px rgba(87, 135, 125, .06);
+}
+.notification-prefs-panel > button {
+  color: #527d77 !important;
+  font-size: 15px;
+  letter-spacing: .02em;
+}
+.notification-prefs-panel label {
+  padding: 9px 12px;
+  border: 1px solid #e0ece7;
+  border-radius: 12px;
+  background: rgba(255,255,255,.72);
+  color: #426d68;
+}
+.notification-prefs-panel input[type="checkbox"] {
+  accent-color: #7bc5ad;
+  width: 18px;
+  height: 18px;
+}
+.post-interaction-prefs {
+  border: 1px solid #eadcf3;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #fff8ff 0%, #f8fbff 100%);
+  color: #765f83;
+}
+.post-interaction-prefs input[type="checkbox"] {
+  accent-color: #8a6ca0;
+}
+.reply-to {
+  border: 1px solid #cfe6df;
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: #f1faf6;
+  color: #4d8176;
+  font-size: 12px;
+}
+.reply-to:hover {
+  background: #e5f5ee;
+}
