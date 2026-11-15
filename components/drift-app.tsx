@@ -6686,11 +6686,16 @@ export default function DriftApp() {
                 // 返信者から届いている既存のDMを探して、その会話を直接開く。
                 const replyItem = (replyItems[selected.id] || []).find(item => item.id === replyId);
                 const author = String(replyItem?.author || "").trim();
-                const existingConversation = directMessages.find(message =>
+                // Match the actual bottle thread and exact participant label. Never use substring
+                // matching here: "匿名の誰か" can accidentally match several unrelated participants.
+                // Prefer the incoming message from this participant, then their outgoing reply.
+                const matchingBottleMessages = directMessages.filter(message =>
                   Number(message.bottleId) === Number(selected.id) &&
                   author &&
-                  (message.sender === author || message.recipient === author || message.sender.includes(author) || message.recipient.includes(author))
+                  (message.sender === author || message.recipient === author)
                 );
+                const existingConversation = matchingBottleMessages.find(message => !message.isMine)
+                  || matchingBottleMessages[0];
                 setReplyParentId(undefined);
                 setReply("");
                 setSelected(null);
