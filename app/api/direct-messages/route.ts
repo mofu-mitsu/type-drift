@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   try {
     const sql = db();
     await ensureDmBlockTable(sql);
-    const blockRows = await sql`SELECT thread_id, target_name, target_emoji, created_at FROM direct_message_blocks WHERE (owner_user_id = \${userId}::int AND \${userId}::int IS NOT NULL) OR (owner_guest_key = \${guestKey} AND \${userId}::int IS NULL)`;
+    const blockRows = await sql`SELECT thread_id, target_name, target_emoji, created_at FROM direct_message_blocks WHERE (owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL)`;
 
     // Repair the missing delivery path: copy existing NPC replies into the owner's inbox.
     // This uses the exact stored reply body and never generates a second AI response.
@@ -43,16 +43,16 @@ export async function GET(request: NextRequest) {
       JOIN bottles b ON b.id = r.bottle_id
       WHERE r.guest_key IN ('ai:darling', 'ai:lsi-worm')
         AND b.deleted_at IS NULL
-        AND ((\${userId}::int IS NOT NULL AND b.user_id = \${userId}::int)
-          OR (\${userId}::int IS NULL AND b.guest_key = \${guestKey}))
+        AND ((${userId}::int IS NOT NULL AND b.user_id = ${userId}::int)
+          OR (${userId}::int IS NULL AND b.guest_key = ${guestKey}))
       ORDER BY r.created_at ASC
       LIMIT 300
     `;
     for (const reply of npcReplies as Array<Record<string, any>>) {
       const npcKey = String(reply.npc_key);
       const character = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
-      const recipientKey = userId ? `user:\${userId}` : guestKey;
-      const threadId = `dm-pair-\${[npcKey, recipientKey].sort().join("--")}`;
+      const recipientKey = userId ? `user:${userId}` : guestKey;
+      const threadId = `dm-pair-${[npcKey, recipientKey].sort().join("--")}`;
       const blocked = blockRows.some((block: any) =>
         String(block.thread_id) === threadId ||
         String(block.thread_id) === npcKey ||
@@ -61,10 +61,10 @@ export async function GET(request: NextRequest) {
       if (blocked) continue;
       const exists = await sql`
         SELECT id FROM direct_messages
-        WHERE sender_guest_key = \${npcKey}
-          AND recipient_guest_key = \${recipientKey}
-          AND bottle_id = \${Number(reply.bottle_id)}
-          AND body = \${String(reply.body)}
+        WHERE sender_guest_key = ${npcKey}
+          AND recipient_guest_key = ${recipientKey}
+          AND bottle_id = ${Number(reply.bottle_id)}
+          AND body = ${String(reply.body)}
         LIMIT 1
       `;
       if (exists.length) continue;
@@ -75,9 +75,9 @@ export async function GET(request: NextRequest) {
           bottle_id, bottle_snippet, bottle_author, bottle_type, sender_user_id, recipient_user_id,
           sender_profile, recipient_profile, created_at, updated_at
         ) VALUES (
-          \${npcKey}, \${recipientKey}, \${threadId}, \${character}, 'あなた', \${String(reply.body)},
-          \${Number(reply.bottle_id)}, \${String(reply.bottle_body || "").slice(0, 500)}, \${character}, \${bottleType},
-          NULL, \${userId}, NULL, NULL, \${reply.created_at}, NOW()
+          ${npcKey}, ${recipientKey}, ${threadId}, ${character}, 'あなた', ${String(reply.body)},
+          ${Number(reply.bottle_id)}, ${String(reply.bottle_body || "").slice(0, 500)}, ${character}, ${bottleType},
+          NULL, ${userId}, NULL, NULL, ${reply.created_at}, NOW()
         )
       `;
     }
