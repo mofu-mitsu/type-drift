@@ -3115,6 +3115,12 @@ export default function DriftApp() {
     return count;
   }, [visibleServerBadgeCount, unreadDmCount, unreadConsultationCount, unreadInquiryReplyCount, isAdminLoggedIn, adminTotalPendingCount, notificationPrefs]);
 
+  // Treat placeholder labels as empty identity fields; they are not actual self-typing data.
+  const cleanDmIdentity = (value: unknown) => {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text && !["未設定", "未設定・未設定", "未設定・未設定・未設定", "未設定 · 未設定", "未設定 · 未設定 · 未設定"].includes(text) ? text : "";
+  };
+
   const dmAllThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
@@ -3172,7 +3178,7 @@ export default function DriftApp() {
         thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
       }
       if (!thread.type || thread.type === "広場の住人") {
-        const identity = [savedProfile?.mbti, savedProfile?.socionics, savedProfile?.enneagram, savedProfile?.otherType].filter(Boolean).join(" · ");
+        const identity = [cleanDmIdentity(savedProfile?.mbti), cleanDmIdentity(savedProfile?.socionics), cleanDmIdentity(savedProfile?.enneagram), cleanDmIdentity(savedProfile?.otherType)].filter(Boolean).join(" · ");
         thread.type = identity || thread.type;
       }
     }
@@ -3185,16 +3191,16 @@ export default function DriftApp() {
       const bottleId = last.bottleId || Number(thread.targetId.match(/^bottle-(\d+)/)?.[1] || 0);
       const originalBottle = bottles.find(bottle => bottle.id === bottleId);
       const originalBottleIdentity = [
-        originalBottle?.mbti,
-        originalBottle?.socionics,
-        originalBottle?.enneagram,
+        cleanDmIdentity(originalBottle?.mbti),
+        cleanDmIdentity(originalBottle?.socionics),
+        cleanDmIdentity(originalBottle?.enneagram),
         originalBottle?.otherType,
       ].filter(Boolean).join(" · ");
       const senderSnapshot = last.senderProfile;
       const recipientSnapshot = last.recipientProfile;
       const messageIdentity = last.isMine
-        ? [recipientSnapshot?.mbti, recipientSnapshot?.socionics, recipientSnapshot?.enneagram, recipientSnapshot?.otherType].filter(Boolean).join(" · ")
-        : [last.senderIdentity?.mbti || senderSnapshot?.mbti, last.senderIdentity?.socionics || senderSnapshot?.socionics, last.senderIdentity?.enneagram || senderSnapshot?.enneagram, last.senderIdentity?.otherType || senderSnapshot?.otherType].filter(Boolean).join(" · ");
+        ? [cleanDmIdentity(recipientSnapshot?.mbti), cleanDmIdentity(recipientSnapshot?.socionics), cleanDmIdentity(recipientSnapshot?.enneagram), cleanDmIdentity(recipientSnapshot?.otherType)].filter(Boolean).join(" · ")
+        : [cleanDmIdentity(last.senderIdentity?.mbti) || cleanDmIdentity(senderSnapshot?.mbti), cleanDmIdentity(last.senderIdentity?.socionics) || cleanDmIdentity(senderSnapshot?.socionics), cleanDmIdentity(last.senderIdentity?.enneagram) || cleanDmIdentity(senderSnapshot?.enneagram), cleanDmIdentity(last.senderIdentity?.otherType) || cleanDmIdentity(senderSnapshot?.otherType)].filter(Boolean).join(" · ");
       // ボトルの会話では、主の自認は会話元のボトル記録を最優先にする。
       // 「匿名の誰か」側は、メッセージに保存された送信者プロフィールを使う。
       thread.type = last.isMine
