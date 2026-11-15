@@ -101,7 +101,7 @@ class BottleController extends Controller
                 if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
             }
         }
-        $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey]);
+        $reply = Reply::create(['bottle_id' => $bottle->id, 'body' => $data['body'], 'parent_reply_id' => $data['parent_reply_id'] ?? null, 'user_id' => $userId, 'guest_key' => $guestKey, 'bottle_owner_user_id' => $bottle->user_id, 'bottle_owner_guest_key' => $bottle->guest_key]);
 
         // A bottle reply is also delivered to the bottle owner's private inbox.
         // Keep the shared thread tied to the original bottle so both sides see its context.
@@ -130,7 +130,7 @@ class BottleController extends Controller
                 'recipient_guest_key' => $ownerGuestKey,
                 'sender_user_id' => $userId,
                 'recipient_user_id' => $bottle->user_id,
-                'thread_id' => 'bottle-'.$bottle->id,
+                'thread_id' => 'bottle-'.$bottle->id.'-pair-'.implode('--', array_map('strval', array_values(array_unique(array_filter([$senderGuestKey, $ownerGuestKey]))))),
                 'sender_name' => '匿名の誰か',
                 'recipient_name' => '波間に漂うボトルの主（匿名）',
                 'body' => $reply->body,
