@@ -3133,8 +3133,13 @@ export default function DriftApp() {
   const dmAllThreads = useMemo(() => {
     const map: Record<string, { targetId: string; name: string; emoji: string; avatarUrl?: string; type?: string; lastMsg: DirectMessage; unread: number }> = {};
     for (const m of directMessages) {
-      // ボトルIDだけでは統合しない。同じ相手との会話はthreadIdでまとめ、別の相手は分ける。
-      const threadId = m.threadId || (m.isMine ? m.recipient : m.sender);
+      // 古いローカルキャッシュには参加者ペアを含まない bottle-ID だけのthreadIdが残る。
+      // それをキーにすると、同じボトルへ返信したA-BとA-Cが誤って一つになる。
+      // サーバー保存済みメッセージは正規threadIdを使い、参加者情報のない旧ローカル行は個別扱いにする。
+      const legacyBottleThread = !m.serverId && /^bottle-\d+$/.test(String(m.threadId || ""));
+      const threadId = legacyBottleThread
+        ? `legacy-local-${m.id}`
+        : (m.threadId || (m.isMine ? m.recipient : m.sender));
       const otherName = m.isMine ? m.recipient : m.sender;
       const isBottleThread = threadId.startsWith("bottle-") || Boolean(m.bottleId);
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
