@@ -99,20 +99,15 @@ export async function POST(request: NextRequest) {
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
       let bottleId: number | null = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
-      let threadId = typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`;
+      const threadId = bottleId
+        ? `bottle-${bottleId}-${[npcKey, (guestKey || (userId ? `user:${userId}` : ""))].sort().join("-")}`
+        : (typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`);
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
       const sql = db();
       await ensureDmBlockTable(sql);
-      // 既存のボトルDMがあれば、その会話のthread_idを再利用する。NPC返信だけ別トークに分裂するのを防ぐ。
-      if (bottleId) {
-        const existingThread = await sql`SELECT thread_id FROM direct_messages
-          WHERE bottle_id = ${bottleId}
-            AND ((recipient_user_id = ${userId}::int AND ${userId}::int IS NOT NULL)
-              OR (recipient_guest_key = ${recipientGuestKey} AND ${userId}::int IS NULL))
-          ORDER BY created_at DESC LIMIT 1`;
-        if (existingThread[0]?.thread_id) threadId = String(existingThread[0].thread_id);
-      }
+      // NPCの会話IDはボトルとNPC識別子・受信者識別子から決める。
+      // 別の人が同じボトルに返信しても会話が混ざらず、同じ相手との返信は同じトークにまとまる。
       // ブロック中の相手にはNPC返信も保存しない。スレッドIDに加え、NPC識別子と表示名でも照合する。
       const blockedNpc = await sql`SELECT id FROM direct_message_blocks
         WHERE ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL)
