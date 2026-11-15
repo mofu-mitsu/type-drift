@@ -2033,7 +2033,7 @@ export default function DriftApp() {
         const isAi = row.is_ai === true || row.is_ai === "true";
         const isMine = row.is_mine === true || row.is_mine === "true";
         const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
-        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
+        return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), allowLikes: row.allow_likes !== false && row.allow_likes !== "false" && row.allow_likes !== 0 && row.allow_likes !== "0", allowReplies: row.allow_replies !== false && row.allow_replies !== "false" && row.allow_replies !== 0 && row.allow_replies !== "0", userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
       });
       // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
       const npcSeeds = initialBottles.filter(item => Boolean(item.ai)).map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
@@ -2140,6 +2140,8 @@ export default function DriftApp() {
             poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined,
             reactions: Number(row.reactions_sum_level || 0),
             replies: Number(row.replies_count || 0),
+            allowLikes: row.allow_likes !== false && row.allow_likes !== "false" && row.allow_likes !== 0 && row.allow_likes !== "0",
+            allowReplies: row.allow_replies !== false && row.allow_replies !== "false" && row.allow_replies !== 0 && row.allow_replies !== "0",
             aiLikers: Array.isArray(row.ai_likers) ? row.ai_likers.map(String) : [],
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
@@ -4941,7 +4943,7 @@ export default function DriftApp() {
           )}
 
           <div className="notification-prefs-panel" style={{ margin: "12px 0", padding: "12px 14px", border: "1px solid #dcebe8", borderRadius: 12, background: "#f8fcfb" }}>
-            <button type="button" onClick={() => setNotificationPrefsOpen(value => !value)} style={{ border: 0, background: "transparent", color: "#426d6b", fontWeight: 700, cursor: "pointer", padding: 0 }}>🔔 通知設定 {notificationPrefsOpen ? "▲" : "▼"}</button>
+            <button type="button" onClick={() => setNotificationPrefsOpen(value => !value)} style={{ display: "flex", alignItems: "center", gap: 8, border: 0, background: "transparent", color: "#426d6b", fontWeight: 700, cursor: "pointer", padding: 0 }}><Bell size={17} strokeWidth={1.8} aria-hidden="true" />通知設定 {notificationPrefsOpen ? "▲" : "▼"}</button>
             {notificationPrefsOpen && <div style={{ display: "grid", gap: 8, marginTop: 12, fontSize: 13, color: "#526b6a" }}>
               {([["likes", "いいね通知"], ["replies", "返信通知"], ["messages", "個別メッセージ通知"], ["other", "その他の通知"]] as const).map(([key, label]) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={notificationPrefs[key]} onChange={event => saveNotificationPrefs({ ...notificationPrefs, [key]: event.target.checked })} />{label}</label>)}
               <p className="notification-prefs-note">通知の種類ごとに、お知らせを受け取るか選べます。</p>
