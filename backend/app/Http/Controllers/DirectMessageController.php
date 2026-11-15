@@ -189,7 +189,7 @@ class DirectMessageController extends Controller
 
         $userId = $request->user()?->id;
         $guestKey = $request->header('X-Guest-Key');
-        $lookupKey = $guestKey ?: ($userId ? 'user:'.$userId : null);
+        $lookupKey = $userId ? 'user:'.$userId : $guestKey;
         abort_unless($userId || $lookupKey, 422, 'A guest key is required.');
 
         $bottle = Bottle::findOrFail($data['bottle_id']);
@@ -346,7 +346,7 @@ class DirectMessageController extends Controller
     {
         $userId = $request->user()?->id;
         $guestKey = $request->header('X-Guest-Key');
-        $lookupKey = $guestKey ?: ($userId ? 'user:'.$userId : null);
+        $lookupKey = $userId ? 'user:'.$userId : $guestKey;
 
         $isRecipient = ($userId && (int) $directMessage->recipient_user_id === (int) $userId)
             || ($lookupKey && $directMessage->recipient_guest_key === $lookupKey);
