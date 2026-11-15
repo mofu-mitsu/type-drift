@@ -131,7 +131,7 @@ class BottleController extends Controller
                 'sender_user_id' => $userId,
                 'recipient_user_id' => $bottle->user_id,
                 'thread_id' => 'bottle-'.$bottle->id.'-pair-'.implode('--', (function () use ($senderGuestKey, $ownerGuestKey) { $participants = array_values(array_unique(array_filter([$senderGuestKey, $ownerGuestKey]))); sort($participants, SORT_STRING); return $participants; })()),
-                'sender_name' => '匿名の誰か',
+                'sender_name' => $guestKey === 'ai:darling' ? 'ダーリンちゃん' : ($guestKey === 'ai:lsi-worm' ? 'LSI芋虫' : '匿名の誰か'),
                 'recipient_name' => '波間に漂うボトルの主（匿名）',
                 'body' => $reply->body,
                 'bottle_id' => $bottle->id,
