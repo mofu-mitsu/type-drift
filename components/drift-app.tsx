@@ -3050,13 +3050,13 @@ export default function DriftApp() {
         // 送信本文とエラー通知はローカルのDM履歴に残し、個別メッセージ画面へ必ず遷移する。
         setPlazaToast("AIの返信に失敗しました。送信内容とエラーは個別メッセージに残しています");
         logActivity("direct_message_sent", { target: target.name, bodyLength: body.length, aiReplyFailed: true }, { type: "direct_message", id: target.id });
-        return target.id;
+        return newMsg.threadId;
       }
     }
 
     logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
     setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
-    return target.id;
+    return newMsg.threadId;
   };
 
   useEffect(() => {
@@ -3224,13 +3224,11 @@ export default function DriftApp() {
       const savedProfile = profileMessage ? (profileMessage.isMine ? profileMessage.recipientProfile : profileMessage.senderProfile) : undefined;
       const cachedUser = dmProfileCache[thread.targetId] || dmProfileCache[thread.name];
       if (thread.targetId.startsWith("bottle-") || messages.some(message => Boolean(message.bottleId))) {
-        // NPCが投稿したボトルは広場と同じキャラアイコン、それ以外のボトルは海のアイコン。
-        const bottleId = messages.find(message => message.bottleId)?.bottleId || Number(thread.targetId.match(/^bottle-(\\d+)/)?.[1] || 0);
-        const originalBottle = bottles.find(bottle => bottle.id === bottleId);
-        const bottleAuthor = originalBottle?.author || messages.find(message => message.bottleAuthor)?.bottleAuthor || "";
+        // NPCとのボトル会話ではNPC固有アイコンを維持し、人間同士のボトル会話だけ波アイコンにする。
+        const npcLabel = `${thread.targetId} ${thread.name} ${messages.map(message => `${message.sender} ${message.recipient} ${message.bottleAuthor || ""}`).join(" ")}`;
+        const npcEmoji = /ai:darling|ダーリンちゃん/.test(npcLabel) ? "🥺" : /ai:lsi-worm|LSI芋虫/.test(npcLabel) ? "🐛" : "";
         thread.avatarUrl = undefined;
-        thread.emoji = "🌊";
-      } else {
+        thread.emoji = npcEmoji || "🌊";      } else {
         thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
         thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
       }
