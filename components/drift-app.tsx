@@ -6760,7 +6760,7 @@ export default function DriftApp() {
                 setActivePage("activity");
                 setActivityTab("messages");
                 const npcKey = replyItem?.author === "ダーリンちゃん" ? "ai:darling" : replyItem?.author === "LSI芋虫" ? "ai:lsi-worm" : "";
-                const npcThreadId = npcKey ? `dm-pair-${[npcKey, isAuthenticated ? `user:${authUserId}` : getGuestKey()].sort().join("--")}` : "";
+                const npcThreadId = npcKey ? `dm-pair-${[npcKey, getGuestKey()].sort().join("--")}` : "";
                 setActiveDmThreadId(existingConversation?.threadId || npcThreadId || `bottle-${selected.id}`);
                 setDmModalTarget(null);
                 return;
