@@ -14,9 +14,62 @@ class DirectMessageController extends Controller
     {
         $userId = $request->user()?->id;
         $guestKey = $request->header('X-Guest-Key');
-        $lookupKey = $guestKey ?: ($userId ? 'user:'.$userId : null);
+        $lookupKey = $userId ? 'user:'.$userId : $guestKey;
 
         abort_unless($userId || $lookupKey, 422, 'A guest key is required.');
+
+        // The reply table is the source of truth for NPC text. Deliver already-generated
+        // replies to the bottle owner's inbox idempotently; never call the AI generator here.
+        $npcReplies = DB::table('replies as r')
+            ->join('bottles as b', 'b.id', '=', 'r.bottle_id')
+            ->whereIn('r.guest_key', ['ai:darling', 'ai:lsi-worm'])
+            ->whereNull('b.deleted_at')
+            ->when($userId, fn ($q) => $q->where('b.user_id', $userId), fn ($q) => $q->where('b.guest_key', $guestKey))
+            ->select('r.id as reply_id', 'r.bottle_id', 'r.guest_key as npc_key', 'r.body', 'r.created_at as reply_created_at',
+                'b.user_id as bottle_user_id', 'b.guest_key as bottle_guest_key', 'b.body as bottle_body',
+                'b.mbti', 'b.socionics', 'b.enneagram', 'b.other_type', 'b.ai_character')
+            ->orderBy('r.created_at')
+            ->limit(300)->get();
+        foreach ($npcReplies as $reply) {
+            $npcKey = (string) $reply->npc_key;
+            $character = $npcKey === 'ai:darling' ? 'ダーリンちゃん' : 'LSI芋虫';
+            $recipientKey = $userId ? 'user:'.$userId : (string) $guestKey;
+            $threadId = 'dm-pair-'.implode('--', array_values(array_unique(collect([$npcKey, $recipientKey])->sort()->all())));
+            $blocked = DB::table('direct_message_blocks')
+                ->where(function ($q) use ($userId, $guestKey) {
+                    if ($userId) $q->where('owner_user_id', $userId);
+                    else $q->where('owner_guest_key', $guestKey);
+                })
+                ->where(function ($q) use ($threadId, $npcKey, $character) {
+                    $q->whereIn('thread_id', [$threadId, $npcKey, 'ai:darling', 'ai:lsi-worm'])
+                      ->orWhere('target_name', $character);
+                })->exists();
+            if ($blocked) continue;
+            $exists = DirectMessage::query()
+                ->where('sender_guest_key', $npcKey)
+                ->where('recipient_guest_key', $recipientKey)
+                ->where('bottle_id', $reply->bottle_id)
+                ->where('body', $reply->body)->exists();
+            if ($exists) continue;
+            $recipientProfile = $this->profileSnapshot($userId, $recipientKey);
+            DirectMessage::create([
+                'sender_guest_key' => $npcKey,
+                'recipient_guest_key' => $recipientKey,
+                'sender_user_id' => null,
+                'recipient_user_id' => $userId,
+                'thread_id' => $threadId,
+                'sender_name' => $character,
+                'recipient_name' => 'あなた',
+                'body' => $reply->body,
+                'bottle_id' => $reply->bottle_id,
+                'bottle_snippet' => mb_substr((string) $reply->bottle_body, 0, 500),
+                'bottle_author' => $character,
+                'bottle_type' => (string) ($reply->ai_character ?: implode(' · ', array_filter([$reply->socionics, $reply->enneagram, $reply->mbti, $reply->other_type])) ?: 'ボトルへの返信'),
+                'sender_profile' => null,
+                'recipient_profile' => $recipientProfile,
+                'created_at' => $reply->reply_created_at,
+            ]);
+        }
 
         $messages = DirectMessage::query()
             ->where(function ($query) use ($userId, $lookupKey) {
@@ -40,6 +93,10 @@ class DirectMessageController extends Controller
                 return [
                     'id' => $message->id,
                     'thread_id' => $message->thread_id,
+                    'sender_guest_key' => $message->sender_guest_key,
+                    'recipient_guest_key' => $message->recipient_guest_key,
+                    'sender_user_id' => $message->sender_user_id,
+                    'recipient_user_id' => $message->recipient_user_id,
                     'sender_name' => $message->sender_name,
                     'recipient_name' => $message->recipient_name,
                     'body' => $message->body,
