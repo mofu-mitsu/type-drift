@@ -845,10 +845,14 @@ export default function DriftApp() {
             : "";
           // Legacy messages without both participant IDs must not be grouped by a guessed name or bottle alone.
           // Keep their persisted server thread ID, which is the only trustworthy grouping key for those rows.
+          const isNpcMessage = String(row.sender_guest_key || "").startsWith("ai:");
+          // NPCはボトルごとではなく、NPC本人と受信者のペアで一つの会話にする。
           const resolvedThreadId = participantPair
-            ? (row.bottle_id != null
-                ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
-                : `dm-pair-${participantPair}`)
+            ? (isNpcMessage
+                ? `dm-pair-${participantPair}`
+                : row.bottle_id != null
+                  ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
+                  : `dm-pair-${participantPair}`)
             : String(row.thread_id || `legacy-thread-${row.id}`);
           const asBoolean = (value: any) => value === true || value === 1 || value === "1" || value === "true" || value === "t";
           return ({
@@ -3017,6 +3021,10 @@ export default function DriftApp() {
     const handleIncoming = (event: Event) => {
       const message = (event as CustomEvent<{ id: string; senderSessionKey: string; senderName: string; senderEmoji: string; body: string; createdAt: number }>).detail;
       if (!message?.body) return;
+      // ブロック済み相手からの受信イベントは、履歴・トースト通知へ流さない。
+      const isBlockedSender = Boolean(dmBlockedThreads[message.senderSessionKey]) ||
+        Object.values(dmBlockedThreads).some(block => block.name && block.name === message.senderName);
+      if (isBlockedSender) return;
       const incoming: DirectMessage = {
         id: message.id,
         threadId: message.senderSessionKey,
@@ -3039,11 +3047,11 @@ export default function DriftApp() {
     };
     window.addEventListener("type-drift:dm-received", handleIncoming);
     return () => window.removeEventListener("type-drift:dm-received", handleIncoming);
-  }, [nickname]);
+  }, [nickname, dmBlockedThreads]);
 
   const unreadDmCount = useMemo(() => {
-    return directMessages.filter(m => !m.isMine && !m.read).length;
-  }, [directMessages]);
+    return directMessages.filter(m => !m.isMine && !m.read && !dmBlockedThreads[m.threadId]).length;
+  }, [directMessages, dmBlockedThreads]);
 
   // 🔔 一般ユーザー向け：自認相談室の診断結果到着バッジ（未読のみ）
   const unreadConsultationCount = useMemo(() => {
@@ -5339,7 +5347,7 @@ export default function DriftApp() {
                           )}
                           <div style={{ position: "relative", marginLeft: "8px", flexShrink: 0 }}>
                             <button type="button" title="トークの操作" aria-label={`${thread.name}とのトークの操作`} aria-expanded={dmMenuOpenId === thread.targetId} onClick={event => { event.stopPropagation(); setDmMenuOpenId(current => current === thread.targetId ? null : thread.targetId); }} style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "5px 7px", background: "#fff", color: "#64748b", cursor: "pointer" }}><MoreHorizontal size={17} /></button>
-                            {dmMenuOpenId === thread.targetId && <div onClick={event => event.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 5px)", zIndex: 40, minWidth: 150, padding: 6, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", boxShadow: "0 8px 22px #0f172a1a", display: "grid", gap: 4 }}>
+                            {dmMenuOpenId === thread.targetId && <div onClick={event => event.stopPropagation()} style={{ position: "absolute", right: 0, bottom: "calc(100% + 5px)", zIndex: 100, minWidth: 150, maxHeight: "min(240px, 40dvh)", overflowY: "auto", overscrollBehavior: "contain", padding: 6, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", boxShadow: "0 8px 22px #0f172a1a", display: "grid", gap: 4 }}>
                               <button type="button" onClick={() => { const next = { ...dmHiddenAt, [thread.targetId]: thread.lastMsg.createdAt }; setDmHiddenAt(next); try { localStorage.setItem("type-drift-dm-hidden-at", JSON.stringify(next)); } catch {} setDmMenuOpenId(null); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff", color: "#475569", cursor: "pointer", fontSize: 12 }}>非表示にする</button>
                               <button type="button" onClick={() => { const next = { ...dmBlockedThreads, [thread.targetId]: { name: thread.name, emoji: thread.emoji, blockedAt: Date.now() } }; setDmBlockedThreads(next); try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(next)); } catch {} void apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ action: "block_thread", thread_id: thread.targetId, target_name: thread.name, target_emoji: thread.emoji }) }).then(response => { if (!response.ok) setPlazaToast("ブロックをサーバーに保存できませんでした"); }).catch(() => setPlazaToast("ブロックをサーバーに保存できませんでした")); setDmMenuOpenId(null); if (activeDmThreadId === thread.targetId) setActiveDmThreadId(null); setPlazaToast(`${thread.name}をブロックしました`); }} style={{ textAlign: "left", border: 0, borderRadius: 7, padding: "8px 10px", background: "#fff7f7", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>ブロックする</button>
                             </div>}
@@ -6751,7 +6759,9 @@ export default function DriftApp() {
                 setSelected(null);
                 setActivePage("activity");
                 setActivityTab("messages");
-                setActiveDmThreadId(existingConversation?.threadId || `bottle-${selected.id}`);
+                const npcKey = replyItem?.author === "ダーリンちゃん" ? "ai:darling" : replyItem?.author === "LSI芋虫" ? "ai:lsi-worm" : "";
+                const npcThreadId = npcKey ? `dm-pair-${[npcKey, isAuthenticated ? `user:${authUserId}` : getGuestKey()].sort().join("--")}` : "";
+                setActiveDmThreadId(existingConversation?.threadId || npcThreadId || `bottle-${selected.id}`);
                 setDmModalTarget(null);
                 return;
               }
