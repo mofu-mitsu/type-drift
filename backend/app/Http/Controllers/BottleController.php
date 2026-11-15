@@ -274,6 +274,27 @@ class BottleController extends Controller
     {
         if (!$ownerId && !$ownerGuestKey) return;
         if (($ownerId && $actorId && $ownerId === $actorId) || (!$ownerId && $ownerGuestKey && $ownerGuestKey === $actorGuestKey)) return;
+
+        // ブロックした相手からの反応は、通知レコードを作る前に除外する。
+        // block list はスレッドIDで保存されている旧データもあるため、ボトルIDと送信者IDの両方を照合する。
+        if ($actorId || $actorGuestKey) {
+            try {
+                $actorIdentity = $actorId ? 'user:'.$actorId : $actorGuestKey;
+                $blocked = DB::table('direct_message_blocks')
+                    ->where(function ($query) use ($ownerId, $ownerGuestKey) {
+                        if ($ownerId) $query->where('owner_user_id', $ownerId);
+                        else $query->where('owner_guest_key', $ownerGuestKey);
+                    })
+                    ->whereIn('thread_id', array_values(array_filter([
+                        $actorIdentity,
+                        $type === 'bottle_reply' || $type === 'bottle_reaction' ? 'bottle-'.$entityId : null,
+                    ])))
+                    ->exists();
+                if ($blocked) return;
+            } catch (\\Illuminate\\Database\\QueryException $exception) {
+                if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
+            }
+        }
         Notification::create(['user_id' => $ownerId, 'guest_key' => $ownerId ? null : $ownerGuestKey, 'type' => $type, 'entity_id' => $entityId, 'message' => $message]);
     }
 
