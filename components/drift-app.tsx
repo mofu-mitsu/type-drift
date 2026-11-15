@@ -3701,6 +3701,51 @@ export default function DriftApp() {
       };
       for (const row of Array.isArray(data?.replies) ? data.replies : []) visit(row, row.parent_reply_id ? Number(row.parent_reply_id) : undefined);
       setReplyItems(items => ({ ...items, [bottle.id]: flattened }));
+
+      // Sync existing NPC comments from this bottle's actual reply thread into DMs.
+      // Do not generate a second AI response: persist the exact body already shown in the bottle.
+      // The server deduplicates by recipient + bottle + NPC + body, so reopening is safe.
+      const syncNpcReplies = async (rows: any[]) => {
+        for (const row of rows) {
+          const npcKey = String(row?.guest_key || "");
+          const npcCharacter = npcKey === "ai:darling" ? "ダーリンちゃん" : npcKey === "ai:lsi-worm" ? "LSI芋虫" : "";
+          const npcBody = normalizeDmBody(row?.body || "").trim();
+          if (npcCharacter && npcBody) {
+            try {
+              const syncResponse = await apiFetch("/api/direct-messages", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+                body: JSON.stringify({
+                  ai_reply: true,
+                  ai_character: npcCharacter,
+                  bottle_id: bottle.id,
+                  body: npcBody,
+                  recipient_name: nickname || "あなた",
+                  recipient_profile: {
+                    nickname: nickname || "",
+                    mbti: profileIdentity.mbti || "",
+                    socionics: profileIdentity.socionics || "",
+                    enneagram: profileIdentity.enneagram || "",
+                    other_type: profileIdentity.otherType || "",
+                    bio: profileBio || "",
+                  },
+                }),
+              });
+              if (!syncResponse.ok) {
+                console.error("[Type Drift] existing NPC bottle reply DM sync failed", {
+                  bottleId: bottle.id, status: syncResponse.status, npc: npcCharacter,
+                  detail: await syncResponse.clone().text().catch(() => ""),
+                });
+              }
+            } catch (error) {
+              console.error("[Type Drift] existing NPC bottle reply DM sync failed", error);
+            }
+          }
+          if (Array.isArray(row?.children)) await syncNpcReplies(row.children);
+        }
+      };
+      void syncNpcReplies(Array.isArray(data?.replies) ? data.replies : []);
     } catch (error) { console.warn("[Type Drift] replies loading failed", error); }
   };
   const catchSomething = () => {
