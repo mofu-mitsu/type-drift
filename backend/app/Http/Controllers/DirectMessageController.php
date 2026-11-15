@@ -126,7 +126,15 @@ class DirectMessageController extends Controller
                 ];
             });
 
-        return response()->json(['messages' => $messages]);
+        $blockedThreads = DB::table('direct_message_blocks')
+            ->where(function ($query) use ($userId, $guestKey) {
+                if ($userId) $query->where('owner_user_id', $userId);
+                else $query->where('owner_guest_key', $guestKey);
+            })
+            ->select('thread_id', 'target_name', 'target_emoji', 'created_at')
+            ->get();
+
+        return response()->json(['messages' => $messages, 'blocked_threads' => $blockedThreads]);
     }
 
     public function store(Request $request)
