@@ -831,30 +831,20 @@ export default function DriftApp() {
         const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => {
           // ボトルDMはサーバーのthread_idだけに依存せず、送信者と受信者の安定した識別子から会話を分ける。
           // APIの返却フィールド名に差がある場合も、利用可能なIDを順に拾う。
-          const senderKey = String(
-            row.sender_guest_key || row.sender_session_key || row.sender_user_key ||
-            row.sender_key || row.sender_id || (row.sender_user_id ? `user:${row.sender_user_id}` : "") ||
-            (row.sender_profile && [
-              row.sender_profile.nickname, row.sender_profile.mbti, row.sender_profile.socionics,
-              row.sender_profile.enneagram, row.sender_profile.otherType || row.sender_profile.other_type,
-            ].filter(Boolean).join("|") ? `profile:${[
-              row.sender_profile.nickname, row.sender_profile.mbti, row.sender_profile.socionics,
-              row.sender_profile.enneagram, row.sender_profile.otherType || row.sender_profile.other_type,
-            ].filter(Boolean).join("|")}` : "") ||
-            (row.sender_name ? `name:${row.sender_name}` : `message:${row.id}`)
-          );
-          const recipientKey = String(
-            row.recipient_guest_key || row.recipient_session_key || row.recipient_user_key ||
-            row.recipient_key || row.recipient_id || (row.recipient_user_id ? `user:${row.recipient_user_id}` : "") ||
-            (row.recipient_name ? `name:${row.recipient_name}` : `bottle-owner:${row.bottle_id}`)
-          );
-          // 会話IDはボトル単位ではなく参加者ペア単位にする。
-          // A→B と B→A、別々のボトルをきっかけにしたA・B間のDMも同じトークへまとめる。
-          // ただし別の相手は sender/recipient の安定IDが異なるため混ざらない。
+          // Stable account/guest/NPC identifiers only. Names and profile snapshots are presentation data,
+          // never conversation identity (they can change and can accidentally merge unrelated people).
+          const senderKey = row.sender_user_id != null
+            ? `user:${row.sender_user_id}`
+            : String(row.sender_guest_key || row.sender_session_key || row.sender_user_key || row.sender_key || row.sender_id || `message:${row.id}`);
+          const recipientKey = row.recipient_user_id != null
+            ? `user:${row.recipient_user_id}`
+            : String(row.recipient_guest_key || row.recipient_session_key || row.recipient_user_key || row.recipient_key || row.recipient_id || `message:${row.id}`);
           const participantPair = [senderKey, recipientKey].sort().join("--");
-          const resolvedThreadId = senderKey && recipientKey
-            ? `dm-pair-${participantPair}`
-            : String(row.thread_id || `dm-${row.id}`);
+          // Bottle conversations stay anonymous and are isolated per bottle AND participant pair.
+          // Non-bottle conversations are shared by the same two participants in either direction.
+          const resolvedThreadId = row.bottle_id != null
+            ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
+            : `dm-pair-${participantPair}`;
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
@@ -5251,7 +5241,7 @@ export default function DriftApp() {
                         >
                           {dmSortMode === "manual" && <button type="button" className="dm-drag-handle" draggable aria-label={`${thread.name}を並び替え`} title="三本線をつかんで並び替え" onDragStart={event => { event.stopPropagation(); setDraggingDmId(thread.targetId); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", thread.targetId); }} onDragEnd={() => setDraggingDmId(null)} onTouchStart={event => { event.stopPropagation(); setDraggingDmId(thread.targetId); }} onClick={event => event.stopPropagation()} style={{ touchAction: "none", cursor: "grab" }}><Menu size={17} /></button>}
                           <div className="dm-thread-avatar">
-                            {thread.avatarUrl ? <img src={thread.avatarUrl} alt="" /> : thread.emoji}
+                            {isBottleThread && thread.emoji === "🌊" ? <Waves size={22} strokeWidth={1.8} aria-label="匿名ボトル" /> : thread.avatarUrl ? <img src={thread.avatarUrl} alt="" /> : thread.emoji}
                             {thread.unread > 0 && (
                               <span style={{ position: "absolute", top: "-2px", right: "-2px", width: "10px", height: "10px", background: "#ef4444", borderRadius: "50%", border: "2px solid #fff" }} />
                             )}
