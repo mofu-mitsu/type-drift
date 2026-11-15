@@ -7,6 +7,8 @@ use App\Models\Bottle;
 use App\Models\Notification;
 use App\Models\Profile;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DirectMessageController extends Controller
 {
