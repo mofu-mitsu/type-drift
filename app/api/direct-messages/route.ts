@@ -135,6 +135,27 @@ export async function POST(request: NextRequest) {
           bottleId = null;
         }
       }
+      // Bottle replies may be synchronized repeatedly when the owner opens the thread.
+      // Reuse the existing DM row for the same NPC + recipient + bottle + exact reply body.
+      // This makes syncing idempotent and prevents duplicate DM entries.
+      const existingNpcReply = bottleId ? await sql`
+        SELECT id, thread_id, sender_name, recipient_name, body, bottle_id, bottle_snippet, bottle_author,
+               bottle_type, created_at, (read_at IS NOT NULL) AS read, false AS is_mine,
+               sender_profile, recipient_profile
+        FROM direct_messages
+        WHERE sender_guest_key = ${npcKey}
+          AND bottle_id = ${bottleId}
+          AND body = ${body}
+          AND ((${userId}::int IS NOT NULL AND recipient_user_id = ${userId}::int)
+            OR (${userId}::int IS NULL AND recipient_guest_key = ${guestKey}))
+        ORDER BY created_at ASC
+        LIMIT 1
+      ` : [];
+      if (existingNpcReply.length) {
+        return NextResponse.json({ ok: true, existing: true, message: existingNpcReply[0] }, {
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
       const inserted = await sql`
         INSERT INTO direct_messages (
           sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body,
