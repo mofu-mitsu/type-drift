@@ -99,10 +99,10 @@ export async function POST(request: NextRequest) {
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
       let bottleId: number | null = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
+      // NPCも人間と同じく、受信者の正規IDとNPC IDのペアで会話を識別する。
+      // 送信元のボトルIDで会話を分裂させない。
       const npcRecipientKey = userId ? `user:${userId}` : guestKey;
-      const threadId = bottleId
-        ? `bottle-${bottleId}-pair-${[npcKey, npcRecipientKey].sort().join("--")}`
-        : (typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`);
+      const threadId = `dm-pair-${[npcKey, npcRecipientKey].sort().join("--")}`;
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = userId ? `user:${userId}` : guestKey;
       const sql = db();
@@ -219,9 +219,9 @@ export async function POST(request: NextRequest) {
     const senderIdentityKey = `user:${userId}`;
     const recipientIdentityKey = recipientUserId != null ? `user:${recipientUserId}` : recipientGuestKey;
     const canonicalPairThreadId = `dm-pair-${[senderIdentityKey, recipientIdentityKey].sort().join("--")}`;
-    const finalThreadId = bottleId
-      ? `bottle-${bottleId}-pair-${[senderIdentityKey, recipientIdentityKey].sort().join("--")}`
-      : canonicalPairThreadId;
+    // 同じ2人の会話は送信方向や起点のボトルに関係なく同じスレッドにする。
+    // bottle_idは各メッセージの出自として保持し、会話IDには含めない。
+    const finalThreadId = canonicalPairThreadId;
     const recipientBlocked = await sql`SELECT id FROM direct_message_blocks
       WHERE thread_id IN (${finalThreadId}, ${senderIdentityKey})
         AND ((owner_user_id = ${recipientUserId}::int AND ${recipientUserId}::int IS NOT NULL)
