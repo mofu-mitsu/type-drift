@@ -6757,13 +6757,61 @@ export default function DriftApp() {
                   .sort((a, b) => Math.abs(a.createdAt - Date.now()) - Math.abs(b.createdAt - Date.now()))[0];
                 setReplyParentId(undefined);
                 setReply("");
-                setSelected(null);
-                setActivePage("activity");
-                setActivityTab("messages");
                 const npcKey = replyItem?.author === "ダーリンちゃん" ? "ai:darling" : replyItem?.author === "LSI芋虫" ? "ai:lsi-worm" : "";
-                const npcThreadId = npcKey ? `dm-pair-${[npcKey, getGuestKey()].sort().join("--")}` : "";
-                setActiveDmThreadId(existingConversation?.threadId || npcThreadId || `bottle-${selected.id}`);
-                setDmModalTarget(null);
+                void (async () => {
+                  let threadId = existingConversation?.threadId || "";
+                  // If this exact NPC reply has not reached the inbox yet, persist the existing reply body
+                  // (never generate another answer) and use the canonical thread ID returned by the server.
+                  if (!threadId && npcKey && replyItem?.body?.trim()) {
+                    try {
+                      const syncResponse = await apiFetch("/api/direct-messages", {
+                        method: "POST", credentials: "include",
+                        headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+                        body: JSON.stringify({
+                          ai_reply: true,
+                          ai_character: npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫",
+                          bottle_id: selected.id,
+                          body: replyItem.body,
+                          recipient_name: nickname || "あなた",
+                          recipient_profile: {
+                            nickname: nickname || "", mbti: profileIdentity.mbti || "",
+                            socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "",
+                            other_type: profileIdentity.otherType || "", bio: profileBio || "",
+                          },
+                        }),
+                      });
+                      const syncData = await syncResponse.json().catch(() => null);
+                      if (syncResponse.ok && syncData?.message?.thread_id) {
+                        threadId = String(syncData.message.thread_id);
+                        const row = syncData.message;
+                        const syncedMessage: DirectMessage = {
+                          id: `server-dm-${row.id}`, serverId: Number(row.id), threadId,
+                          sender: String(row.sender_name || (npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫")),
+                          recipient: String(row.recipient_name || nickname || "あなた"),
+                          targetEmoji: npcKey === "ai:darling" ? "🥺" : "🐛",
+                          targetType: String(row.bottle_type || "NPC"),
+                          body: normalizeDmBody(String(row.body || replyItem.body)),
+                          createdAt: new Date(row.created_at).getTime() || Date.now(),
+                          read: Boolean(row.read), isMine: false, bottleId: Number(row.bottle_id || selected.id),
+                          bottleSnippet: String(row.bottle_snippet || selected.text), bottleAuthor: String(row.bottle_author || ""),
+                          bottleType: String(row.bottle_type || ""),
+                        };
+                        setDirectMessages(prev => {
+                          const next = [...prev.filter(item => item.serverId !== syncedMessage.serverId), syncedMessage];
+                          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(next)); } catch {}
+                          return next;
+                        });
+                      }
+                    } catch (error) {
+                      console.error("[Type Drift] NPC reply DM sync on open failed", error);
+                    }
+                  }
+                  setSelected(null);
+                  setActivePage("activity");
+                  setActivityTab("messages");
+                  setActiveDmThreadId(threadId || `bottle-${selected.id}`);
+                  setDmModalTarget(null);
+                })();
                 return;
               }
               // 他人のボトルでは従来どおり、返信ツリーに返答できる。
