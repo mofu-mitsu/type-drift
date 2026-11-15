@@ -848,12 +848,13 @@ export default function DriftApp() {
             row.recipient_key || row.recipient_id || (row.recipient_user_id ? `user:${row.recipient_user_id}` : "") ||
             (row.recipient_name ? `name:${row.recipient_name}` : `bottle-owner:${row.bottle_id}`)
           );
-          // 同じボトルでも、送信者・受信者の組ごとに会話を分ける。
-          // 返信方向が逆になっても同じ2人なら同じスレッドになるよう、識別子をソートする。
-          const bottleThreadId = row.bottle_id
-            ? `bottle-${row.bottle_id}-${[senderKey, recipientKey].sort().join("-")}`
+          // 会話IDはボトル単位ではなく参加者ペア単位にする。
+          // A→B と B→A、別々のボトルをきっかけにしたA・B間のDMも同じトークへまとめる。
+          // ただし別の相手は sender/recipient の安定IDが異なるため混ざらない。
+          const participantPair = [senderKey, recipientKey].sort().join("--");
+          const resolvedThreadId = senderKey && recipientKey
+            ? `dm-pair-${participantPair}`
             : String(row.thread_id || `dm-${row.id}`);
-          const resolvedThreadId = bottleThreadId;
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
@@ -2810,8 +2811,8 @@ export default function DriftApp() {
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
-      const npcRecipientKey = getGuestKey();
-      const replyThreadId = target.bottleInfo ? `bottle-${target.bottleInfo.id}-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}` : target.id;
+      const npcRecipientKey = isAuthenticated ? `user:${currentUserId}` : getGuestKey();
+      const replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
         try {
