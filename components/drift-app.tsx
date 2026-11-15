@@ -2792,6 +2792,9 @@ export default function DriftApp() {
   const requestDmAiReply = async (target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } }, userText: string): Promise<boolean> => {
     const targetLabel = `${target.name} ${target.id} ${target.bottleInfo?.author || ""}`;
     const preferred = /ダーリン|darling|🥺/i.test(targetLabel) ? "ダーリンちゃん" : "LSI芋虫";
+    const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
+    const npcRecipientKey = getGuestKey();
+    let replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
     try {
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => message.threadId === replyThreadId || (target.bottleInfo && Number(message.bottleId) === Number(target.bottleInfo.id) && (message.sender === preferred || message.recipient === preferred))).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
@@ -2816,10 +2819,7 @@ export default function DriftApp() {
       const replyBody = hasError
         ? `AI応答でエラーが起きたみたい。\nエラー内容「${data?.reason || `HTTP ${response.status}`}」${data?.detail ? `\n詳細: ${String(data.detail).slice(0, 180)}` : ""}\n意見箱から報告できるよ。`
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
-      const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
-      const npcRecipientKey = getGuestKey();
       // Keep one stable conversation per NPC and recipient, independent of source bottle.
-      let replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
         try {
