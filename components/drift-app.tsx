@@ -840,11 +840,9 @@ export default function DriftApp() {
             ? `user:${row.recipient_user_id}`
             : String(row.recipient_guest_key || row.recipient_session_key || row.recipient_user_key || row.recipient_key || row.recipient_id || `message:${row.id}`);
           const participantPair = [senderKey, recipientKey].sort().join("--");
-          // Bottle conversations stay anonymous and are isolated per bottle AND participant pair.
-          // Non-bottle conversations are shared by the same two participants in either direction.
-          const resolvedThreadId = row.bottle_id != null
-            ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
-            : `dm-pair-${participantPair}`;
+          // 送信方向や起点のボトルに関係なく、同じ2人の会話は1つにまとめる。
+          // 匿名ボトル由来かどうかは各メッセージのbottleIdで判定し、会話IDには混ぜない。
+          const resolvedThreadId = `dm-pair-${participantPair}`;
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
