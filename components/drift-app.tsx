@@ -411,7 +411,7 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
 }
 
 function ReplyThread({ replies, onReact, onReply }: { replies: ReplyItem[]; onReact: (id: number) => void; onReply: (id: number) => void }) {
-  const render = (parentId?: number, depth = 0): ReactNode => replies.filter(item => item.parentId === parentId).map(item => <div className="reply-item" style={{ marginLeft: `${Math.min(depth, 3) * 14}px` }} key={item.id}>{item.author && <small style={{ display: "block", marginBottom: "4px", color: "#9d174d", fontWeight: 700 }}>{item.emoji} {item.author}</small>}<p>{item.body}</p><div><button type="button" onClick={() => onReact(item.id)} className={`reply-reaction reply-reaction--${item.reaction}`}>♡ {item.reaction ? `+${item.reaction}` : "反応"}</button><button type="button" onClick={() => onReply(item.id)} className="reply-to">返信</button></div>{render(item.id, depth + 1)}</div>);
+  const render = (parentId?: number, depth = 0): ReactNode => replies.filter(item => item.parentId === parentId).map(item => <div className="reply-item" style={{ marginLeft: `${Math.min(depth, 3) * 14}px` }} key={item.id}>{item.author && <small style={{ display: "block", marginBottom: "4px", color: "#9d174d", fontWeight: 700 }}>{item.emoji} {item.author}</small>}<p>{item.body}</p><div><button type="button" onClick={() => onReact(item.id)} className={`reply-reaction reply-reaction--${item.reaction}`}>♡ {item.reaction ? `+${item.reaction}` : "反応"}</button><button type="button" onClick={() => onReply(item.id)} className="reply-to">DMを送る</button></div>{render(item.id, depth + 1)}</div>);
   return replies.length ? <div className="reply-thread"><p className="reply-thread__title">返信の流れ</p>{render()}</div> : null;
 }
 
@@ -4944,7 +4944,7 @@ export default function DriftApp() {
             <button type="button" onClick={() => setNotificationPrefsOpen(value => !value)} style={{ border: 0, background: "transparent", color: "#426d6b", fontWeight: 700, cursor: "pointer", padding: 0 }}>🔔 通知設定 {notificationPrefsOpen ? "▲" : "▼"}</button>
             {notificationPrefsOpen && <div style={{ display: "grid", gap: 8, marginTop: 12, fontSize: 13, color: "#526b6a" }}>
               {([["likes", "いいね通知"], ["replies", "返信通知"], ["messages", "個別メッセージ通知"], ["other", "その他の通知"]] as const).map(([key, label]) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={notificationPrefs[key]} onChange={event => saveNotificationPrefs({ ...notificationPrefs, [key]: event.target.checked })} />{label}</label>)}
-              <p style={{ margin: 0, fontSize: 11, color: "#819694" }}>設定はこの端末に保存されます。サーバー通知そのものを止める設定は、通知API側にも反映が必要です。</p>
+              <p className="notification-prefs-note">通知の種類ごとに、お知らせを受け取るか選べます。</p>
             </div>}
           </div>
           {/* 5つのパステル丸アイコンナビゲーション (画像完全再現) */}
@@ -5442,12 +5442,6 @@ export default function DriftApp() {
                             <span>·</span>
                             <span>{relatedBottle.type}</span>
                           </div>
-                          {relatedBottle.id && myRepliesMap[relatedBottle.id] && myRepliesMap[relatedBottle.id].length > 0 && (
-                            <div className="dm-ref-my-reply-box">
-                              <span className="dm-ref-my-reply-label">↩️ あなたが届けた返信:</span>
-                              <p className="dm-ref-my-reply-text">「{myRepliesMap[relatedBottle.id][myRepliesMap[relatedBottle.id].length - 1]}」</p>
-                            </div>
-                          )}
                         </div>
                       )}
 
@@ -6690,6 +6684,24 @@ export default function DriftApp() {
                   });
                 }
                 return;
+              }
+              // 自分のボトルへの返信は、返信ツリーを増やさず相手との個別メッセージへつなぐ。
+              if (selected.mine && replyItem?.author) {
+                const recipient = plazaUsers.find(user => user.nickname === replyItem.author);
+                if (recipient?.sessionKey) {
+                  setReplyParentId(undefined);
+                  setReply("");
+                  setActivePage("activity");
+                  setActivityTab("messages");
+                  setActiveDmThreadId(null);
+                  setDmModalTarget({
+                    id: recipient.sessionKey,
+                    name: recipient.nickname,
+                    emoji: recipient.emoji || "◌",
+                    type: [recipient.mbti || recipient.identity?.mbti, recipient.socionics || recipient.identity?.socionics, recipient.enneagram || recipient.identity?.enneagram].filter(Boolean).join(" · "),
+                  });
+                  return;
+                }
               }
               setReplyParentId(replyId);
             }}
