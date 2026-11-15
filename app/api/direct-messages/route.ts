@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       const npcKey = String(reply.npc_key);
       const character = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
       const recipientKey = userId ? `user:${userId}` : guestKey;
-      const threadId = `dm-pair-${[npcKey, recipientKey].sort().join("--")}`;
+      const threadId = `bottle-${Number(reply.bottle_id)}-npc-pair-${[npcKey, recipientKey].sort().join("--")}`;
       const blocked = blockRows.some((block: any) =>
         String(block.thread_id) === threadId ||
         String(block.thread_id) === npcKey ||
@@ -148,7 +148,10 @@ export async function POST(request: NextRequest) {
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
       const senderKey = userId ? `user:${userId}` : guestKey;
-      const threadId = `dm-pair-${[npcKey, senderKey].sort().join("--")}`;
+      const bottleId = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
+      const bottleMode = payload.conversation_mode === "bottle" && bottleId != null;
+      const participantPair = [npcKey, senderKey].sort().join("--");
+      const threadId = bottleMode ? `bottle-${bottleId}-npc-pair-${participantPair}` : `dm-pair-${participantPair}`;
       const sql = db();
       const blocked = await sql`SELECT id FROM direct_message_blocks WHERE thread_id IN (${threadId}, ${npcKey}) AND ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL) OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL)) LIMIT 1`;
       if (blocked.length) return NextResponse.json({ error: "blocked_recipient" }, { status: 403 });
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
           sender_profile, recipient_profile, created_at, updated_at
         ) VALUES (
           ${senderKey}, ${npcKey}, ${threadId}, ${String(payload.sender_name || "あなた").slice(0,120)}, ${targetName}, ${body},
-          NULL, NULL, ${targetName}, ${targetName}, ${userId}, NULL,
+          ${bottleMode ? bottleId : null}, ${typeof payload.bottle_snippet === "string" ? payload.bottle_snippet.slice(0,500) : null}, ${targetName}, ${targetName}, ${userId}, NULL,
           ${payload.sender_profile && typeof payload.sender_profile === "object" ? JSON.stringify(payload.sender_profile) : null}::json,
           NULL, NOW(), NOW()
         ) RETURNING id, thread_id, sender_name, recipient_name, body, created_at, (read_at IS NOT NULL) AS read
@@ -183,12 +186,11 @@ export async function POST(request: NextRequest) {
       const body = typeof payload.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 10000) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
       let bottleId: number | null = Number.isFinite(Number(payload.bottle_id)) && payload.bottle_id != null ? Number(payload.bottle_id) : null;
-      // NPCも人間と同じく、受信者の正規IDとNPC IDのペアで会話を識別する。
-      // 送信元のボトルIDで会話を分裂させない。
+      const bottleMode = payload.conversation_mode === "bottle" && bottleId != null;
       const npcRecipientKey = userId ? `user:${userId}` : guestKey;
-      // NPC is a stable conversation partner, even when its reply came from a different bottle.
-      // Keep all replies from the same NPC to this recipient in one DM thread.
-      const threadId = `dm-pair-${[npcKey, npcRecipientKey].sort().join("--")}`;
+      const participantPair = [npcKey, npcRecipientKey].sort().join("--");
+      // Plaza NPC chats and bottle-originated chats are separate namespaces.
+      const threadId = bottleMode ? `bottle-${bottleId}-npc-pair-${participantPair}` : `dm-pair-${participantPair}`;
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = userId ? `user:${userId}` : guestKey;
       const sql = db();
@@ -228,6 +230,8 @@ export async function POST(request: NextRequest) {
                sender_profile, recipient_profile
         FROM direct_messages
         WHERE sender_guest_key = ${npcKey}
+          AND recipient_guest_key = ${recipientGuestKey}
+          AND thread_id = ${threadId}
           AND bottle_id = ${bottleId}
           AND body = ${body}
           AND ((${userId}::int IS NOT NULL AND recipient_user_id = ${userId}::int)
