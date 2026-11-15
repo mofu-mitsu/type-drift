@@ -106,8 +106,10 @@ class BottleController extends Controller
         // A bottle reply is also delivered to the bottle owner's private inbox.
         // Keep the shared thread tied to the original bottle so both sides see its context.
         $directMessage = null;
-        $senderGuestKey = $guestKey ?: ($userId ? 'user:'.$userId : null);
-        $ownerGuestKey = $bottle->guest_key ?: ($bottle->user_id ? 'user:'.$bottle->user_id : null);
+        // Prefer account IDs whenever available. A stale guest_key may remain on a
+        // signed-in profile/bottle, but must never override the account's real identity.
+        $senderGuestKey = $userId ? 'user:'.$userId : $guestKey;
+        $ownerGuestKey = $bottle->user_id ? 'user:'.$bottle->user_id : $bottle->guest_key;
         $isOwnBottle = ($userId && $bottle->user_id && (int) $userId === (int) $bottle->user_id)
             || ($guestKey && $bottle->guest_key && hash_equals($bottle->guest_key, $guestKey));
 
