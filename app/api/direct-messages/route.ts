@@ -102,9 +102,9 @@ export async function POST(request: NextRequest) {
       // NPCも人間と同じく、受信者の正規IDとNPC IDのペアで会話を識別する。
       // 送信元のボトルIDで会話を分裂させない。
       const npcRecipientKey = userId ? `user:${userId}` : guestKey;
-      const threadId = bottleId
-        ? `bottle-${bottleId}-pair-${[npcKey, npcRecipientKey].sort().join("--")}`
-        : `dm-pair-${[npcKey, npcRecipientKey].sort().join("--")}`;
+      // NPC is a stable conversation partner, even when its reply came from a different bottle.
+      // Keep all replies from the same NPC to this recipient in one DM thread.
+      const threadId = `dm-pair-${[npcKey, npcRecipientKey].sort().join("--")}`;
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = userId ? `user:${userId}` : guestKey;
       const sql = db();
