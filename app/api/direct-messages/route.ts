@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
           sender_profile, recipient_profile, created_at, updated_at
         ) VALUES (
           ${senderKey}, ${npcKey}, ${threadId}, ${String(payload.sender_name || "あなた").slice(0,120)}, ${targetName}, ${body},
-          NULL, NULL, ${targetName}, ${targetName}, ${userId ? null : null}, ${userId},
+          NULL, NULL, ${targetName}, ${targetName}, ${userId}, NULL,
           ${payload.sender_profile && typeof payload.sender_profile === "object" ? JSON.stringify(payload.sender_profile) : null}::json,
           NULL, NOW(), NOW()
         ) RETURNING id, thread_id, sender_name, recipient_name, body, created_at, (read_at IS NOT NULL) AS read
