@@ -2812,7 +2812,8 @@ export default function DriftApp() {
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
       const npcRecipientKey = getGuestKey();
-      let replyThreadId = target.bottleInfo ? `bottle-${target.bottleInfo.id}-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}` : `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
+      // Keep one stable conversation per NPC and recipient, independent of source bottle.
+      let replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
         try {
@@ -2839,7 +2840,7 @@ export default function DriftApp() {
           console.error("[Type Drift AI] DM reply persistence request failed; showing generated reply anyway", saveException);
         }
       }
-      replyMsg.threadId = replyThreadId;
+      // Preserve the canonical thread_id returned by the server; do not overwrite it with a client guess.
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       logActivity("direct_message_ai_reply", { target: preferred, bodyLength: replyBody.length }, { type: "direct_message", id: target.id });
       setPlazaToast(`💌 ${preferred}から返信が届きました`);
