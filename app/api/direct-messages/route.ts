@@ -102,7 +102,9 @@ export async function POST(request: NextRequest) {
       // NPCも人間と同じく、受信者の正規IDとNPC IDのペアで会話を識別する。
       // 送信元のボトルIDで会話を分裂させない。
       const npcRecipientKey = userId ? `user:${userId}` : guestKey;
-      const threadId = `dm-pair-${[npcKey, npcRecipientKey].sort().join("--")}`;
+      const threadId = bottleId
+        ? `bottle-${bottleId}-pair-${[npcKey, npcRecipientKey].sort().join("--")}`
+        : `dm-pair-${[npcKey, npcRecipientKey].sort().join("--")}`;
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
       const recipientGuestKey = userId ? `user:${userId}` : guestKey;
       const sql = db();
@@ -194,7 +196,9 @@ export async function POST(request: NextRequest) {
       bottleAuthor = recipientName;
       bottleType = String(bottle.ai_character || [bottle.socionics, bottle.enneagram, bottle.mbti].filter(Boolean).join(" · ") || "ボトルへの返信");
     } else if (recipientSessionKey) {
-      const profileRows = await sql`SELECT user_id, guest_key FROM profiles WHERE guest_key = ${recipientSessionKey} AND user_id IS NULL LIMIT 1`;
+      // recipient_session_key can belong to a signed-in profile too. Resolve its account ID
+      // regardless of user_id, otherwise A→B and B→A receive different participant keys.
+      const profileRows = await sql`SELECT user_id, guest_key FROM profiles WHERE guest_key = ${recipientSessionKey} LIMIT 1`;
       const profile = profileRows[0] as { user_id?: number | null; guest_key?: string | null } | undefined;
       if (profile?.user_id != null) recipientUserId = Number(profile.user_id);
       if (profile?.guest_key) recipientGuestKey = profile.guest_key;
