@@ -122,6 +122,13 @@ export async function POST(request: NextRequest) {
       const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
       const sql = db();
       await ensureDmBlockTable(sql);
+      // ブロック中の相手にはNPC返信も保存しない。スレッドIDに加え、NPC識別子と表示名でも照合する。
+      const blockedNpc = await sql`SELECT id FROM direct_message_blocks
+        WHERE ((owner_user_id = ${userId}::int AND ${userId}::int IS NOT NULL)
+          OR (owner_guest_key = ${guestKey} AND ${userId}::int IS NULL))
+          AND (thread_id IN (${threadId}, ${npcKey}) OR target_name = ${character})
+        LIMIT 1`;
+      if (blockedNpc.length) return NextResponse.json({ error: "blocked_recipient" }, { status: 403, headers: { "Cache-Control": "no-store" } });
       let bottleSnippet: string | null = null;
       let bottleAuthor: string | null = null;
       let bottleType: string | null = null;
