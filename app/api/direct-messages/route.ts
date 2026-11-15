@@ -222,10 +222,13 @@ export async function POST(request: NextRequest) {
     // A→B と B→A が同じトークになり、相手が違えば別スレッドになる。
     const senderIdentityKey = `user:${userId}`;
     const recipientIdentityKey = recipientUserId != null ? `user:${recipientUserId}` : recipientGuestKey;
-    const canonicalPairThreadId = `dm-pair-${[senderIdentityKey, recipientIdentityKey].sort().join("--")}`;
-    // 同じ2人の会話は送信方向や起点のボトルに関係なく同じスレッドにする。
-    // bottle_idは各メッセージの出自として保持し、会話IDには含めない。
-    const finalThreadId = canonicalPairThreadId;
+    const participantPair = [senderIdentityKey, recipientIdentityKey].sort().join("--");
+    const canonicalPairThreadId = `dm-pair-${participantPair}`;
+    // ボトル返信は「ボトルID × 参加者ペア」で識別する。
+    // 同じボトル内の同じ2人は送信方向を問わず同じ会話、別の相手・別のボトルは別会話。
+    const finalThreadId = bottleId
+      ? `bottle-${bottleId}-pair-${participantPair}`
+      : canonicalPairThreadId;
     const recipientBlocked = await sql`SELECT id FROM direct_message_blocks
       WHERE thread_id IN (${finalThreadId}, ${senderIdentityKey})
         AND ((owner_user_id = ${recipientUserId}::int AND ${recipientUserId}::int IS NOT NULL)
