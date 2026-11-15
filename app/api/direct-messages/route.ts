@@ -31,11 +31,11 @@ export async function GET(request: NextRequest) {
   try {
     const sql = db();
     await ensureDmBlockTable(sql);
-    const blockRows = await sql\`SELECT thread_id, target_name, target_emoji, created_at FROM direct_message_blocks WHERE (owner_user_id = \${userId}::int AND \${userId}::int IS NOT NULL) OR (owner_guest_key = \${guestKey} AND \${userId}::int IS NULL)\`;
+    const blockRows = await sql`SELECT thread_id, target_name, target_emoji, created_at FROM direct_message_blocks WHERE (owner_user_id = \${userId}::int AND \${userId}::int IS NOT NULL) OR (owner_guest_key = \${guestKey} AND \${userId}::int IS NULL)`;
 
     // Repair the missing delivery path: copy existing NPC replies into the owner's inbox.
     // This uses the exact stored reply body and never generates a second AI response.
-    const npcReplies = await sql\`
+    const npcReplies = await sql`
       SELECT r.id AS reply_id, r.bottle_id, r.guest_key AS npc_key, r.body, r.created_at,
              b.guest_key AS bottle_guest_key, b.user_id AS bottle_user_id, b.body AS bottle_body,
              b.ai_character, b.mbti, b.socionics, b.enneagram, b.other_type
@@ -47,29 +47,29 @@ export async function GET(request: NextRequest) {
           OR (\${userId}::int IS NULL AND b.guest_key = \${guestKey}))
       ORDER BY r.created_at ASC
       LIMIT 300
-    \`;
+    `;
     for (const reply of npcReplies as Array<Record<string, any>>) {
       const npcKey = String(reply.npc_key);
       const character = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
-      const recipientKey = userId ? \`user:\${userId}\` : guestKey;
-      const threadId = \`dm-pair-\${[npcKey, recipientKey].sort().join("--")}\`;
+      const recipientKey = userId ? `user:\${userId}` : guestKey;
+      const threadId = `dm-pair-\${[npcKey, recipientKey].sort().join("--")}`;
       const blocked = blockRows.some((block: any) =>
         String(block.thread_id) === threadId ||
         String(block.thread_id) === npcKey ||
         String(block.target_name || "") === character
       );
       if (blocked) continue;
-      const exists = await sql\`
+      const exists = await sql`
         SELECT id FROM direct_messages
         WHERE sender_guest_key = \${npcKey}
           AND recipient_guest_key = \${recipientKey}
           AND bottle_id = \${Number(reply.bottle_id)}
           AND body = \${String(reply.body)}
         LIMIT 1
-      \`;
+      `;
       if (exists.length) continue;
       const bottleType = String(reply.ai_character || [reply.socionics, reply.enneagram, reply.mbti, reply.other_type].filter(Boolean).join(" · ") || "ボトルへの返信");
-      await sql\`
+      await sql`
         INSERT INTO direct_messages (
           sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body,
           bottle_id, bottle_snippet, bottle_author, bottle_type, sender_user_id, recipient_user_id,
@@ -79,11 +79,11 @@ export async function GET(request: NextRequest) {
           \${Number(reply.bottle_id)}, \${String(reply.bottle_body || "").slice(0, 500)}, \${character}, \${bottleType},
           NULL, \${userId}, NULL, NULL, \${reply.created_at}, NOW()
         )
-      \`;
+      `;
     }
 
     // Signed-in inboxes use the account ID; guest inboxes use their own canonical guest key.
-    const rows = await sql\`
+    const rows = await sql`
       SELECT
         id, thread_id, sender_guest_key, recipient_guest_key, sender_user_id, recipient_user_id, sender_name, recipient_name, body, bottle_id,
         bottle_snippet, bottle_author, bottle_type, created_at,
