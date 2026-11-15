@@ -4940,7 +4940,7 @@ export default function DriftApp() {
             </div>
           )}
 
-          <div style={{ margin: "12px 0", padding: "12px 14px", border: "1px solid #dcebe8", borderRadius: 12, background: "#f8fcfb" }}>
+          <div className="notification-prefs-panel" style={{ margin: "12px 0", padding: "12px 14px", border: "1px solid #dcebe8", borderRadius: 12, background: "#f8fcfb" }}>
             <button type="button" onClick={() => setNotificationPrefsOpen(value => !value)} style={{ border: 0, background: "transparent", color: "#426d6b", fontWeight: 700, cursor: "pointer", padding: 0 }}>🔔 通知設定 {notificationPrefsOpen ? "▲" : "▼"}</button>
             {notificationPrefsOpen && <div style={{ display: "grid", gap: 8, marginTop: 12, fontSize: 13, color: "#526b6a" }}>
               {([["likes", "いいね通知"], ["replies", "返信通知"], ["messages", "個別メッセージ通知"], ["other", "その他の通知"]] as const).map(([key, label]) => <label key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={notificationPrefs[key]} onChange={event => saveNotificationPrefs({ ...notificationPrefs, [key]: event.target.checked })} />{label}</label>)}
@@ -6592,7 +6592,7 @@ export default function DriftApp() {
           </div>
           <input className="other-type-input" value={identity.otherType} onChange={e => setIdentity({ ...identity, otherType: e.target.value })} placeholder="その他の自認（自由入力）" />
           <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder={postMode === "poll" ? "アンケートの質問を書く…" : "類型のこと、最近考えていること…"} autoFocus />
-          {!editingBottle && <div className="post-interaction-settings" style={{ display: "flex", flexWrap: "wrap", gap: 12, padding: "10px 12px", marginTop: 8, border: "1px solid #eadcf5", borderRadius: 12, background: "#fffaff", fontSize: 13 }}><strong style={{ width: "100%", color: "#80638d" }}>この投稿への反応</strong><label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={postInteractionPrefs.likes} onChange={e => savePostInteractionPrefs({ ...postInteractionPrefs, likes: e.target.checked })} />いいねを許可</label><label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={postInteractionPrefs.replies} onChange={e => savePostInteractionPrefs({ ...postInteractionPrefs, replies: e.target.checked })} />返信を許可</label></div>}
+          {!editingBottle && <div className="post-interaction-settings post-interaction-prefs" style={{ display: "flex", flexWrap: "wrap", gap: 12, padding: "10px 12px", marginTop: 8, border: "1px solid #eadcf5", borderRadius: 12, background: "#fffaff", fontSize: 13 }}><strong style={{ width: "100%", color: "#80638d" }}>この投稿への反応</strong><label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={postInteractionPrefs.likes} onChange={e => savePostInteractionPrefs({ ...postInteractionPrefs, likes: e.target.checked })} />いいねを許可</label><label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={postInteractionPrefs.replies} onChange={e => savePostInteractionPrefs({ ...postInteractionPrefs, replies: e.target.checked })} />返信を許可</label></div>}
           {postMode === "poll" && (
             <div className="poll-draft">
               {pollOptions.map((option, index) => (
