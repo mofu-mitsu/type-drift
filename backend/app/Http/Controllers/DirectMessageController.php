@@ -18,6 +18,19 @@ class DirectMessageController extends Controller
 
         abort_unless($userId || $lookupKey, 422, 'A guest key is required.');
 
+        // Ensure the server-side block list exists for Laravel-backed requests too.
+        if (!Schema::hasTable('direct_message_blocks')) {
+            Schema::create('direct_message_blocks', function ($table) {
+                $table->bigIncrements('id');
+                $table->unsignedBigInteger('owner_user_id')->nullable()->index();
+                $table->string('owner_guest_key')->nullable()->index();
+                $table->string('thread_id', 200);
+                $table->string('target_name', 120)->default('相手');
+                $table->string('target_emoji', 20)->default('◌');
+                $table->timestamps();
+            });
+        }
+
         // The reply table is the source of truth for NPC text. Deliver already-generated
         // replies to the bottle owner's inbox idempotently; never call the AI generator here.
         $npcReplies = DB::table('replies as r')
@@ -118,6 +131,45 @@ class DirectMessageController extends Controller
 
     public function store(Request $request)
     {
+        $action = $request->input('action');
+        if (in_array($action, ['block_thread', 'unblock_thread'], true)) {
+            $userId = $request->user()?->id;
+            $guestKey = $request->header('X-Guest-Key');
+            $lookupKey = $userId ? 'user:'.$userId : $guestKey;
+            abort_unless($userId || $lookupKey, 422, 'A guest key is required.');
+            if (!Schema::hasTable('direct_message_blocks')) {
+                Schema::create('direct_message_blocks', function ($table) {
+                    $table->bigIncrements('id');
+                    $table->unsignedBigInteger('owner_user_id')->nullable()->index();
+                    $table->string('owner_guest_key')->nullable()->index();
+                    $table->string('thread_id', 200);
+                    $table->string('target_name', 120)->default('相手');
+                    $table->string('target_emoji', 20)->default('◌');
+                    $table->timestamps();
+                });
+            }
+            $threadId = substr((string) $request->input('thread_id', ''), 0, 200);
+            abort_if($threadId === '', 422, 'A thread ID is required.');
+            $ownerQuery = DB::table('direct_message_blocks')->where('thread_id', $threadId);
+            if ($userId) $ownerQuery->where('owner_user_id', $userId);
+            else $ownerQuery->where('owner_guest_key', $guestKey);
+            if ($action === 'block_thread') {
+                if (!$ownerQuery->exists()) {
+                    DB::table('direct_message_blocks')->insert([
+                        'owner_user_id' => $userId,
+                        'owner_guest_key' => $userId ? null : $guestKey,
+                        'thread_id' => $threadId,
+                        'target_name' => substr((string) $request->input('target_name', '相手'), 0, 120),
+                        'target_emoji' => substr((string) $request->input('target_emoji', '◌'), 0, 20),
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+            } else {
+                $ownerQuery->delete();
+            }
+            return response()->json(['ok' => true, 'action' => $action]);
+        }
+
         $data = $request->validate([
             'bottle_id' => ['required', 'integer', 'exists:bottles,id'],
             'body' => ['required', 'string', 'max:5000'],
