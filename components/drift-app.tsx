@@ -833,16 +833,20 @@ export default function DriftApp() {
           // APIの返却フィールド名に差がある場合も、利用可能なIDを順に拾う。
           // Stable account/guest/NPC identifiers only. Names and profile snapshots are presentation data,
           // never conversation identity (they can change and can accidentally merge unrelated people).
+          // DBのIDが欠けている旧データでは、メッセージIDを会話IDに使わない。
+          // それを使うと返信1件ごとに別スレッドになる。参加者の安定IDを優先し、
+          // 旧データのみ名前をフォールバックとして使う。
           const senderKey = row.sender_user_id != null
             ? `user:${row.sender_user_id}`
-            : String(row.sender_guest_key || row.sender_session_key || row.sender_user_key || row.sender_key || row.sender_id || `message:${row.id}`);
+            : String(row.sender_guest_key || row.sender_session_key || row.sender_user_key || row.sender_key || row.sender_id || `name:${String(row.sender_name || "匿名の誰か").trim()}`);
           const recipientKey = row.recipient_user_id != null
             ? `user:${row.recipient_user_id}`
-            : String(row.recipient_guest_key || row.recipient_session_key || row.recipient_user_key || row.recipient_key || row.recipient_id || `message:${row.id}`);
+            : String(row.recipient_guest_key || row.recipient_session_key || row.recipient_user_key || row.recipient_key || row.recipient_id || `name:${String(row.recipient_name || "匿名の誰か").trim()}`);
           const participantPair = [senderKey, recipientKey].sort().join("--");
-          // 送信方向や起点のボトルに関係なく、同じ2人の会話は1つにまとめる。
-          // 匿名ボトル由来かどうかは各メッセージのbottleIdで判定し、会話IDには混ぜない。
-          const resolvedThreadId = `dm-pair-${participantPair}`;
+          // ボトル経由は「ボトル × 参加者ペア」で分ける。同じボトル内の同じ2人は送信方向を問わず同じ会話。
+          const resolvedThreadId = row.bottle_id != null
+            ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
+            : `dm-pair-${participantPair}`;
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
           sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
