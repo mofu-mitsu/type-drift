@@ -2802,11 +2802,15 @@ export default function DriftApp() {
         : cleanAiBody(reply?.body) || "返信を受け取れませんでした。もう一度話しかけてください。";
       const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
       const npcRecipientKey = getGuestKey();
-      const replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
+      let replyThreadId = target.bottleInfo ? `bottle-${target.bottleInfo.id}-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}` : `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
       const replyMsg: DirectMessage = { id: `dm-${Date.now()}`, threadId: replyThreadId, sender: preferred, recipient: nickname || "あなた", targetEmoji: target.id === "darling" ? "🥺" : "🐛", targetType: target.type, body: replyBody, createdAt: Date.now(), read: false, isMine: false, isAiError: hasError, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       if (!hasError) {
         try {
-          const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, thread_id: replyMsg.threadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
+          const saved = await apiFetch("/api/direct-messages", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ ai_reply: true, ai_character: preferred, thread_id: replyThreadId, bottle_id: target.bottleInfo?.id || null, bottle_snippet: target.bottleInfo?.text || null, bottle_author: target.bottleInfo?.author || null, bottle_type: target.bottleInfo?.type || null, body: replyBody, recipient_name: nickname || "あなた", recipient_profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", other_type: profileIdentity.otherType || "", bio: profileBio || "" } }) });
+        if (saved.ok) {
+          const savedData = await saved.clone().json().catch(() => null);
+          if (typeof savedData?.message?.thread_id === "string") replyThreadId = savedData.message.thread_id;
+        }
         if (!saved.ok) {
           const saveError = await saved.clone().json().catch(() => ({} as any));
           // AIの生成成功と履歴保存失敗を切り離す。保存APIの422/404で会話自体を失敗扱いにしない。
@@ -2820,6 +2824,7 @@ export default function DriftApp() {
           console.error("[Type Drift AI] DM reply persistence request failed; showing generated reply anyway", saveException);
         }
       }
+      replyMsg.threadId = replyThreadId;
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       logActivity("direct_message_ai_reply", { target: preferred, bodyLength: replyBody.length }, { type: "direct_message", id: target.id });
       setPlazaToast(`💌 ${preferred}から返信が届きました`);
@@ -3150,7 +3155,7 @@ export default function DriftApp() {
         const originalBottle = bottles.find(bottle => bottle.id === bottleId);
         const bottleAuthor = originalBottle?.author || messages.find(message => message.bottleAuthor)?.bottleAuthor || "";
         thread.avatarUrl = undefined;
-        thread.emoji = bottleAuthor.includes("LSI芋虫") ? "🐛" : bottleAuthor.includes("ダーリンちゃん") ? "🥺" : "🌊";
+        thread.emoji = "🌊";
       } else {
         thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
         thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
