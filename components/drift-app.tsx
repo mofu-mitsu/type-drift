@@ -6685,17 +6685,16 @@ export default function DriftApp() {
               if (selected.mine) {
                 // 返信者から届いている既存のDMを探して、その会話を直接開く。
                 const replyItem = (replyItems[selected.id] || []).find(item => item.id === replyId);
-                const author = String(replyItem?.author || "").trim();
-                // Match the actual bottle thread and exact participant label. Never use substring
-                // matching here: "匿名の誰か" can accidentally match several unrelated participants.
-                // Prefer the incoming message from this participant, then their outgoing reply.
+                // ボトルは匿名なのでauthor名で相手を探さない。「匿名の誰か」は全員同じ表示名。
+                // 返信本文とボトルIDを手掛かりに、その返信を保存したDMを探す。
+                // 参加者名が一致するかどうかで会話を選ぶと、別人の会話へ誤誘導する。
                 const matchingBottleMessages = directMessages.filter(message =>
                   Number(message.bottleId) === Number(selected.id) &&
-                  author &&
-                  (message.sender === author || message.recipient === author)
+                  replyItem?.body?.trim() &&
+                  message.body.trim() === replyItem.body.trim()
                 );
-                const existingConversation = matchingBottleMessages.find(message => !message.isMine)
-                  || matchingBottleMessages[0];
+                const existingConversation = matchingBottleMessages
+                  .sort((a, b) => Math.abs(a.createdAt - Date.now()) - Math.abs(b.createdAt - Date.now()))[0];
                 setReplyParentId(undefined);
                 setReply("");
                 setSelected(null);
