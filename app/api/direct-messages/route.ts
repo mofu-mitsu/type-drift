@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         ? `bottle-${bottleId}-pair-${[npcKey, npcRecipientKey].sort().join("--")}`
         : (typeof payload.thread_id === "string" ? payload.thread_id.slice(0, 200) : `dm-${randomUUID()}`);
       const recipientName = typeof payload.recipient_name === "string" ? payload.recipient_name.slice(0, 120) : "あなた";
-      const recipientGuestKey = guestKey || (userId ? `user:${userId}` : "");
+      const recipientGuestKey = userId ? `user:${userId}` : guestKey;
       const sql = db();
       await ensureDmBlockTable(sql);
       // NPCの会話IDはボトルとNPC識別子・受信者識別子から決める。
