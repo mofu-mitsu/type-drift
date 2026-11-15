@@ -3286,8 +3286,15 @@ export default function DriftApp() {
     created_at: string;
     groupedIds?: number[];
   }> = (() => {
-    const reactions = serverNotifications.filter(n => n.type.includes("reaction"));
-    const others = serverNotifications.filter(n => !n.type.includes("reaction"));
+    const allowedNotifications = serverNotifications.filter(n => {
+      const type = String(n.type || "").toLowerCase();
+      if (type.includes("reaction") && (type.includes("bottle") || type.includes("like"))) return notificationPrefs.likes;
+      if (type.includes("reply")) return notificationPrefs.replies;
+      if (type.includes("direct_message") || type.includes("message")) return notificationPrefs.messages;
+      return notificationPrefs.other;
+    });
+    const reactions = allowedNotifications.filter(n => n.type.includes("reaction"));
+    const others = allowedNotifications.filter(n => !n.type.includes("reaction"));
     const reactionGroups = new Map<string, typeof reactions>();
     for (const reaction of reactions) {
       const group = reactionGroups.get(reaction.type) || [];
