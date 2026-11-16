@@ -1,5 +1,8 @@
 <?php
 
+use App\\Support\\Database\\WriterLeaseManager;
+use Illuminate\\Support\\Facades\\DB;
+
 // Child process for the manually-triggered staging crash-recovery drill.
 // The workflow intentionally SIGKILLs this process after it emits its lease/backend IDs.
 require dirname(__DIR__, 2).'/vendor/autoload.php';
