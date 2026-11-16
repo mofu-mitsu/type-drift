@@ -3226,7 +3226,7 @@ export default function DriftApp() {
       const npcKey = senderIdentity.startsWith("ai:") ? senderIdentity : recipientIdentity.startsWith("ai:") ? recipientIdentity : (/ai:darling|ダーリンちゃん/.test(`${storedThreadId} ${m.sender} ${m.recipient}`) ? "ai:darling" : /ai:lsi-worm|LSI芋虫/.test(`${storedThreadId} ${m.sender} ${m.recipient}`) ? "ai:lsi-worm" : "");
       const isNpcThread = Boolean(npcKey);
       // NPC会話はボトルIDごとに分割せず、参加者ペアの正規スレッドへ集約する。
-      const threadId = participantPair ? (isNpcThread ? `dm-pair-${participantPair}` : (m.bottleId ? `bottle-${m.bottleId}-pair-${participantPair}` : `dm-pair-${participantPair}`)) : storedThreadId;
+      const threadId = participantPair ? (isNpcThread ? (m.bottleId ? `bottle-${m.bottleId}-npc-pair-${participantPair}` : `dm-pair-${participantPair}`) : (m.bottleId ? `bottle-${m.bottleId}-pair-${participantPair}` : `dm-pair-${participantPair}`)) : storedThreadId;
       const otherName = isNpcThread ? (npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫") : (m.isMine ? m.recipient : m.sender);
       const npcLabel = `${threadId} ${otherName} ${m.sender} ${m.recipient} ${m.bottleAuthor || ""}`;
       const isBottleThread = !isNpcThread && (threadId.startsWith("bottle-") || Boolean(m.bottleId));
