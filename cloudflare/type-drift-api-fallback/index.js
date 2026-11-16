@@ -5732,16 +5732,28 @@ var index_default = {
       if (path === "/api/bottles" && method === "POST") {
         const b2 = await bodyOf(request);
         if (!key || !clean(b2.body, 5e3)) return json({ message: "A guest key and body are required." }, 422, env, request);
-        const rows = await sql`INSERT INTO bottles (guest_key,body,image_url,mbti,socionics,enneagram,other_type,is_ai,ai_character,poll_options,created_at,updated_at)
-          VALUES (${key},${clean(b2.body, 5e3)},${nullable(b2.image_url)},${nullable(b2.mbti)},${nullable(b2.socionics)},${nullable(b2.enneagram)},${nullable(b2.other_type)},${Boolean(b2.is_ai)},${nullable(b2.ai_character)},${b2.poll_options ? JSON.stringify(b2.poll_options) : null}::jsonb,NOW(),NOW()) RETURNING *`;
+        const allowLikes = ![false, "false", 0, "0", "f"].includes(b2.allow_likes ?? b2.allowLikes ?? true);
+        const allowReplies = ![false, "false", 0, "0", "f"].includes(b2.allow_replies ?? b2.allowReplies ?? true);
+        const rows = await sql`INSERT INTO bottles (guest_key,body,image_url,mbti,socionics,enneagram,other_type,is_ai,ai_character,poll_options,allow_likes,allow_replies,created_at,updated_at)
+          VALUES (${key},${clean(b2.body, 5e3)},${nullable(b2.image_url)},${nullable(b2.mbti)},${nullable(b2.socionics)},${nullable(b2.enneagram)},${nullable(b2.other_type)},${Boolean(b2.is_ai)},${nullable(b2.ai_character)},${b2.poll_options ? JSON.stringify(b2.poll_options) : null}::jsonb,${allowLikes},${allowReplies},NOW(),NOW()) RETURNING *`;
         return json({ bottle: rows[0] }, 201, env, request);
       }
       if (bottleMatch && method === "PATCH" && !bottleMatch[2]) {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         const editBody = await bodyOf(request);
-        const editText = clean(editBody.body, 5000);
-        if (!editText) return json({ message: "body is required" }, 422, env, request);
-        const updated = await sql`UPDATE bottles SET body=${editText},updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL RETURNING id,body,updated_at`;
+        const editText = typeof editBody.body === "string" ? clean(editBody.body, 5000) : null;
+        const hasLikePref = Object.prototype.hasOwnProperty.call(editBody, "allow_likes") || Object.prototype.hasOwnProperty.call(editBody, "allowLikes");
+        const hasReplyPref = Object.prototype.hasOwnProperty.call(editBody, "allow_replies") || Object.prototype.hasOwnProperty.call(editBody, "allowReplies");
+        if (!editText && !hasLikePref && !hasReplyPref) return json({ message: "body or interaction preferences are required" }, 422, env, request);
+        const allowLikes = ![false, "false", 0, "0", "f"].includes(editBody.allow_likes ?? editBody.allowLikes ?? true);
+        const allowReplies = ![false, "false", 0, "0", "f"].includes(editBody.allow_replies ?? editBody.allowReplies ?? true);
+        const updated = await sql`UPDATE bottles SET
+          body=COALESCE(${editText},body),
+          allow_likes=CASE WHEN ${hasLikePref} THEN ${allowLikes} ELSE allow_likes END,
+          allow_replies=CASE WHEN ${hasReplyPref} THEN ${allowReplies} ELSE allow_replies END,
+          updated_at=NOW()
+          WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL
+          RETURNING id,body,allow_likes,allow_replies,updated_at`;
         return updated.length ? json({ bottle: updated[0] }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
       }
       if (bottleMatch && method === "DELETE" && !bottleMatch[2]) {
