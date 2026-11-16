@@ -89,6 +89,17 @@ class DirectMessageController extends Controller
         }
 
         $messages = DirectMessage::query()
+            // Do not surface legacy NPC DM rows created from bottles whose replies are disabled.
+            ->whereNotExists(function ($disabled) {
+                $disabled->selectRaw('1')
+                    ->from('bottles as disabled_bottle')
+                    ->whereColumn('disabled_bottle.id', 'direct_messages.bottle_id')
+                    ->where('disabled_bottle.allow_replies', false)
+                    ->where(function ($npc) {
+                        $npc->whereIn('direct_messages.sender_guest_key', ['ai:darling', 'ai:lsi-worm'])
+                            ->orWhereIn('direct_messages.recipient_guest_key', ['ai:darling', 'ai:lsi-worm']);
+                    });
+            })
             ->where(function ($query) use ($userId, $lookupKey) {
                 $query->where(function ($participant) use ($userId, $lookupKey) {
                     if ($lookupKey) $participant->where('recipient_guest_key', $lookupKey);
