@@ -5453,7 +5453,7 @@ export default function DriftApp() {
                 (() => {
                   const activeFallbackMessage = directMessages.find(message => message.threadId === activeDmThreadId);
                   const fallbackLabel = `${activeDmThreadId} ${activeFallbackMessage?.sender || ""} ${activeFallbackMessage?.recipient || ""}`;
-                  const fallbackNpc = /ai:darling|ダーリンちゃん/.test(fallbackLabel) ? "darling" : /ai:lsi-worm|LSI芋虫/.test(fallbackLabel) ? "worm" : "";
+                  const fallbackNpc = activeDmThreadId === "darling" || /ai:darling|ダーリンちゃん/.test(fallbackLabel) ? "darling" : activeDmThreadId === "worm" || /ai:lsi-worm|LSI芋虫/.test(fallbackLabel) ? "worm" : "";
                   const currentThread = dmThreads.find(t => t.targetId === activeDmThreadId) || {
                     targetId: activeDmThreadId,
                     name: fallbackNpc === "darling" ? "ダーリンちゃん" : fallbackNpc === "worm" ? "LSI芋虫" : activeFallbackMessage ? (activeFallbackMessage.isMine ? activeFallbackMessage.recipient : activeFallbackMessage.sender) : "相手",
