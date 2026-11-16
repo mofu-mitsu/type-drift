@@ -269,15 +269,17 @@ class DirectMessageController extends Controller
         sort($participants, SORT_STRING);
         $isNpcThread = str_starts_with((string) $ownerIdentity, 'ai:');
         $threadId = 'bottle-'.$bottle->id.($isNpcThread ? '-npc-pair-' : '-pair-').implode('--', $participants);
+        // Match the exact bottle + two participant identities, not the legacy thread_id.
+        // Old rows used only "bottle-{id}", which made B and C appear to share one thread.
         $lastMessage = DirectMessage::query()
-            ->where('thread_id', $threadId)
-            ->where(function ($query) use ($userId, $lookupKey) {
-                $query->where(function ($participant) use ($userId, $lookupKey) {
-                    if ($lookupKey) $participant->where('sender_guest_key', $lookupKey);
-                    if ($userId) $participant->orWhere('sender_user_id', $userId);
-                })->orWhere(function ($participant) use ($userId, $lookupKey) {
-                    if ($lookupKey) $participant->where('recipient_guest_key', $lookupKey);
-                    if ($userId) $participant->orWhere('recipient_user_id', $userId);
+            ->where('bottle_id', $bottle->id)
+            ->where(function ($query) use ($senderIdentity, $ownerIdentity) {
+                $query->where(function ($pair) use ($senderIdentity, $ownerIdentity) {
+                    $pair->whereRaw("COALESCE(CASE WHEN sender_user_id IS NOT NULL THEN 'user:' || sender_user_id::text ELSE sender_guest_key END, '') = ?", [$senderIdentity])
+                        ->whereRaw("COALESCE(CASE WHEN recipient_user_id IS NOT NULL THEN 'user:' || recipient_user_id::text ELSE recipient_guest_key END, '') = ?", [$ownerIdentity]);
+                })->orWhere(function ($pair) use ($senderIdentity, $ownerIdentity) {
+                    $pair->whereRaw("COALESCE(CASE WHEN sender_user_id IS NOT NULL THEN 'user:' || sender_user_id::text ELSE sender_guest_key END, '') = ?", [$ownerIdentity])
+                        ->whereRaw("COALESCE(CASE WHEN recipient_user_id IS NOT NULL THEN 'user:' || recipient_user_id::text ELSE recipient_guest_key END, '') = ?", [$senderIdentity]);
                 });
             })
             ->latest('created_at')
