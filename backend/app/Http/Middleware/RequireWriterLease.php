@@ -17,7 +17,8 @@ final class RequireWriterLease
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (!$this->leases->enabled() || in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
+        // Lease every API request: even GET routes may update OAuth/session state or counters.
+        if (!$this->leases->enabled()) {
             return $next($request);
         }
 

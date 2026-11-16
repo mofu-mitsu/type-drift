@@ -35,15 +35,19 @@ class RequireWriterLeaseTest extends TestCase
         self::assertSame('3', $response->headers->get('Retry-After'));
     }
 
-    public function test_safe_read_methods_do_not_acquire_a_lease(): void
+    public function test_get_routes_also_hold_a_lease_for_session_and_oauth_writes(): void
     {
         config(['database_failover.enabled' => true]);
         $manager = $this->createMock(WriterLeaseManager::class);
         $manager->method('enabled')->willReturn(true);
-        $manager->expects(self::never())->method('acquire');
+        $manager->expects(self::once())->method('acquire')->willReturn([
+            'leaseId' => 'lease-get', 'writer' => 'neon', 'epoch' => 1,
+            'previousDefault' => 'sqlite', 'previousPgsqlUrl' => null,
+        ]);
+        $manager->expects(self::once())->method('releaseLease');
 
         $middleware = new RequireWriterLease($manager);
-        $response = $middleware->handle(Request::create('/api/bottles', 'GET'), fn () => response()->json(['ok' => true]));
+        $response = $middleware->handle(Request::create('/api/auth/google/callback', 'GET'), fn () => response()->json(['ok' => true]));
 
         self::assertSame(200, $response->getStatusCode());
     }
