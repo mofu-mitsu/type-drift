@@ -1,18 +1,11 @@
 <?php
 
-use Illuminate\\Database\\Migrations\\Migration;
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Support\\Facades\\Schema;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Capture committed row mutations in a local journal.
-     *
-     * This migration is PostgreSQL-only. It is intentionally not a replication
-     * worker: journal rows still need a separately tested, idempotent replay
-     * process before automatic failover/failback can be enabled.
-     */
     public function up(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
@@ -45,6 +38,11 @@ return new class extends Migration
                 key_column TEXT;
                 op CHAR(1);
             BEGIN
+                IF current_setting('type_drift.replaying', true) = 'on' THEN
+                    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                    RETURN NEW;
+                END IF;
+
                 IF TG_OP = 'DELETE' THEN
                     changed_row := to_jsonb(OLD);
                     op := 'D';
@@ -71,17 +69,12 @@ return new class extends Migration
                     txid_current()
                 );
 
-                IF TG_OP = 'DELETE' THEN
-                    RETURN OLD;
-                END IF;
-
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
                 RETURN NEW;
             END;
             $function$;
         SQL);
 
-        // Attach the journal trigger to each public table with a primary key.
-        // Internal journal and migration metadata are deliberately excluded.
         $tables = DB::select(<<<'SQL'
             SELECT
                 ns.nspname AS schema_name,
@@ -104,33 +97,31 @@ return new class extends Migration
             ORDER BY tbl.relname
         SQL);
 
+        $quote = static fn (string $identifier): string =>
+            '"' . str_replace('"', '""', $identifier) . '"';
+
         foreach ($tables as $table) {
-            $tableName = $table->table_name;
-            $columns = is_array($table->primary_key_columns)
-                ? $table->primary_key_columns
-                : trim((string) $table->primary_key_columns, '{}') !== ''
-                    ? str_getcsv(trim((string) $table->primary_key_columns, '{}'))
-                    : [];
+            $rawColumns = $table->primary_key_columns;
+            $columns = is_array($rawColumns)
+                ? $rawColumns
+                : (trim((string) $rawColumns, '{}') !== ''
+                    ? str_getcsv(trim((string) $rawColumns, '{}'))
+                    : []);
 
-            if ($columns === []) {
-                continue;
-            }
+            if ($columns === []) continue;
 
-            $quote = static fn (string $identifier): string =>
-                '"' . str_replace('"', '""', $identifier) . '"';
-
-            $qualifiedTable = $quote($table->schema_name) . '.' . $quote($tableName);
-            $triggerName = 'td_journal_' . substr(hash('sha256', $tableName), 0, 20);
-            $quotedTrigger = $quote($triggerName);
+            $qualifiedTable = $quote($table->schema_name) . '.' . $quote($table->table_name);
+            $triggerName = 'td_journal_' . substr(hash('sha256', $table->table_name), 0, 20);
             $arguments = implode(', ', array_map(
                 static fn (string $column): string => DB::connection()->getPdo()->quote($column),
                 $columns,
             ));
 
-            DB::unprepared("DROP TRIGGER IF EXISTS {$quotedTrigger} ON {$qualifiedTable}");
+            DB::unprepared('DROP TRIGGER IF EXISTS ' . $quote($triggerName) . ' ON ' . $qualifiedTable);
             DB::unprepared(
-                "CREATE TRIGGER {$quotedTrigger} AFTER INSERT OR UPDATE OR DELETE ON {$qualifiedTable} " .
-                "FOR EACH ROW EXECUTE FUNCTION public.type_drift_capture_change({$arguments})"
+                'CREATE TRIGGER ' . $quote($triggerName) .
+                ' AFTER INSERT OR UPDATE OR DELETE ON ' . $qualifiedTable .
+                ' FOR EACH ROW EXECUTE FUNCTION public.type_drift_capture_change(' . $arguments . ')'
             );
         }
     }
