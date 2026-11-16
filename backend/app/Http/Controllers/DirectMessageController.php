@@ -205,7 +205,8 @@ class DirectMessageController extends Controller
             if ($bottleId !== null) abort_unless(Bottle::whereKey($bottleId)->exists(), 404, 'Bottle not found.');
             $participants = array_values(array_unique(array_filter([$lookupKey, $npcKey])));
             sort($participants, SORT_STRING);
-            $threadId = $bottleMode ? 'bottle-'.$bottleId.'-npc-pair-'.implode('--', $participants) : 'dm-pair-'.implode('--', $participants);
+            // NPCとのDMは、入口になったボトルIDでは分けず、NPCと受信者のペアで同じ会話にまとめる。
+            $threadId = 'dm-pair-'.implode('--', $participants);
             if (($payload['ai_reply'] ?? false) === true) {
                 $existing = DirectMessage::query()->where('sender_guest_key', $npcKey)->where('recipient_guest_key', $lookupKey)
                     ->where('thread_id', $threadId)->where('body', $body)
