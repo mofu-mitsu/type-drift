@@ -3803,7 +3803,7 @@ export default function DriftApp() {
     window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     // API由来の最新NPCボトルは、選択時の表示用フラグが欠ける場合があるため、作者名・ai_characterも確認する。
     // 本物のNPC投稿で、返信保存に成功した場合だけNPCに返答を依頼する。
-    if (response.ok && selected.allowReplies !== false && (selected.ai || selected.ai_character)) { const darling = /ダーリン|🥺/.test(`${selected.author} ${selected.ai || ""} ${selected.ai_character || ""}`); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
+    if (response.ok && String(selected.allowReplies) !== "false" && (selected.ai || selected.ai_character)) { const darling = /ダーリン|🥺/.test(`${selected.author} ${selected.ai || ""} ${selected.ai_character || ""}`); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
   const deleteBottle = async (bottle: Bottle) => {
