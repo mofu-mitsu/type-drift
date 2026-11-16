@@ -163,6 +163,24 @@ class BottleController extends Controller
         return response()->json(['reply' => $reply, 'direct_message' => $directMessage], 201);
     }
 
+    public function update(Request $request, Bottle $bottle)
+    {
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+        abort_unless(($userId && $bottle->user_id === $userId) || (!$userId && $guestKey && $bottle->guest_key === $guestKey), 403);
+
+        $data = $request->validate([
+            'allow_likes' => ['sometimes', 'boolean'],
+            'allow_replies' => ['sometimes', 'boolean'],
+        ]);
+        abort_if(empty($data), 422, 'No bottle settings were provided.');
+
+        $bottle->fill($data);
+        $bottle->save();
+
+        return response()->json(['bottle' => $bottle->fresh()]);
+    }
+
     public function destroy(Request $request, Bottle $bottle)
     {
         $userId = $request->user()?->id;
