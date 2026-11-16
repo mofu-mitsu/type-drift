@@ -6,12 +6,20 @@ export interface Env {
 type Writer = "neon" | "supabase";
 type ControlStatus = "stable" | "transitioning";
 
+interface WriteLease {
+  id: string;
+  writer: Writer;
+  epoch: number;
+  acquiredAt: string;
+}
+
 interface ControlState {
   writer: Writer;
   epoch: number;
   status: ControlStatus;
   transitionId: string | null;
   target: Writer | null;
+  leases: WriteLease[];
   updatedAt: string;
 }
 
@@ -21,6 +29,7 @@ const INITIAL_STATE: ControlState = {
   status: "stable",
   transitionId: null,
   target: null,
+  leases: [],
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -30,6 +39,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 });
 
 const isWriter = (value: unknown): value is Writer => value === "neon" || value === "supabase";
+const isEpoch = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
 
 export class WriterCoordinator {
   constructor(
@@ -45,21 +55,56 @@ export class WriterCoordinator {
     if (!body || typeof body.action !== "string") return json({ error: "invalid_request" }, 400);
 
     return this.ctx.storage.transaction(async (txn) => {
-      const state = (await txn.get<ControlState>("state")) ?? INITIAL_STATE;
-      if (body.action === "read") return json({ state });
+      const stored = await txn.get<ControlState>("state");
+      const state: ControlState = stored
+        ? { ...INITIAL_STATE, ...stored, leases: Array.isArray(stored.leases) ? stored.leases : [] }
+        : { ...INITIAL_STATE, leases: [] };
+
+      if (body.action === "read") {
+        return json({ state, activeLeaseCount: state.leases.length });
+      }
+
+      if (body.action === "acquire") {
+        if (!isEpoch(body.expectedEpoch)) return json({ error: "invalid_request" }, 400);
+        if (state.status !== "stable") return json({ error: "writer_transitioning", state }, 423);
+        if (body.expectedEpoch !== state.epoch) return json({ error: "epoch_conflict", state }, 409);
+        if (body.writer !== state.writer) return json({ error: "writer_mismatch", state }, 409);
+
+        const lease: WriteLease = {
+          id: crypto.randomUUID(),
+          writer: state.writer,
+          epoch: state.epoch,
+          acquiredAt: new Date().toISOString(),
+        };
+        const next = { ...state, leases: [...state.leases, lease], updatedAt: new Date().toISOString() };
+        await txn.put("state", next);
+        return json({ lease, writer: next.writer, epoch: next.epoch }, 201);
+      }
+
+      if (body.action === "release") {
+        if (typeof body.leaseId !== "string" || !body.leaseId) return json({ error: "invalid_request" }, 400);
+        const index = state.leases.findIndex((lease) => lease.id === body.leaseId);
+        if (index < 0) return json({ error: "lease_not_found" }, 404);
+        const next = {
+          ...state,
+          leases: state.leases.filter((lease) => lease.id !== body.leaseId),
+          updatedAt: new Date().toISOString(),
+        };
+        await txn.put("state", next);
+        return json({ released: true, activeLeaseCount: next.leases.length });
+      }
 
       if (body.action === "prepare") {
-        if (!isWriter(body.target) || !Number.isSafeInteger(body.expectedEpoch)) {
+        if (!isWriter(body.target) || !isEpoch(body.expectedEpoch)) {
           return json({ error: "invalid_request" }, 400);
         }
-        if (body.expectedEpoch !== state.epoch) {
-          return json({ error: "epoch_conflict", state }, 409);
-        }
-        if (state.status !== "stable") {
-          return json({ error: "transition_in_progress", state }, 409);
-        }
-        if (body.target === state.writer) {
-          return json({ error: "already_active_writer", state }, 409);
+        if (body.expectedEpoch !== state.epoch) return json({ error: "epoch_conflict", state }, 409);
+        if (state.status !== "stable") return json({ error: "transition_in_progress", state }, 409);
+        if (body.target === state.writer) return json({ error: "already_active_writer", state }, 409);
+        // Leases are released only after the guarded write path has finished.
+        // Never expire them automatically: a timed-out lease could still be writing.
+        if (state.leases.length > 0) {
+          return json({ error: "active_writes", activeLeaseCount: state.leases.length, state }, 409);
         }
 
         const next: ControlState = {
@@ -79,10 +124,13 @@ export class WriterCoordinator {
           || typeof body.transitionId !== "string"
           || body.transitionId !== state.transitionId
           || !state.target
-          || !Number.isSafeInteger(body.expectedEpoch)
+          || !isEpoch(body.expectedEpoch)
           || body.expectedEpoch !== state.epoch
         ) {
           return json({ error: "transition_conflict", state }, 409);
+        }
+        if (state.leases.length > 0) {
+          return json({ error: "active_writes", activeLeaseCount: state.leases.length, state }, 409);
         }
 
         const next: ControlState = {
@@ -91,6 +139,7 @@ export class WriterCoordinator {
           status: "stable",
           transitionId: null,
           target: null,
+          leases: [],
           updatedAt: new Date().toISOString(),
         };
         await txn.put("state", next);
@@ -122,7 +171,7 @@ export class WriterCoordinator {
   }
 
   private authorized(request: Request): boolean {
-    const token = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ?? "";
+    const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
     return Boolean(this.env.CONTROL_TOKEN) && token === this.env.CONTROL_TOKEN;
   }
 }

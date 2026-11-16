@@ -19,9 +19,19 @@ This is a bounded replay primitive, not a production-ready sync system. It still
 - retention/compaction after both sides are verified;
 - isolated integration tests and checksums before any cutover.
 
-## Independent writer control is a hard prerequisite
+## Independent writer control and lease fencing
 
-A control record stored only in Neon or only in Supabase cannot arbitrate writes if that database is unavailable. Writer authority must live in an independent control plane with atomic compare-and-swap / lease semantics and monotonically increasing fencing epochs. Every API request and background worker must validate the current epoch before a write; merely storing an epoch is not fencing if stale workers can still write. No independent authority is configured in this branch, so failover must remain disabled.
+A control record stored only in Neon or Supabase cannot arbitrate writes when that database is unavailable. The Cloudflare Durable Object under `cloudflare/database-control/` stores the writer authority independently, with a monotonically increasing epoch and transactional state changes.
+
+The Worker now supports active write leases:
+- `acquire` succeeds only while the control state is stable and the supplied writer/epoch match.
+- `prepare` enters transition state only when no leases are active; while transitioning, new leases are rejected.
+- `commit` checks the transition ID and epoch and refuses to switch while any lease remains.
+- `release` removes a lease only after the guarded write path has fully completed.
+
+Leases intentionally have no automatic TTL. A stale lease can block failover, but silently expiring one risks allowing a still-running old-writer transaction to commit after cutover. A reviewed recovery path is needed for a crashed process holding a lease.
+
+This protocol is only effective when all writes acquire before starting their DB transaction and release only after commit/rollback. Laravel middleware and every queue/scheduled/background writer must be integrated and tested. The Worker is not deployed and not connected to production. Its initial Neon/epoch 1 state is a code default, not verified production state. Do not enable automatic failover yet.
 
 ## Existing journal limitations
 
@@ -36,16 +46,9 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [x] Failure classification/state transition policy.
 - [x] Pending-event marker groundwork to avoid sequence IDs as commit-order watermarks.
 - [x] Destination receipt + row mutation in one transaction.
-- [ ] Runtime writer routing and independent writer authority with fencing.
+- [x] Independent writer-control API with write-lease and transition exclusion prototype.
+- [ ] Runtime writer routing and lease enforcement across all mutation paths.
+- [ ] Recovery process for orphaned leases, validated with stopped process/DB connections.
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
 - [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
 - [ ] Enable only after staging validation.
-
-
-## Independent writer-control groundwork
-
-The new `cloudflare/database-control` Worker stores writer state in a single SQLite-backed Durable Object. The control record contains the current writer (`neon` or `supabase`), a monotonically increasing epoch, and a transition state. Mutations use a Durable Object storage transaction. The API requires a Worker secret and supports explicit prepare/commit/abort operations with expected-epoch checks, so concurrent stale control requests receive conflicts rather than silently overwriting newer state.
-
-This is only the independent control-plane primitive. It is not deployed and does not yet control Laravel routing. A Cloudflare epoch cannot retroactively stop an in-flight Laravel request from committing to its old database. Strict fencing still requires a tested write-boundary enforcement mechanism or a maintenance cutover that blocks new writes and drains all in-flight writers before committing the new writer epoch. Until that mechanism is integrated for API requests, queues, scheduled jobs, Reverb-related writers, and other write paths, automatic failover must remain disabled.
-
-The Worker is intentionally not connected to production. Its initial state defaults to Neon/epoch 1 only as a code default, not as proof of current production authority. The operator must initialize/verify it against the real active writer before any routing integration.
