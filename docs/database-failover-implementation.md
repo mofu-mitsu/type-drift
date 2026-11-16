@@ -29,7 +29,7 @@ The Worker now supports active write leases:
 - `commit` checks the transition ID and epoch and refuses to switch while any lease remains.
 - `release` removes a lease only after the guarded write path has fully completed.
 
-Leases intentionally have no automatic TTL. A stale lease can block failover, but silently expiring one risks allowing a still-running old-writer transaction to commit after cutover. A reviewed recovery path is needed for a crashed process holding a lease.
+Leases intentionally have no automatic TTL. A stale lease can block failover, but silently expiring one risks allowing a still-running old-writer transaction to commit after cutover. For an application exception, Laravel's middleware releases the lease in a `finally` path and this is covered by a unit test. For a hard process crash, recovery remains manual: verify the process and its DB transaction are no longer running, inspect the active lease, then release that specific lease with the authenticated control API. Never release a lease merely because it looks old. A stopped-process/connection recovery drill is still required.
 
 This protocol is only effective when all writes acquire before starting their DB transaction and release only after commit/rollback. Laravel middleware and every queue/scheduled/background writer must be integrated and tested. The Worker is not deployed and not connected to production. Its initial Neon/epoch 1 state is a code default, not verified production state. Do not enable automatic failover yet.
 
@@ -49,8 +49,10 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [x] Independent writer-control API with write-lease and transition exclusion prototype.
 - [x] Laravel API middleware and reusable queued-job lease middleware groundwork (feature flag off by default).
 - [ ] Attach reusable lease middleware to every future database-writing queued job and audit scheduler/other services.
-- [ ] Runtime writer routing validated against both PostgreSQL URLs; lease release/recovery behavior tested end-to-end.
-- [x] Add automated unit tests for lease acquisition, fail-closed behavior, transition exclusion, and epoch increment; execution status awaits CI.
+- [x] Isolated writer routing tested against two disposable PostgreSQL instances; control-plane responses are mocked in this DB-routing test.
+- [x] Laravel request-exception path verifies lease release in `finally`; Worker tests verify transition exclusion and controlled release of an abandoned lease.
+- [ ] Full Worker-to-Laravel integration and hard-process-crash/DB-connection recovery drill.
+- [x] Automated Laravel and Worker test suites executed successfully in GitHub Actions (including lease acquisition, fail-closed behavior, exception cleanup, transition exclusion, and epoch increment).
 - [ ] Recovery process for orphaned leases, validated with stopped process/DB connections.
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
 - [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
