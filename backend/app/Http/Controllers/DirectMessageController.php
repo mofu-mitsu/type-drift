@@ -343,7 +343,7 @@ class DirectMessageController extends Controller
         $senderIdentity = $userId ? 'user:'.$userId : $guestKey;
         if ($senderIdentity && $recipientGuestKey) {
             try {
-                $blocked = \Illuminate\\Support\\Facades\\DB::table('direct_message_blocks')
+                $blocked = \Illuminate\Support\Facades\DB::table('direct_message_blocks')
                     ->where(function ($q) use ($recipientUserId, $recipientGuestKey) {
                         if ($recipientUserId) $q->where('owner_user_id', $recipientUserId);
                         else $q->where('owner_guest_key', $recipientGuestKey);
