@@ -110,6 +110,14 @@ class BottleController extends Controller
         // signed-in profile/bottle, but must never override the account's real identity.
         $senderGuestKey = $userId ? 'user:'.$userId : $guestKey;
         $ownerGuestKey = $bottle->user_id ? 'user:'.$bottle->user_id : $bottle->guest_key;
+        // A bottle addressed to an NPC starts a private conversation with that NPC,
+        // not with the human who originally submitted the bottle.
+        $npcKey = preg_match('/ダーリンちゃん|ダーリン|🥺/u', (string) $bottle->body)
+            ? 'ai:darling'
+            : (preg_match('/LSI芋虫|LSI|🐛/u', (string) $bottle->body) ? 'ai:lsi-worm' : null);
+        $npcName = $npcKey === 'ai:darling' ? 'ダーリンちゃん' : ($npcKey === 'ai:lsi-worm' ? 'LSI芋虫' : null);
+        $isNpcConversation = $npcKey !== null;
+        if ($isNpcConversation) $ownerGuestKey = $npcKey;
         $isOwnBottle = ($userId && $bottle->user_id && (int) $userId === (int) $bottle->user_id)
             || ($guestKey && $bottle->guest_key && hash_equals($bottle->guest_key, $guestKey));
 
@@ -131,14 +139,14 @@ class BottleController extends Controller
                 'sender_guest_key' => $senderGuestKey,
                 'recipient_guest_key' => $ownerGuestKey,
                 'sender_user_id' => $userId,
-                'recipient_user_id' => $bottle->user_id,
-                'thread_id' => 'bottle-'.$bottle->id.'-pair-'.implode('--', (function () use ($senderGuestKey, $ownerGuestKey) { $participants = array_values(array_unique(array_filter([$senderGuestKey, $ownerGuestKey]))); sort($participants, SORT_STRING); return $participants; })()),
+                'recipient_user_id' => $isNpcConversation ? null : $bottle->user_id,
+                'thread_id' => 'bottle-'.$bottle->id.($isNpcConversation ? '-npc-pair-' : '-pair-').implode('--', (function () use ($senderGuestKey, $ownerGuestKey) { $participants = array_values(array_unique(array_filter([$senderGuestKey, $ownerGuestKey]))); sort($participants, SORT_STRING); return $participants; })()),
                 'sender_name' => $guestKey === 'ai:darling' ? 'ダーリンちゃん' : ($guestKey === 'ai:lsi-worm' ? 'LSI芋虫' : '匿名の誰か'),
-                'recipient_name' => '波間に漂うボトルの主（匿名）',
+                'recipient_name' => $npcName ?: '波間に漂うボトルの主（匿名）',
                 'body' => $reply->body,
                 'bottle_id' => $bottle->id,
                 'bottle_snippet' => $bottle->body,
-                'bottle_author' => '匿名のボトル主',
+                'bottle_author' => $npcName ?: '匿名のボトル主',
                 'bottle_type' => $bottleType ?: '匿名ボトル',
                 'sender_profile' => $this->profileSnapshot($userId, $guestKey),
                 'recipient_profile' => $recipientProfile,
