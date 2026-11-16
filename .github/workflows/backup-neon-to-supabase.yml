@@ -1,0 +1,68 @@
+name: Initial Neon to Supabase backup copy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    container:
+      image: postgres:17
+    timeout-minutes: 30
+    env:
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+    steps:
+      - name: Validate credentials and target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$NEON_DATABASE_URL" || { echo "Missing NEON_DATABASE_URL secret"; exit 1; }
+          test -n "$SUPABASE_DATABASE_URL" || { echo "Missing SUPABASE_DATABASE_URL secret"; exit 1; }
+          source_host="$(psql "$NEON_DATABASE_URL" -XAtqc "select inet_server_addr()::text || ':' || current_database()")"
+          target_host="$(psql "$SUPABASE_DATABASE_URL" -XAtqc "select inet_server_addr()::text || ':' || current_database()")"
+          test -n "$source_host" && test -n "$target_host"
+          echo "Source and target connections are reachable."
+          # Never overwrite an already-populated backup on this initial-copy workflow.
+          target_rows="$(psql "$SUPABASE_DATABASE_URL" -XAtqc "SELECT COALESCE(SUM(n_live_tup),0)::bigint FROM pg_stat_user_tables WHERE schemaname='public'")"
+          if [ "${target_rows:-0}" != "0" ]; then
+            echo "Refusing initial copy: target appears to contain data. No rows were changed."
+            exit 1
+          fi
+          psql "$NEON_DATABASE_URL" -Xv ON_ERROR_STOP=1 -c "SELECT count(*) AS source_public_tables FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
+          psql "$SUPABASE_DATABASE_URL" -Xv ON_ERROR_STOP=1 -c "SELECT count(*) AS target_public_tables FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
+
+      - name: Dump Neon data without changing Neon
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg_dump "$NEON_DATABASE_URL" --format=custom --data-only --no-owner --no-acl --file=/tmp/type-drift-data.dump
+
+      - name: Restore data into the empty backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg_restore --dbname="$SUPABASE_DATABASE_URL" --data-only --no-owner --no-acl --exit-on-error /tmp/type-drift-data.dump
+
+      - name: Verify row counts for all 29 tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          tables="account_app_state activity_events ai_engagements bottle_poll_votes bottles cache cache_locks consultation_entries direct_messages failed_jobs feedback job_batches jobs migrations notifications password_reset_tokens plaza_chain_states plaza_messages poll_votes presence_sessions profiles question_prompts reactions replies reply_reactions sessions shared_links users worm_scores"
+          failed=0
+          for table in $tables; do
+            source_count="$(psql "$NEON_DATABASE_URL" -XAtqc "SELECT count(*) FROM public.\"$table\"")"
+            target_count="$(psql "$SUPABASE_DATABASE_URL" -XAtqc "SELECT count(*) FROM public.\"$table\"")"
+            printf '%-28s Neon=%-8s Supabase=%s\n' "$table" "$source_count" "$target_count"
+            if [ "$source_count" != "$target_count" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "Count mismatch detected. Neon remains untouched; do not switch production to the backup."
+            exit 1
+          fi
+          echo "All 29 table row counts match."
