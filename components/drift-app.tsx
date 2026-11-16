@@ -689,7 +689,7 @@ export default function DriftApp() {
       }
     };
     void sync(true).then(() => {
-      if (!cancelled && !timer) timer = window.setInterval(() => void sync(false), 15000);
+      if (!cancelled && !timer) timer = window.setInterval(() => { if (document.visibilityState === "visible") void sync(false); }, 30000);
     });
     const syncOnReturn = () => {
       if (document.visibilityState === "visible") void sync(false);
@@ -934,7 +934,7 @@ export default function DriftApp() {
       } finally { busy = false; }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 7000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 20000);
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [isAuthenticated]);
@@ -2004,7 +2004,7 @@ export default function DriftApp() {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 12000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 30000);
     const onFocus = () => void refresh();
     const onVisibility = () => { if (document.visibilityState === "visible") void refresh(); };
     window.addEventListener("focus", onFocus);
@@ -2100,7 +2100,7 @@ export default function DriftApp() {
         return 0;
       }));
     })().catch(() => undefined);
-    const timer = window.setInterval(refresh, 3000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 15000);
     const immediateRefresh = () => refresh();
     window.addEventListener("type-drift:refresh-bottles", immediateRefresh);
     return () => { window.clearInterval(timer); window.removeEventListener("type-drift:refresh-bottles", immediateRefresh); };
@@ -2116,7 +2116,7 @@ export default function DriftApp() {
       });
     }).catch(error => console.warn("[Type Drift] consultation refresh failed", error));
     refresh();
-    const timer = window.setInterval(refresh, 20000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 45000);
     const immediateRefresh = () => refresh();
     window.addEventListener("type-drift:refresh-consultations", immediateRefresh);
     return () => { window.clearInterval(timer); window.removeEventListener("type-drift:refresh-consultations", immediateRefresh); };
