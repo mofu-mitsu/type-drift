@@ -51,4 +51,27 @@ class RequireWriterLeaseTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
     }
+    public function test_lease_is_released_when_downstream_throws(): void
+    {
+        config(['database_failover.enabled' => true]);
+        $manager = $this->createMock(WriterLeaseManager::class);
+        $manager->method('enabled')->willReturn(true);
+        $manager->expects(self::once())->method('acquire')->willReturn([
+            'leaseId' => 'lease-exception', 'writer' => 'neon', 'epoch' => 1,
+            'previousDefault' => 'sqlite', 'previousPgsqlUrl' => null,
+        ]);
+        $manager->expects(self::once())->method('releaseLease');
+
+        $middleware = new RequireWriterLease($manager);
+
+        try {
+            $middleware->handle(Request::create('/api/bottles', 'POST'), function () {
+                throw new \\RuntimeException('simulated request failure');
+            });
+            self::fail('The downstream exception should be rethrown.');
+        } catch (\\RuntimeException $exception) {
+            self::assertSame('simulated request failure', $exception->getMessage());
+        }
+    }
+
 }
