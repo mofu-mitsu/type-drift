@@ -78,4 +78,28 @@ describe("writer coordinator lease fencing", () => {
     expect(results.filter((result) => result.status === 201 || result.status === 200)).toHaveLength(1);
     expect(results.some((result) => result.status === 409 || result.status === 423)).toBe(true);
   });
+  it("allows a manually recovered abandoned lease to unblock a safe transition", async () => {
+    const { call } = harness();
+    const acquired = await call({ action: "acquire", writer: "neon", expectedEpoch: 1 });
+    const leaseId = acquired.body.lease.id as string;
+
+    const blocked = await call({ action: "prepare", target: "supabase", expectedEpoch: 1 });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error).toBe("active_writes");
+
+    // Simulate operator-confirmed process termination, then release its lease.
+    expect((await call({ action: "release", leaseId })).status).toBe(200);
+    const prepared = await call({ action: "prepare", target: "supabase", expectedEpoch: 1 });
+    expect(prepared.status).toBe(200);
+
+    const committed = await call({
+      action: "commit",
+      expectedEpoch: 1,
+      transitionId: prepared.body.state.transitionId,
+    });
+    expect(committed.status).toBe(200);
+    expect(committed.body.state.writer).toBe("supabase");
+    expect(committed.body.state.epoch).toBe(2);
+  });
+
 });
