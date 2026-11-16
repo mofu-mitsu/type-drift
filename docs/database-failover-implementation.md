@@ -57,3 +57,16 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
 - [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
 - [ ] Enable only after staging validation.
+
+
+## Live staging validation (manual only)
+
+Workflow `.github/workflows/live-writer-crash-recovery.yml` is deliberately `workflow_dispatch` only. It is not run by normal pushes and it must never be pointed at production. Configure these GitHub Actions repository secrets with a separately deployed staging Worker and two isolated PostgreSQL test databases:
+
+- `STAGING_WRITER_CONTROL_URL`: deployed HTTPS staging Worker URL.
+- `STAGING_WRITER_CONTROL_TOKEN`: that staging Worker’s bearer token.
+- `STAGING_DB_URL_NEON` and `STAGING_DB_URL_SUPABASE`: isolated, disposable PostgreSQL URLs. The test creates/uses a real connection and inspects `pg_stat_activity`; use credentials with permission to see the relevant backend.
+  
+The workflow first runs Laravel against the real Worker and selected PostgreSQL writer without HTTP mocks. It then starts a Laravel PHP child that acquires a lease and holds a PostgreSQL transaction, force-kills the child, confirms the lease remains and blocks `prepare`, verifies the child’s PostgreSQL backend has disappeared, and only then releases the orphan lease. It does not commit a writer transition or modify application tables. A mandatory typed confirmation is required at dispatch.
+
+Before dispatch, deploy the Worker under a distinct staging name/namespace with a staging-only token and verify both DB URLs point to disposable test databases. Do not use the production Durable Object namespace or production DB URLs. This workflow has not been executed until the required secrets are configured and the manual run succeeds.
