@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import "./interaction-overrides.css";
 import "./plaza-overrides.css";
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
   description: "診断のあとに立ち寄れる海。類型のこと、自分のこと、言葉にしづらい小さな違和感を匿名のボトルに入れて流せます。",
   keywords: ["類型", "MBTI", "ソシオニクス", "エニアグラム", "匿名投稿", "秘密メモ", "Type Drift"],
   applicationName: "Type Drift",
+  verification: { google: "b7ayC_ApkqZfpMCdnvnmZPQtpDMW8FATSpv0q1T2uV4" },
   category: "community",
   alternates: { canonical: "/" },
   openGraph: {
@@ -36,5 +38,22 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ja"><body>{children}</body></html>;
+  return (
+    <html lang="ja">
+      <body>
+        {children}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-GNTX973GET"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+function gtag(){window.dataLayer.push(arguments);}
+window.gtag = gtag;
+gtag('js', new Date());
+gtag('config', 'G-GNTX973GET');`}
+        </Script>
+      </body>
+    </html>
+  );
 }
