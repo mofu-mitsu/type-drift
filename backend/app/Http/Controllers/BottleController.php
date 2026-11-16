@@ -114,7 +114,7 @@ class BottleController extends Controller
         // not with the human who originally submitted the bottle.
         $npcKey = preg_match('/ダーリンちゃん|ダーリン|🥺/u', (string) $bottle->body)
             ? 'ai:darling'
-            : (preg_match('/LSI芋虫|LSI|🐛/u', (string) $bottle->body) ? 'ai:lsi-worm' : null);
+            : (preg_match('/LSI芋虫|芋虫|🐛/u', (string) $bottle->body) ? 'ai:lsi-worm' : null);
         $npcName = $npcKey === 'ai:darling' ? 'ダーリンちゃん' : ($npcKey === 'ai:lsi-worm' ? 'LSI芋虫' : null);
         $isNpcConversation = $npcKey !== null;
         if ($isNpcConversation) $ownerGuestKey = $npcKey;
