@@ -47,7 +47,9 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [x] Pending-event marker groundwork to avoid sequence IDs as commit-order watermarks.
 - [x] Destination receipt + row mutation in one transaction.
 - [x] Independent writer-control API with write-lease and transition exclusion prototype.
-- [ ] Runtime writer routing and lease enforcement across all mutation paths.
+- [x] Laravel API middleware and reusable queued-job lease middleware groundwork (feature flag off by default).
+- [ ] Attach reusable lease middleware to every future database-writing queued job and audit scheduler/other services.
+- [ ] Runtime writer routing validated against both PostgreSQL URLs; lease release/recovery behavior tested end-to-end.
 - [ ] Recovery process for orphaned leases, validated with stopped process/DB connections.
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
 - [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
