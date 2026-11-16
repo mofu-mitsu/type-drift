@@ -3680,9 +3680,12 @@ export default function DriftApp() {
     const target = bottles.find(bottle => bottle.id === id);
     if (!target || target.allowLikes === false) return;
     // いいねはトグルではなく加算式。連打を止めず、押すたびに即時反映する。
-    setBottles(items => items.map(bottle => bottle.id === id
+    const addOptimisticLike = (bottle: Bottle) => bottle.id === id
       ? { ...bottle, reactions: (bottle.reactions || 0) + 1, userReaction: (bottle.userReaction || 0) + 1 }
-      : bottle));
+      : bottle;
+    setBottles(items => items.map(addOptimisticLike));
+    // 拾ったボトルは selected に別オブジェクトとして保持されるため、モーダル側にも反映する。
+    setSelected(current => current ? addOptimisticLike(current) : current);
     setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]);
     try {
       const response = await apiFetch(`/api/bottles/${id}/reactions`, {
@@ -3692,25 +3695,31 @@ export default function DriftApp() {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
-        setBottles(items => items.map(bottle => bottle.id === id
+        const rollbackLike = (bottle: Bottle) => bottle.id === id
           ? { ...bottle, reactions: Math.max(0, (bottle.reactions || 1) - 1), userReaction: Math.max(0, (bottle.userReaction || 1) - 1) }
-          : bottle));
+          : bottle;
+        setBottles(items => items.map(rollbackLike));
+        setSelected(current => current ? rollbackLike(current) : current);
         setPlazaToast(`いいねを保存できませんでした（${response.status}）`);
         console.error("[Type Drift] bottle reaction failed", { bottleId: id, status: response.status, detail: data });
         return;
       }
       // 連打時にレスポンスが逆順で届いても、表示中の自分の反応数を巻き戻さない。
       if (Number.isFinite(Number(data?.level))) {
-        setBottles(items => items.map(bottle => bottle.id === id
+        const syncReactionLevel = (bottle: Bottle) => bottle.id === id
           ? { ...bottle, userReaction: Math.max(bottle.userReaction || 0, Number(data.level)) }
-          : bottle));
+          : bottle;
+        setBottles(items => items.map(syncReactionLevel));
+        setSelected(current => current ? syncReactionLevel(current) : current);
       }
       logActivity("bottle_reaction", {}, { type: "bottle", id });
       window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     } catch (error) {
-      setBottles(items => items.map(bottle => bottle.id === id
+      const rollbackLike = (bottle: Bottle) => bottle.id === id
         ? { ...bottle, reactions: Math.max(0, (bottle.reactions || 1) - 1), userReaction: Math.max(0, (bottle.userReaction || 1) - 1) }
-        : bottle));
+        : bottle;
+      setBottles(items => items.map(rollbackLike));
+      setSelected(current => current ? rollbackLike(current) : current);
       setPlazaToast("通信エラーでいいねを保存できませんでした");
       console.error("[Type Drift] bottle reaction request failed", { bottleId: id, error });
     }
