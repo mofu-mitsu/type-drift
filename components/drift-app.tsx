@@ -862,9 +862,7 @@ export default function DriftApp() {
           // NPC宛てのユーザー発言だけボトルID付きスレッドに分岐していたのが、別スレ化の原因。
           const resolvedThreadId = participantPair
             ? (isNpcMessage
-                ? row.bottle_id != null
-                  ? `bottle-${Number(row.bottle_id)}-npc-pair-${participantPair}`
-                  : `dm-pair-${participantPair}`
+                ? `dm-pair-${participantPair}`
                 : row.bottle_id != null
                   ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
                   : `dm-pair-${participantPair}`)
@@ -2836,9 +2834,8 @@ export default function DriftApp() {
     const requestKey = `${npcIdentityKey}|${npcRecipientKey}|${target.bottleInfo ? `bottle-${Number(target.bottleInfo.id)}` : "plaza"}|${userText.trim()}`;
     if (inFlightNpcReplies.has(requestKey)) return true;
     inFlightNpcReplies.add(requestKey);
-    let replyThreadId = target.bottleInfo
-      ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`
-      : `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
+    // NPCとのDMは入口のボトルIDに関係なく、NPCと受信者のペアで同じスレッドを使う。
+    let replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
     try {
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => message.threadId === replyThreadId || (target.bottleInfo && Number(message.bottleId) === Number(target.bottleInfo.id) && (message.sender === preferred || message.recipient === preferred))).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
