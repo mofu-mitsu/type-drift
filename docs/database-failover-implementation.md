@@ -2,67 +2,41 @@
 
 ## Safety boundary
 
-The implementation branch adds a pure policy in
-`app/Support/Database/DatabaseFailoverPolicy.php` and a PostgreSQL migration
-that records INSERT, UPDATE, and DELETE events into a local journal. The
-journal trigger runs in the same database transaction as the original write,
-so rolled-back application transactions do not leave committed journal events.
+This branch is groundwork only. It does not switch Laravel's live database connection and no migration has been applied to a database. Do not enable automatic failover or run these migrations in production.
 
-**This does not switch Laravel's live database connection yet.** It is not
-wired into request handling, and the journal is not yet replayed. The current
-app writes directly through Eloquent/DB to many tables, so connection switching
-without a durable writer fence and tested replay would risk divergent databases.
+## Late-commit-safe replay groundwork
 
-## Journal details and remaining constraints
+PostgreSQL sequence values are allocated before transaction commit. Advancing a durable cursor to the largest observed journal ID can permanently skip an event from a transaction that commits later with a smaller ID.
 
-- The migration creates `public.type_drift_change_journal` and a trigger for
-  each public table that has a primary key, excluding the journal and Laravel's
-  migrations metadata.
-- Each event stores the table, operation, primary-key JSON, resulting row JSON
-  for INSERT/UPDATE (or NULL for DELETE), transaction ID, and local journal ID.
-- This is a local journal on each database. It does not yet guarantee a global
-  commit order across databases, prevent replay loops, or perform reverse sync.
-- Do not run this migration on production until reviewed and applied to isolated
-  test databases first. The triggers add write overhead and journal growth needs
-  a retention/compaction policy before production rollout.
+Migration `2026_11_16_000003_add_processed_at_to_type_drift_change_journal.php` adds a nullable source-side acknowledgement and a partial index for pending events. The replay service selects pending events rather than treating event IDs as a commit-order watermark. It writes a destination receipt and row mutation in one destination transaction; after that commits, it marks the source event acknowledged. A crash between those commits is safe to retry because the destination receipt is idempotent.
 
-## Required phases before enabling production failover
+The service reads the current source row by primary key rather than replaying the historical event snapshot. A delayed older event therefore cannot overwrite a newer committed row state. If the current source row no longer exists, replay deletes it from the destination.
 
-1. Add a durable writer-control record with a monotonically increasing epoch,
-   stored somewhere available while either application database is down.
-   All requests/workers must honor the same writer epoch; never dual-write.
-2. Implement an idempotent journal replayer with source-event receipts, explicit
-   table/column allowlists, foreign-key ordering, delete handling, and sequence
-   reconciliation. It must avoid recording replayed target writes as new source
-   events and must not skip late-committing source transactions.
-3. Add a low-frequency health probe that does not continuously wake Neon.
-   Use explicit quota errors for immediate failover; require repeated transient
-   failures for ordinary network/server errors.
-4. On failover, validate the target schema and journal before routing writes
-   there. Persist the active writer before accepting secondary writes.
-5. On recovery, keep Supabase as the writer while replaying its journal into
-   Neon. Compare table counts plus stable-key/content checksums and verify that
-   the replay watermark is caught up.
-6. Only switch the writer back after replay is caught up, integrity checks pass,
-   and several spaced Neon probes succeed. If any step fails, remain on Supabase.
-7. Run end-to-end tests against isolated test databases for authentication,
-   posts, replies, DMs, notifications, deletes, and interrupted sync. Never use
-   the production Supabase backup as a disposable test database.
+This is a bounded replay primitive, not a production-ready sync system. It still needs:
+- schema compatibility checks on both sides and an explicit table/column allowlist;
+- foreign-key-conflict retry scheduling and sequence reconciliation;
+- concurrency fencing so only one replay worker owns a source/destination pair;
+- retention/compaction after both sides are verified;
+- isolated integration tests and checksums before any cutover.
+
+## Independent writer control is a hard prerequisite
+
+A control record stored only in Neon or only in Supabase cannot arbitrate writes if that database is unavailable. Writer authority must live in an independent control plane with atomic compare-and-swap / lease semantics and monotonically increasing fencing epochs. Every API request and background worker must validate the current epoch before a write; merely storing an epoch is not fencing if stale workers can still write. No independent authority is configured in this branch, so failover must remain disabled.
+
+## Existing journal limitations
+
+The journal trigger runs in the same transaction as application writes, so rolled-back writes do not leave committed journal rows. Each event stores table, operation, primary key, a row snapshot for diagnostics, transaction ID, and local ID. Event IDs are not a global commit order.
 
 ## Low-usage constraint
 
-Do not enable Neon logical replication as the first solution: a live subscriber
-can prevent scale-to-zero. Do not schedule the existing one-way full-dump
-workflow as a recurring sync; it is not incremental and refuses a non-empty
-target. Prefer infrequent, bounded journal batches and only probe Neon after a
-cooldown or on an actual failed request.
+Do not enable Neon logical replication as the first solution: a live subscriber can prevent scale-to-zero. Do not schedule the existing one-way full-dump workflow as recurring sync; it is not incremental and refuses a non-empty target. Replay batches should be bounded and invoked deliberately while staging.
 
-## Current status
+## Status
 
-- [x] Add and unit-test pure failure classification/state transition policy.
-- [x] Add PostgreSQL row-change journal migration (not applied to production).
-- [ ] Persist failover state and writer epoch.
-- [ ] Implement idempotent replay and reconciliation in both directions.
-- [ ] Integrate connection routing with Laravel requests and background workers.
-- [ ] Add isolated database integration tests and exercise auth/post/reply/DM/notification flows.
+- [x] Failure classification/state transition policy.
+- [x] Pending-event marker groundwork to avoid sequence IDs as commit-order watermarks.
+- [x] Destination receipt + row mutation in one transaction.
+- [ ] Runtime writer routing and independent writer authority with fencing.
+- [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
+- [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
 - [ ] Enable only after staging validation.
