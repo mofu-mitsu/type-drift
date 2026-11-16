@@ -883,16 +883,16 @@ export default function DriftApp() {
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: asBoolean(row.read), isMine: asBoolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
-          senderIdentity: row.sender_identity && typeof row.sender_identity === "object" ? {
+          senderIdentity: matchedNpcKey ? (matchedNpcKey === "ai:darling" ? { mbti: "INTP", socionics: "ILI", enneagram: "5w4", otherType: "LVEF" } : { mbti: "INTJ", socionics: "LSI", enneagram: "5w6", otherType: "FVLE" }) : row.sender_identity && typeof row.sender_identity === "object" ? {
             mbti: row.sender_identity.mbti || "", socionics: row.sender_identity.socionics || "",
             enneagram: row.sender_identity.enneagram || "", otherType: row.sender_identity.otherType || row.sender_identity.other_type || "",
           } : undefined,
-          senderProfile: row.sender_profile && typeof row.sender_profile === "object" ? {
+          senderProfile: matchedNpcKey ? undefined : row.sender_profile && typeof row.sender_profile === "object" ? {
             ...row.sender_profile,
             otherType: row.sender_profile.otherType || row.sender_profile.other_type || "",
             profileImageUrl: row.sender_profile.profileImageUrl || row.sender_profile.profile_image_url || "",
           } : undefined,
-          recipientProfile: row.recipient_profile && typeof row.recipient_profile === "object" ? {
+          recipientProfile: matchedNpcKey ? undefined : row.recipient_profile && typeof row.recipient_profile === "object" ? {
             ...row.recipient_profile,
             otherType: row.recipient_profile.otherType || row.recipient_profile.other_type || "",
             profileImageUrl: row.recipient_profile.profileImageUrl || row.recipient_profile.profile_image_url || "",
@@ -910,9 +910,15 @@ export default function DriftApp() {
             if (index >= 0) merged[index] = { ...merged[index], ...incoming };
             else merged.push(incoming);
           }
-          merged.sort((a, b) => a.createdAt - b.createdAt);
-          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(merged)); } catch {}
-          return merged;
+          // 同じボトル・同じNPC・同じ本文が二重保存されている旧データは、10分以内の重複だけ表示上まとめる。
+          const deduped = merged.filter((message, index, all) => {
+            const npcKey = message.senderGuestKey?.startsWith("ai:") ? message.senderGuestKey : "";
+            if (!npcKey || !message.bottleId || message.isMine) return true;
+            return all.findIndex(other => other.senderGuestKey === npcKey && other.recipientGuestKey === message.recipientGuestKey && other.bottleId === message.bottleId && other.body === message.body && !other.isMine && Math.abs(other.createdAt - message.createdAt) <= 10 * 60_000) === index;
+          });
+          deduped.sort((a, b) => a.createdAt - b.createdAt);
+          try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(deduped)); } catch {}
+          return deduped;
         });
       } catch (error) {
         if (!warnedAboutDmSync) console.error("[Type Drift DM] inbox sync failed", error);
