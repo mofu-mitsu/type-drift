@@ -41,6 +41,13 @@ class PollVoteResultsTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_get_vote_results_route_is_registered(): void
+    {
+        $route = Route::getRoutes()->match(Request::create('/api/bottles/123/votes', 'GET'));
+
+        $this->assertSame('App\\\\Http\\\\Controllers\\\\BottleController@voteResults', $route->getActionName());
+    }
+
     public function test_returns_saved_counts_and_the_current_guests_vote(): void
     {
         $now = now();
