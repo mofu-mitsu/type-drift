@@ -186,6 +186,8 @@ class BottleController extends Controller
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         abort_unless(($userId && $bottle->user_id === $userId) || (!$userId && $guestKey && $bottle->guest_key === $guestKey), 403);
+        // NPC投稿は所有者キーが誤って一致しても、ユーザーによる回収（削除）を許可しない。
+        abort_if((bool) $bottle->is_ai || !empty($bottle->ai_character), 403, "NPC bottles cannot be deleted.");
         $bottle->delete();
         return response()->json(['ok' => true]);
     }
