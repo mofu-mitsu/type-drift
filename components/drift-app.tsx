@@ -5697,7 +5697,7 @@ export default function DriftApp() {
                                 name: currentThread.name,
                                 emoji: currentThread.emoji,
                                 type: currentThread.type,
-                                bottleInfo: !isNpcConversation && isBottleThread && relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
+                                bottleInfo: activeDmThreadId.startsWith("bottle-") && relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                               },
                               dmReplyText
                             );
@@ -5721,7 +5721,7 @@ export default function DriftApp() {
                                       name: currentThread.name,
                                       emoji: currentThread.emoji,
                                       type: currentThread.type,
-                                      bottleInfo: !isNpcConversation && isBottleThread && relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
+                                      bottleInfo: activeDmThreadId.startsWith("bottle-") && relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                                     },
                                     dmReplyText
                                   ).then(sent => { if (sent) { setDmReplyText(""); setActiveDmThreadId(sent); } });
