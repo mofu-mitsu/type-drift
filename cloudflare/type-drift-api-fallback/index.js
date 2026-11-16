@@ -5808,13 +5808,40 @@ var index_default = {
         const b = await bodyOf(request);
         const text = clean(b.body, 5000);
         if (!text) return json({ message: "body is required" }, 422, env, request);
+        // Persist a user's message addressed to an NPC in the same canonical participant-pair thread as the NPC reply.
+        // Previously this fell through to the generic bottle-DM handler, which saved it as "bottle-{id}".
+        if (b.npc_message === true) {
+          const character = clean(b.target_name || b.ai_character, 80);
+          const npcKey = /lsi|worm|芋虫/i.test(character) ? "ai:lsi-worm" : /ダーリン|🥺|darling/i.test(character) ? "ai:darling" : "";
+          if (!npcKey) return json({ message: "Unknown AI character." }, 422, env, request);
+          const npcName = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
+          const threadId = "dm-pair-" + [npcKey, key].sort().join("--");
+          const bottleId = b.conversation_mode === "bottle" && b.bottle_id ? Number(b.bottle_id) : null;
+          const senderName = clean(b.sender_name, 24) || "あなた";
+          const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
+          const senderProfile = JSON.stringify(b.sender_profile && typeof b.sender_profile === "object" ? b.sender_profile : (senderProfileRows[0] || {}));
+          let bottleSnippet = clean(b.bottle_snippet, 2500) || null;
+          let bottleAuthor = null;
+          let bottleType = clean(b.bottle_type, 120) || null;
+          if (bottleId) {
+            const bottleRows = await sql`SELECT body,mbti,socionics,enneagram,other_type FROM bottles WHERE id=${bottleId} AND deleted_at IS NULL LIMIT 1`;
+            if (bottleRows[0]) {
+              bottleSnippet = bottleSnippet || String(bottleRows[0].body || "").slice(0, 2500);
+              bottleType = bottleType || [bottleRows[0].mbti,bottleRows[0].socionics,bottleRows[0].enneagram,bottleRows[0].other_type].filter(Boolean).join(" · ") || null;
+              bottleAuthor = npcName;
+            }
+          }
+          const savedUser = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
+            VALUES (${key},${npcKey},${threadId},${senderName},${npcName},${text},${bottleId},${bottleSnippet},${bottleAuthor},${bottleType},${senderProfile}::jsonb,NULL,NOW(),NOW()) RETURNING *`;
+          return json({ message: { id: savedUser[0].id, thread_id: savedUser[0].thread_id, sender_name: savedUser[0].sender_name, recipient_name: savedUser[0].recipient_name, body: savedUser[0].body, created_at: savedUser[0].created_at, read: false, is_mine: true, bottle_id: savedUser[0].bottle_id, bottle_snippet: savedUser[0].bottle_snippet, bottle_author: savedUser[0].bottle_author, bottle_type: savedUser[0].bottle_type, sender_profile: savedUser[0].sender_profile || {}, recipient_profile: savedUser[0].recipient_profile || {} } }, 201, env, request);
+        }
         if (b.ai_reply === true) {
           const character = clean(b.ai_character, 80);
           const npcKey = /lsi|worm|芋虫/i.test(character) ? "ai:lsi-worm" : "ai:darling";
           const npcName = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
           const recipientKey = key;
           const bottleId = b.bottle_id ? Number(b.bottle_id) : null;
-          const threadId = bottleId ? "bottle-" + bottleId + "-npc-pair-" + [npcKey, recipientKey].sort().join("--") : "dm-pair-" + [npcKey, recipientKey].sort().join("--");
+          const threadId = "dm-pair-" + [npcKey, recipientKey].sort().join("--");
           const recipientName = clean(b.recipient_name, 24) || "あなた";
           const senderProfile = JSON.stringify({ nickname: npcName, mbti: npcKey === "ai:darling" ? "ILI" : "", socionics: npcKey === "ai:lsi-worm" ? "LSI" : "", enneagram: npcKey === "ai:darling" ? "5w4" : "5w6" });
           const recipientProfile = JSON.stringify(b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : {});
@@ -5902,7 +5929,10 @@ var index_default = {
         return json({ messages: rows.reverse().map((row) => {
           const senderProfile = row.sender_profile || {nickname:row.sender_nickname || row.sender_name || "",mbti:row.sender_mbti || "",socionics:row.sender_socionics || "",enneagram:row.sender_enneagram || "",other_type:row.sender_other_type || "",bio:row.sender_bio || "",links:row.sender_links || [],profile_image_url:row.sender_image || ""};
           const recipientProfile = row.recipient_profile || {nickname:row.recipient_nickname || row.recipient_name || "",mbti:row.recipient_mbti || "",socionics:row.recipient_socionics || "",enneagram:row.recipient_enneagram || "",other_type:row.recipient_other_type || "",bio:row.recipient_bio || "",links:row.recipient_links || [],profile_image_url:row.recipient_image || ""};
-          return {id:row.id,thread_id:row.thread_id,matched_npc_key:row.matched_npc_key || null,sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:row.sender_guest_key === key,read:Boolean(row.read_at)};
+          const participants = [String(row.sender_guest_key || ""), String(row.recipient_guest_key || "")].filter(Boolean).sort();
+           const isNpcMessage = String(row.sender_guest_key || "").startsWith("ai:") || String(row.recipient_guest_key || "").startsWith("ai:");
+           const canonicalThreadId = isNpcMessage && participants.length === 2 ? "dm-pair-" + participants.join("--") : row.thread_id;
+           return {id:row.id,thread_id:canonicalThreadId,matched_npc_key:row.matched_npc_key || null,sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:row.sender_guest_key === key,read:Boolean(row.read_at)};
         }) }, 200, env, request);
       }
       if (directMessageReadMatch && method === "POST") {
