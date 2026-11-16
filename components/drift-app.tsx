@@ -3291,7 +3291,7 @@ export default function DriftApp() {
         : [cleanDmIdentity(last.senderIdentity?.mbti) || cleanDmIdentity(senderSnapshot?.mbti), cleanDmIdentity(last.senderIdentity?.socionics) || cleanDmIdentity(senderSnapshot?.socionics), cleanDmIdentity(last.senderIdentity?.enneagram) || cleanDmIdentity(senderSnapshot?.enneagram), cleanDmIdentity(last.senderIdentity?.otherType) || cleanDmIdentity(senderSnapshot?.otherType)].filter(Boolean).join(" · ");
       // ボトルの会話では、主の自認は会話元のボトル記録を最優先にする。
       // 「匿名の誰か」側は、メッセージに保存された送信者プロフィールを使う。
-      const threadNpcLabel = `${thread.targetId} ${thread.name} ${messages.map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
+      const threadNpcLabel = `${thread.targetId} ${thread.name} ${directMessages.filter(message => message.threadId === thread.targetId).map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
       const isNpc = /ai:darling|ダーリンちゃん/.test(threadNpcLabel) || /ai:lsi-worm|LSI芋虫/.test(threadNpcLabel);
       thread.type = isNpc
         ? (/ai:darling|ダーリンちゃん/.test(threadNpcLabel) ? "AI · ILI · 5w4" : "AI · LSI · 5w6")
