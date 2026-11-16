@@ -5614,7 +5614,7 @@ async function runScheduledAiEngagement(env) {
   const sql = ys(env.DATABASE_URL);
   await sql`CREATE TABLE IF NOT EXISTS ai_engagements (bottle_id BIGINT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (bottle_id, actor, action))`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_engagements_one_reply_per_bottle ON ai_engagements (bottle_id) WHERE action = 'reply'`;
-  const posts = await sql`SELECT b.id, b.body, b.guest_key, b.poll_options FROM bottles b WHERE b.deleted_at IS NULL AND COALESCE(b.is_ai, FALSE) = FALSE AND b.created_at > NOW() - INTERVAL '7 days' ORDER BY b.created_at DESC LIMIT 40`;
+  const posts = await sql`SELECT b.id, b.body, b.guest_key, b.poll_options, b.allow_replies, b.mbti, b.socionics, b.enneagram, b.other_type FROM bottles b WHERE b.deleted_at IS NULL AND COALESCE(b.is_ai, FALSE) = FALSE AND COALESCE(b.allow_replies, TRUE) = TRUE AND b.created_at > NOW() - INTERVAL '7 days' ORDER BY b.created_at DESC LIMIT 40`;
   for (const post of posts) {
     const body = String(post.body || "");
     if (!body.trim()) continue;
@@ -5675,7 +5675,7 @@ async function runScheduledAiEngagement(env) {
       if (!replyBody) continue;
       const inserted = await sql`WITH claimed AS (INSERT INTO ai_engagements (bottle_id, actor, action, created_at) VALUES (${post.id}, ${chosen.key}, 'reply', NOW()) ON CONFLICT DO NOTHING RETURNING bottle_id) INSERT INTO replies (bottle_id, guest_key, body, parent_reply_id, created_at, updated_at) SELECT ${post.id}, ${chosen.key}, ${replyBody}, NULL, NOW(), NOW() FROM claimed RETURNING id`;
       if (inserted.length && post.guest_key) {
-  const npcThreadId = "bottle-" + post.id + "-npc-pair-" + [chosen.key, String(post.guest_key)].sort().join("--");
+  const npcThreadId = "dm-pair-" + [chosen.key, String(post.guest_key)].sort().join("--");
   const npcSenderProfile = JSON.stringify({ nickname: chosen.name, mbti: chosen.mbti || "", socionics: chosen.socionics || "", enneagram: chosen.enneagram || "", other_type: chosen.other_type || "" });
   const npcRecipientProfile = JSON.stringify({ nickname: "あなた", mbti: post.mbti || "", socionics: post.socionics || "", enneagram: post.enneagram || "", other_type: post.other_type || "" });
   await sql`INSERT INTO direct_messages (sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body, bottle_id, bottle_snippet, bottle_author, bottle_type, sender_profile, recipient_profile, created_at, updated_at) SELECT ${chosen.key}, ${post.guest_key}, ${npcThreadId}, ${chosen.name}, 'あなた', ${replyBody}, ${post.id}, ${body}, ${'匿名の' + (post.mbti || post.socionics || 'ボトル主')}, ${[post.mbti, post.socionics, post.enneagram, post.other_type].filter(Boolean).join(' · ')}, ${npcSenderProfile}::jsonb, ${npcRecipientProfile}::jsonb, NOW(), NOW() WHERE NOT EXISTS (SELECT 1 FROM direct_messages WHERE thread_id = ${npcThreadId} AND sender_guest_key = ${chosen.key} AND body = ${replyBody})`;
