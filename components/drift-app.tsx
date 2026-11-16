@@ -2060,7 +2060,15 @@ export default function DriftApp() {
       const firstData = await firstResponse.json();
       const firstRows = Array.isArray(firstData?.bottles?.data) ? firstData.bottles.data : [];
       const lastPage = Math.min(20, Math.max(1, Number(firstData?.bottles?.last_page) || 1));
-      const remaining = await Promise.all(Array.from({ length: lastPage - 1 }, (_, index) => apiFetch(`/api/bottles?page=${index + 2}`, { credentials: "include", headers }).then(response => response.ok ? response.json() : null).catch(() => null)));
+      // Load older pages immediately, but in small batches so first-load hydration does not burst up to 19 DB requests at once.
+      const remaining: Array<any> = [];
+      for (let page = 2; page <= lastPage; page += 3) {
+        const batch = await Promise.all(Array.from(
+          { length: Math.min(3, lastPage - page + 1) },
+          (_, index) => apiFetch(`/api/bottles?page=${page + index}`, { credentials: "include", headers }).then(response => response.ok ? response.json() : null).catch(() => null),
+        ));
+        remaining.push(...batch);
+      }
       const rows = [...firstRows, ...remaining.flatMap(data => Array.isArray(data?.bottles?.data) ? data.bottles.data : [])];
       const remote = rows.map((row: any) => {
         // 古いAPIが反応設定を返さない場合も、投稿直後に選んだ設定を復元して再表示を防ぐ。
@@ -2100,6 +2108,8 @@ export default function DriftApp() {
         return 0;
       }));
     })().catch(() => undefined);
+    // Do not wait 15 seconds before hydrating older bottles; the first-page loader already paints the newest posts.
+    void refresh();
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 15000);
     const immediateRefresh = () => refresh();
     window.addEventListener("type-drift:refresh-bottles", immediateRefresh);
