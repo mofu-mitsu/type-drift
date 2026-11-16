@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
       SELECT
         id, thread_id, sender_guest_key, recipient_guest_key, sender_user_id, recipient_user_id, sender_name, recipient_name, body, bottle_id,
         bottle_snippet, bottle_author, bottle_type, created_at,
+        (SELECT r.guest_key FROM replies r WHERE r.bottle_id = direct_messages.bottle_id AND r.body = direct_messages.body AND r.guest_key IN ('ai:darling', 'ai:lsi-worm') ORDER BY r.created_at DESC LIMIT 1) AS matched_npc_key,
         (read_at IS NOT NULL) AS read,
         (CASE WHEN ${userId}::int IS NOT NULL THEN sender_user_id = ${userId}::int ELSE sender_guest_key = ${guestKey} END) AS is_mine,
         sender_profile, recipient_profile
