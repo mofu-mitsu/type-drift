@@ -40,4 +40,4 @@ jobs:
         with:
           commit_message: "chore: update Composer lock for Laravel Reverb"
           file_pattern: backend/composer.lock
-      - run: php artisan test
+      - run: APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan test
