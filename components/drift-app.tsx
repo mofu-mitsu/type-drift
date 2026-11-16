@@ -34,6 +34,8 @@ import {
 } from "./v2-activity-icons";
 
 const DEFAULT_GAS_URL = process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
+// Prevent double-submit paths from generating two NPC replies for the same message.
+const inFlightNpcReplies = new Set<string>();
 
 type Bottle = { id: number; author: string; emoji: string; type: string; ai_character?: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; allowLikes?: boolean; allowReplies?: boolean; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; color: string };
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number; author?: string; emoji?: string };
@@ -2800,6 +2802,9 @@ export default function DriftApp() {
     const preferred = /ダーリン|darling|🥺/i.test(targetLabel) ? "ダーリンちゃん" : "LSI芋虫";
     const npcIdentityKey = preferred.includes("ダーリン") ? "ai:darling" : "ai:lsi-worm";
     const npcRecipientKey = getGuestKey();
+    const requestKey = `${npcIdentityKey}|${npcRecipientKey}|${target.bottleInfo ? `bottle-${Number(target.bottleInfo.id)}` : "plaza"}|${userText.trim()}`;
+    if (inFlightNpcReplies.has(requestKey)) return true;
+    inFlightNpcReplies.add(requestKey);
     let replyThreadId = target.bottleInfo
       ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`
       : `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
@@ -2865,6 +2870,8 @@ export default function DriftApp() {
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       console.error("[Type Drift AI] DM request failed", { character: preferred, detail });
       return false;
+    } finally {
+      inFlightNpcReplies.delete(requestKey);
     }
   };
 
@@ -3035,7 +3042,11 @@ export default function DriftApp() {
     };
 
     setDirectMessages(prev => {
-      const updated = [...prev, newMsg];
+      // Move the seeded welcome message from the legacy "darling"/"worm" ID into the canonical thread.
+      const migrated = !target.bottleInfo && (target.id === "darling" || target.id === "worm")
+        ? prev.map(message => message.threadId === target.id ? { ...message, threadId: newMsg.threadId, targetEmoji: target.id === "darling" ? "🥺" : "🐛" } : message)
+        : prev;
+      const updated = [...migrated, newMsg];
       try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
       return updated;
     });
@@ -5627,7 +5638,7 @@ export default function DriftApp() {
                               },
                               dmReplyText
                             );
-                            if (sent) setDmReplyText("");
+                            if (sent) { setDmReplyText(""); setActiveDmThreadId(sent); }
                           }}
                           className="dm-v2-textarea-wrap"
                         >
@@ -5650,7 +5661,7 @@ export default function DriftApp() {
                                       bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                                     },
                                     dmReplyText
-                                  ).then(sent => { if (sent) setDmReplyText(""); });
+                                  ).then(sent => { if (sent) { setDmReplyText(""); setActiveDmThreadId(sent); } });
                                 }
                               }
                             }}
