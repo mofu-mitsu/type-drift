@@ -2943,7 +2943,7 @@ export default function DriftApp() {
     if (!isAiTarget && ((hasMatchingBottle && !isAiBottleTarget) || isSessionKey || (isServerThread && !isAiBottleTarget))) {
       try {
         const payload = hasMatchingBottle
-          ? { bottle_id: target.bottleInfo!.id, thread_id: `bottle-${target.bottleInfo!.id}`, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
+          ? { bottle_id: target.bottleInfo!.id, thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
           : isSessionKey
             ? { recipient_session_key: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot }
             : { thread_id: target.id, body, sender_name: myDisplayName, recipient_name: target.name, sender_profile: senderProfileSnapshot, recipient_profile: recipientProfileSnapshot };
