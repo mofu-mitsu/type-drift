@@ -1,17 +1,12 @@
 <?php
 
-use App\\Support\\Database\\WriterLeaseManager;
-use Illuminate\\Support\\Facades\\DB;
+use App\Support\Database\WriterLeaseManager;
+use Illuminate\Support\Facades\DB;
 
-// Child process for the manually-triggered staging crash-recovery drill.
-// The workflow intentionally SIGKILLs this process after it emits its lease/backend IDs.
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-
-use App\Support\Database\WriterLeaseManager;
-use Illuminate\Support\Facades\DB;
 
 config([
     'database_failover.enabled' => true,
