@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WriterCoordinator } from "../src/index";
+import { WriterCoordinator, type Env } from "../src/index";
 
 class FakeStorage {
   private values = new Map<string, unknown>();
