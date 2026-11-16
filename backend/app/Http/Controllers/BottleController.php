@@ -144,7 +144,7 @@ class BottleController extends Controller
                 'recipient_guest_key' => $ownerGuestKey,
                 'sender_user_id' => $userId,
                 'recipient_user_id' => $isNpcConversation ? null : $bottle->user_id,
-                'thread_id' => 'bottle-'.$bottle->id.($isNpcConversation ? '-npc-pair-' : '-pair-').implode('--', (function () use ($senderGuestKey, $ownerGuestKey) { $participants = array_values(array_unique(array_filter([$senderGuestKey, $ownerGuestKey]))); sort($participants, SORT_STRING); return $participants; })()),
+                'thread_id' => ($isNpcConversation ? 'dm-pair-' : 'bottle-'.$bottle->id.'-pair-').implode('--', (function () use ($senderGuestKey, $ownerGuestKey) { $participants = array_values(array_unique(array_filter([$senderGuestKey, $ownerGuestKey]))); sort($participants, SORT_STRING); return $participants; })()),
                 'sender_name' => $guestKey === 'ai:darling' ? 'ダーリンちゃん' : ($guestKey === 'ai:lsi-worm' ? 'LSI芋虫' : '匿名の誰か'),
                 'recipient_name' => $npcName ?: '波間に漂うボトルの主（匿名）',
                 'body' => $reply->body,
@@ -174,11 +174,20 @@ class BottleController extends Controller
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
         abort_unless(($userId && $bottle->user_id === $userId) || (!$userId && $guestKey && $bottle->guest_key === $guestKey), 403);
 
+        // The same PATCH endpoint serves both bottle editing and interaction settings.
         $data = $request->validate([
+            'body' => ['sometimes', 'required', 'string', 'max:5000'],
+            'image_url' => ['sometimes', 'nullable', 'url', 'max:2048'],
+            'mbti' => ['sometimes', 'nullable', 'string', 'max:8'],
+            'socionics' => ['sometimes', 'nullable', 'string', 'max:12'],
+            'enneagram' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'other_type' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'poll_options' => ['sometimes', 'nullable', 'array', 'min:2'],
+            'poll_options.*' => ['string', 'max:100'],
             'allow_likes' => ['sometimes', 'boolean'],
             'allow_replies' => ['sometimes', 'boolean'],
         ]);
-        abort_if(empty($data), 422, 'No bottle settings were provided.');
+        abort_if(empty($data), 422, 'No bottle changes were provided.');
 
         $bottle->fill($data);
         $bottle->save();
