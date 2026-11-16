@@ -12,10 +12,12 @@ use Tests\TestCase;
 class PollVoteResultsTest extends TestCase
 {
     private bool $createdPollVotesTable = false;
+    private int $bottleId;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->bottleId = random_int(1000000, 2000000000);
 
         if (!Schema::hasTable('poll_votes')) {
             Schema::create('poll_votes', function ($table): void {
@@ -27,8 +29,6 @@ class PollVoteResultsTest extends TestCase
                 $table->timestamps();
             });
             $this->createdPollVotesTable = true;
-        } else {
-            DB::table('poll_votes')->delete();
         }
     }
 
@@ -43,18 +43,18 @@ class PollVoteResultsTest extends TestCase
 
     public function test_returns_saved_counts_and_the_current_guests_vote(): void
     {
+        $now = now();
         DB::table('poll_votes')->insert([
-            ['bottle_id' => 7, 'user_id' => null, 'guest_key' => 'guest-a', 'option_index' => 0],
-            ['bottle_id' => 7, 'user_id' => null, 'guest_key' => 'guest-b', 'option_index' => 0],
-            ['bottle_id' => 7, 'user_id' => null, 'guest_key' => 'guest-c', 'option_index' => 1],
-            ['bottle_id' => 8, 'user_id' => null, 'guest_key' => 'guest-a', 'option_index' => 1],
+            ['bottle_id' => $this->bottleId, 'user_id' => null, 'guest_key' => 'poll-results-guest-a', 'option_index' => 0, 'created_at' => $now, 'updated_at' => $now],
+            ['bottle_id' => $this->bottleId, 'user_id' => null, 'guest_key' => 'poll-results-guest-b', 'option_index' => 0, 'created_at' => $now, 'updated_at' => $now],
+            ['bottle_id' => $this->bottleId, 'user_id' => null, 'guest_key' => 'poll-results-guest-c', 'option_index' => 1, 'created_at' => $now, 'updated_at' => $now],
         ]);
 
-        $request = Request::create('/api/bottles/7/votes', 'GET');
-        $request->headers->set('X-Guest-Key', 'guest-a');
+        $request = Request::create('/api/bottles/'.$this->bottleId.'/votes', 'GET');
+        $request->headers->set('X-Guest-Key', 'poll-results-guest-a');
         $request->setUserResolver(static fn () => null);
 
-        $bottle = (new Bottle())->forceFill(['id' => 7]);
+        $bottle = (new Bottle())->forceFill(['id' => $this->bottleId]);
         $response = (new BottleController())->voteResults($request, $bottle);
         $data = $response->getData(true);
 
