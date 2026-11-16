@@ -3814,8 +3814,7 @@ export default function DriftApp() {
     setSelected(bottle);
     setPicked(true);
     const api = process.env.NEXT_PUBLIC_API_URL;
-    // API側で、ボトル所有者には全返信、返信者には自分の返信だけを返す。
-    // そのため他人のボトルでも取得し、返信者本人のコメントを表示できる。
+    // ボトル返信本文はアカウントごとに非公開。APIから現在のアカウント自身の返信だけを取得する。
     if (!api || !Number.isFinite(bottle.id) || bottle.id <= 0 || bottle.id > 1_000_000_000_000) return;
     try {
       const response = await apiFetch(`/api/bottles/${bottle.id}/replies`, { credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
