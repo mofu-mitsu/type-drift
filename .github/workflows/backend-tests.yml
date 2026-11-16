@@ -1,5 +1,8 @@
 name: Backend tests
 
+permissions:
+  contents: write
+
 on:
   pull_request:
     paths:
@@ -32,4 +35,8 @@ jobs:
           key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
           restore-keys: composer-${{ runner.os }}-
       - run: composer update laravel/reverb --with-all-dependencies --no-interaction --prefer-dist
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update Composer lock for Laravel Reverb"
+          file_pattern: backend/composer.lock
       - run: php artisan test
