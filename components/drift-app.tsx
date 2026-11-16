@@ -3676,7 +3676,45 @@ export default function DriftApp() {
   }), [bottles, filter, query, mbtiFilter, socionicsFilter]);
   // 取得済みの全期間ボトルからランダムに漂着させ、新着順の先頭だけに偏らないようにする。
   const randomizedVisible = useMemo(() => [...visible].sort(() => Math.random() - 0.5), [visible]);
-  const react = async (id: number) => { setBottles(items => items.map(b => b.id === id ? { ...b, reactions: b.mine ? (b.reactions || 0) + 1 : (b.reactions || 0), userReaction: (b.userReaction || 0) + 1 } : b)); setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]); logActivity("bottle_reaction", {}, { type: "bottle", id }); const response = await apiFetch(`/api/bottles/${id}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`リアクションを保存できませんでした（${response.status}）`); window.dispatchEvent(new Event("type-drift:refresh-bottles")); };
+  const react = async (id: number) => {
+    const target = bottles.find(bottle => bottle.id === id);
+    if (!target || target.allowLikes === false) return;
+    // いいねはトグルではなく加算式。連打を止めず、押すたびに即時反映する。
+    setBottles(items => items.map(bottle => bottle.id === id
+      ? { ...bottle, reactions: (bottle.reactions || 0) + 1, userReaction: (bottle.userReaction || 0) + 1 }
+      : bottle));
+    setLikedBottleIds(ids => ids.includes(id) ? ids : [...ids, id]);
+    try {
+      const response = await apiFetch(`/api/bottles/${id}/reactions`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "X-Guest-Key": getGuestKey() },
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setBottles(items => items.map(bottle => bottle.id === id
+          ? { ...bottle, reactions: Math.max(0, (bottle.reactions || 1) - 1), userReaction: Math.max(0, (bottle.userReaction || 1) - 1) }
+          : bottle));
+        setPlazaToast(`いいねを保存できませんでした（${response.status}）`);
+        console.error("[Type Drift] bottle reaction failed", { bottleId: id, status: response.status, detail: data });
+        return;
+      }
+      // 連打時にレスポンスが逆順で届いても、表示中の自分の反応数を巻き戻さない。
+      if (Number.isFinite(Number(data?.level))) {
+        setBottles(items => items.map(bottle => bottle.id === id
+          ? { ...bottle, userReaction: Math.max(bottle.userReaction || 0, Number(data.level)) }
+          : bottle));
+      }
+      logActivity("bottle_reaction", {}, { type: "bottle", id });
+      window.dispatchEvent(new Event("type-drift:refresh-bottles"));
+    } catch (error) {
+      setBottles(items => items.map(bottle => bottle.id === id
+        ? { ...bottle, reactions: Math.max(0, (bottle.reactions || 1) - 1), userReaction: Math.max(0, (bottle.userReaction || 1) - 1) }
+        : bottle));
+      setPlazaToast("通信エラーでいいねを保存できませんでした");
+      console.error("[Type Drift] bottle reaction request failed", { bottleId: id, error });
+    }
+  };
   const editBottle = (bottle: Bottle) => {
     if (!bottle.mine || bottle.ai || bottle.id <= 0) return;
     setEditingBottle(bottle);
