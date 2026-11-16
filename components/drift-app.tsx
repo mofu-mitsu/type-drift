@@ -860,11 +860,13 @@ export default function DriftApp() {
           const recipientNpcKey = String(row.recipient_guest_key || "").startsWith("ai:") ? String(row.recipient_guest_key) : "";
           const npcKey = senderNpcKey || recipientNpcKey;
           const isNpcMessage = Boolean(npcKey);
-          // NPCとの会話は、ユーザー発言・NPC返信のどちらも同じ参加者ペアに統一する。
-          // NPC宛てのユーザー発言だけボトルID付きスレッドに分岐していたのが、別スレ化の原因。
+          // NPCとの会話は、通常DMなら参加者ペア単位、ボトル経由ならボトルID＋参加者ペア単位で分ける。
+          // ユーザー発言とNPC返信の両方に bottle_id がある場合は、必ず同じボトル専用スレッドへまとめる。
           const resolvedThreadId = participantPair
             ? (isNpcMessage
-                ? `dm-pair-${participantPair}`
+                ? (row.bottle_id != null
+                    ? `bottle-${Number(row.bottle_id)}-npc-pair-${participantPair}`
+                    : `dm-pair-${participantPair}`)
                 : row.bottle_id != null
                   ? `bottle-${Number(row.bottle_id)}-pair-${participantPair}`
                   : `dm-pair-${participantPair}`)
