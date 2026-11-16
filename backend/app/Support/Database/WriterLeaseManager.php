@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
-final class WriterLeaseManager
+class WriterLeaseManager
 {
     public function enabled(): bool
     {
