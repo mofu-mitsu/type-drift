@@ -78,7 +78,7 @@ class BottleController extends Controller
     public function reply(Request $request, Bottle $bottle)
     {
         abort_if($bottle->allow_replies === false, 403, 'Replies are disabled for this bottle.');
-        $data = $request->validate(['body' => ['required', 'string', 'max:5000'], 'parent_reply_id' => ['nullable', 'integer', 'exists:replies,id']]);
+        $data = $request->validate(['body' => ['required', 'string', 'max:5000'], 'parent_reply_id' => ['nullable', 'integer', 'exists:replies,id'], 'sender_profile' => ['nullable', 'array'], 'sender_profile.nickname' => ['nullable', 'string', 'max:100'], 'sender_profile.mbti' => ['nullable', 'string', 'max:40'], 'sender_profile.socionics' => ['nullable', 'string', 'max:40'], 'sender_profile.enneagram' => ['nullable', 'string', 'max:40'], 'sender_profile.otherType' => ['nullable', 'string', 'max:100'], 'sender_profile.other_type' => ['nullable', 'string', 'max:100'], 'sender_profile.bio' => ['nullable', 'string', 'max:2000'], 'sender_profile.profileImageUrl' => ['nullable', 'string', 'max:2000'], 'sender_profile.profile_image_url' => ['nullable', 'string', 'max:2000'], 'sender_profile.links' => ['nullable', 'array']]);
         if (!empty($data['parent_reply_id'])) {
             abort_unless(Reply::query()->whereKey($data['parent_reply_id'])->where('bottle_id', $bottle->id)->exists(), 422, 'The parent reply must belong to this bottle.');
         }
@@ -152,7 +152,7 @@ class BottleController extends Controller
                 'bottle_snippet' => $bottle->body,
                 'bottle_author' => $npcName ?: '匿名のボトル主',
                 'bottle_type' => $bottleType ?: '匿名ボトル',
-                'sender_profile' => $this->profileSnapshot($userId, $guestKey),
+                'sender_profile' => array_merge($this->profileSnapshot($userId, $guestKey), array_filter((array) ($data['sender_profile'] ?? []), fn ($value) => $value !== null && $value !== '')),
                 'recipient_profile' => $recipientProfile,
             ]);
         }
