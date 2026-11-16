@@ -5791,7 +5791,9 @@ var index_default = {
           const type = [owner[0].mbti, owner[0].socionics, owner[0].enneagram, owner[0].other_type].filter(Boolean).join(" \xB7 ");
           const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
           const ownerProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${owner[0].guest_key} LIMIT 1`;
-          const senderProfile = senderProfileRows[0] || {};
+          const dbSenderProfile = senderProfileRows[0] || {};
+          const clientSenderProfile = b2.sender_profile && typeof b2.sender_profile === "object" ? b2.sender_profile : {};
+          const senderProfile = { ...dbSenderProfile, ...Object.fromEntries(Object.entries(clientSenderProfile).filter(([_, value]) => value !== null && value !== "")) };
           const savedOwnerProfile = ownerProfileRows[0] || {};
           const recipientProfile = { ...savedOwnerProfile, mbti: owner[0].mbti || savedOwnerProfile.mbti || "", socionics: owner[0].socionics || savedOwnerProfile.socionics || "", enneagram: owner[0].enneagram || savedOwnerProfile.enneagram || "", other_type: owner[0].other_type || savedOwnerProfile.other_type || "" };
           const senderSnapshot = JSON.stringify(senderProfile);
