@@ -35,7 +35,6 @@ class LiveWriterControlIntegrationTest extends TestCase
             'database_failover.supabase_url' => $supabaseUrl,
         ]);
 
-        Http::preventStrayRequests();
         $manager = app(WriterLeaseManager::class);
         $lease = null;
 
