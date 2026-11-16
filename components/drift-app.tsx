@@ -70,6 +70,10 @@ type DirectMessage = {
   senderProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id: string; title: string; url: string }>; emoji?: string };
   recipientProfile?: { nickname?: string; mbti?: string; socionics?: string; enneagram?: string; otherType?: string; bio?: string; profileImageUrl?: string; links?: Array<{ id: string; title: string; url: string }>; emoji?: string };
   serverId?: number;
+  senderGuestKey?: string;
+  recipientGuestKey?: string;
+  senderUserId?: number | null;
+  recipientUserId?: number | null;
   isAiError?: boolean;
 };
 
@@ -830,7 +834,7 @@ export default function DriftApp() {
           setDmBlockedThreads(serverBlocks);
           try { localStorage.setItem("type-drift-dm-blocked-threads", JSON.stringify(serverBlocks)); } catch {}
         }
-        const remote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => {
+        const mappedRemote: DirectMessage[] = (Array.isArray(data?.messages) ? data.messages : []).map((row: any) => {
           // ボトルDMはサーバーのthread_idだけに依存せず、送信者と受信者の安定した識別子から会話を分ける。
           // APIの返却フィールド名に差がある場合も、利用可能なIDを順に拾う。
           // Stable account/guest/NPC identifiers only. Names and profile snapshots are presentation data,
@@ -842,14 +846,15 @@ export default function DriftApp() {
             if (userId != null) return `user:${userId}`;
             return String(guestKey || "");
           };
-          const senderKey = identityKey(row.sender_user_id, row.sender_guest_key);
-          const recipientKey = identityKey(row.recipient_user_id, row.recipient_guest_key);
+          const matchedNpcKey = row.matched_npc_key === "ai:darling" || row.matched_npc_key === "ai:lsi-worm" ? String(row.matched_npc_key) : "";
+          const senderKey = matchedNpcKey || identityKey(row.sender_user_id, row.sender_guest_key);
+          const recipientKey = matchedNpcKey ? (row.recipient_user_id != null ? `user:${row.recipient_user_id}` : String(row.recipient_guest_key || getGuestKey())) : identityKey(row.recipient_user_id, row.recipient_guest_key);
           const participantPair = senderKey && recipientKey
             ? [senderKey, recipientKey].sort().join("--")
             : "";
           // Legacy messages without both participant IDs must not be grouped by a guessed name or bottle alone.
           // Keep their persisted server thread ID, which is the only trustworthy grouping key for those rows.
-          const senderNpcKey = String(row.sender_guest_key || "").startsWith("ai:") ? String(row.sender_guest_key) : "";
+          const senderNpcKey = matchedNpcKey || (String(row.sender_guest_key || "").startsWith("ai:") ? String(row.sender_guest_key) : "");
           const recipientNpcKey = String(row.recipient_guest_key || "").startsWith("ai:") ? String(row.recipient_guest_key) : "";
           const npcKey = senderNpcKey || recipientNpcKey;
           const isNpcMessage = Boolean(npcKey);
@@ -871,8 +876,10 @@ export default function DriftApp() {
           const asBoolean = (value: any) => value === true || value === 1 || value === "1" || value === "true" || value === "t";
           return ({
           id: `server-dm-${row.id}`, serverId: Number(row.id), threadId: resolvedThreadId,
-          sender: String(row.sender_name || "匿名の誰か"), recipient: String(row.recipient_name || "匿名のボトル主（匿名）"),
-          targetEmoji: npcKey === "ai:darling" ? "🥺" : npcKey === "ai:lsi-worm" ? "🐛" : "🌊", targetType: row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
+          senderGuestKey: matchedNpcKey || String(row.sender_guest_key || ""), recipientGuestKey: matchedNpcKey ? String(row.recipient_guest_key || getGuestKey()) : String(row.recipient_guest_key || ""),
+          senderUserId: matchedNpcKey ? null : (row.sender_user_id == null ? null : Number(row.sender_user_id)), recipientUserId: row.recipient_user_id == null ? null : Number(row.recipient_user_id),
+          sender: matchedNpcKey === "ai:darling" ? "ダーリンちゃん" : matchedNpcKey === "ai:lsi-worm" ? "LSI芋虫" : String(row.sender_name || "匿名の誰か"), recipient: matchedNpcKey ? "あなた" : String(row.recipient_name || "匿名のボトル主（匿名）"),
+          targetEmoji: npcKey === "ai:darling" ? "🥺" : npcKey === "ai:lsi-worm" ? "🐛" : "🌊", targetType: matchedNpcKey ? (matchedNpcKey === "ai:darling" ? "AI · ILI · 5w4" : "AI · LSI · 5w6") : row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
           createdAt: new Date(row.created_at).getTime() || Date.now(), read: asBoolean(row.read), isMine: asBoolean(row.is_mine),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
@@ -891,6 +898,10 @@ export default function DriftApp() {
             profileImageUrl: row.recipient_profile.profileImageUrl || row.recipient_profile.profile_image_url || "",
           } : undefined,
           });
+        });
+        const remote: DirectMessage[] = mappedRemote.filter((message, index, all) => {
+          if (!message.senderGuestKey?.startsWith("ai:") || !message.bottleId) return true;
+          return all.findIndex(other => other.senderGuestKey === message.senderGuestKey && other.recipientGuestKey === message.recipientGuestKey && other.bottleId === message.bottleId && other.body === message.body && !other.isMine) === index;
         });
         setDirectMessages(current => {
           const merged = [...current];
@@ -3189,12 +3200,15 @@ export default function DriftApp() {
       // それをキーにすると、同じボトルへ返信したA-BとA-Cが誤って一つになる。
       // サーバー保存済みメッセージは正規threadIdを使い、参加者情報のない旧ローカル行は個別扱いにする。
       const legacyBottleThread = !m.serverId && /^bottle-\d+$/.test(String(m.threadId || ""));
-      const threadId = legacyBottleThread
-        ? `legacy-local-${m.id}`
-        : (m.threadId || (m.isMine ? m.recipient : m.sender));
-      const otherName = m.isMine ? m.recipient : m.sender;
+      const storedThreadId = legacyBottleThread ? `legacy-local-${m.id}` : (m.threadId || (m.isMine ? m.recipient : m.sender));
+      const senderIdentity = m.senderUserId != null ? `user:${m.senderUserId}` : String(m.senderGuestKey || "");
+      const recipientIdentity = m.recipientUserId != null ? `user:${m.recipientUserId}` : String(m.recipientGuestKey || "");
+      const participantPair = senderIdentity && recipientIdentity ? [senderIdentity, recipientIdentity].sort().join("--") : "";
+      const npcKey = senderIdentity.startsWith("ai:") ? senderIdentity : recipientIdentity.startsWith("ai:") ? recipientIdentity : (/ai:darling|ダーリンちゃん/.test(`${storedThreadId} ${m.sender} ${m.recipient}`) ? "ai:darling" : /ai:lsi-worm|LSI芋虫/.test(`${storedThreadId} ${m.sender} ${m.recipient}`) ? "ai:lsi-worm" : "");
+      const isNpcThread = Boolean(npcKey);
+      const threadId = participantPair ? (m.bottleId ? `bottle-${m.bottleId}${isNpcThread ? "-npc-pair-" : "-pair-"}${participantPair}` : `dm-pair-${participantPair}`) : storedThreadId;
+      const otherName = isNpcThread ? (npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫") : (m.isMine ? m.recipient : m.sender);
       const npcLabel = `${threadId} ${otherName} ${m.sender} ${m.recipient} ${m.bottleAuthor || ""}`;
-      const isNpcThread = /ai:darling|ダーリンちゃん/.test(npcLabel) || /ai:lsi-worm|LSI芋虫/.test(npcLabel);
       const isBottleThread = !isNpcThread && (threadId.startsWith("bottle-") || Boolean(m.bottleId));
       const plazaUser = plazaUsers.find(item => item.sessionKey === threadId) ||
         plazaUsers.find(item => item.nickname === otherName && item.nickname !== nickname);
@@ -3216,12 +3230,12 @@ export default function DriftApp() {
                 plazaUser?.socionics || plazaUser?.identity?.socionics,
                 plazaUser?.enneagram || plazaUser?.identity?.enneagram,
               ].filter(Boolean).join(" · ") || undefined),
-          lastMsg: m,
+          lastMsg: { ...m, threadId },
           unread: (!m.isMine && !m.read) ? 1 : 0,
         };
       } else {
         if (m.createdAt > map[threadId].lastMsg.createdAt) {
-          map[threadId].lastMsg = m;
+          map[threadId].lastMsg = { ...m, threadId };
         }
         if (!m.isMine && !m.read) {
           map[threadId].unread += 1;
@@ -3239,7 +3253,9 @@ export default function DriftApp() {
         const npcLabel = `${thread.targetId} ${thread.name} ${messages.map(message => `${message.sender} ${message.recipient} ${message.bottleAuthor || ""}`).join(" ")}`;
         const npcEmoji = /ai:darling|ダーリンちゃん/.test(npcLabel) ? "🥺" : /ai:lsi-worm|LSI芋虫/.test(npcLabel) ? "🐛" : "";
         thread.avatarUrl = undefined;
-        thread.emoji = npcEmoji || "🌊";      } else {
+        thread.emoji = npcEmoji || "🌊";
+        if (npcEmoji) thread.name = npcEmoji === "🥺" ? "ダーリンちゃん" : "LSI芋虫";
+      } else {
         thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
         thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
       }
@@ -3269,9 +3285,13 @@ export default function DriftApp() {
         : [cleanDmIdentity(last.senderIdentity?.mbti) || cleanDmIdentity(senderSnapshot?.mbti), cleanDmIdentity(last.senderIdentity?.socionics) || cleanDmIdentity(senderSnapshot?.socionics), cleanDmIdentity(last.senderIdentity?.enneagram) || cleanDmIdentity(senderSnapshot?.enneagram), cleanDmIdentity(last.senderIdentity?.otherType) || cleanDmIdentity(senderSnapshot?.otherType)].filter(Boolean).join(" · ");
       // ボトルの会話では、主の自認は会話元のボトル記録を最優先にする。
       // 「匿名の誰か」側は、メッセージに保存された送信者プロフィールを使う。
-      thread.type = last.isMine
-        ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "ボトル主への返信")
-        : (messageIdentity || originalBottleIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "匿名の誰か");
+      const threadNpcLabel = `${thread.targetId} ${thread.name} ${messages.map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
+      const isNpc = /ai:darling|ダーリンちゃん/.test(threadNpcLabel) || /ai:lsi-worm|LSI芋虫/.test(threadNpcLabel);
+      thread.type = isNpc
+        ? (/ai:darling|ダーリンちゃん/.test(threadNpcLabel) ? "AI · ILI · 5w4" : "AI · LSI · 5w6")
+        : last.isMine
+          ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "ボトル主への返信")
+          : (messageIdentity || originalBottleIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "匿名の誰か");
     }
     return threads.sort((a, b) => {
       if (dmSortMode === "manual") {
@@ -5425,14 +5445,17 @@ export default function DriftApp() {
               ) : (
                 /* 2. スレッド選択時：LINE風 トークルーム */
                 (() => {
+                  const activeFallbackMessage = directMessages.find(message => message.threadId === activeDmThreadId);
+                  const fallbackLabel = `${activeDmThreadId} ${activeFallbackMessage?.sender || ""} ${activeFallbackMessage?.recipient || ""}`;
+                  const fallbackNpc = /ai:darling|ダーリンちゃん/.test(fallbackLabel) ? "darling" : /ai:lsi-worm|LSI芋虫/.test(fallbackLabel) ? "worm" : "";
                   const currentThread = dmThreads.find(t => t.targetId === activeDmThreadId) || {
                     targetId: activeDmThreadId,
-                    name: "相手",
-                    emoji: "◌",
+                    name: fallbackNpc === "darling" ? "ダーリンちゃん" : fallbackNpc === "worm" ? "LSI芋虫" : activeFallbackMessage ? (activeFallbackMessage.isMine ? activeFallbackMessage.recipient : activeFallbackMessage.sender) : "相手",
+                    emoji: fallbackNpc === "darling" ? "🥺" : fallbackNpc === "worm" ? "🐛" : activeFallbackMessage?.targetEmoji || "◌",
                     avatarUrl: undefined,
-                    type: undefined,
+                    type: fallbackNpc === "darling" ? "AI · ILI · 5w4" : fallbackNpc === "worm" ? "AI · LSI · 5w6" : activeFallbackMessage?.targetType,
                     unread: 0,
-                    lastMsg: { isMine: false, body: "", createdAt: Date.now() } as DirectMessage
+                    lastMsg: activeFallbackMessage || ({ isMine: false, body: "", createdAt: Date.now() } as DirectMessage)
                   };
                   const isBottleThread = activeDmThreadId.startsWith("bottle-") || directMessages.some(message => message.threadId === activeDmThreadId && Boolean(message.bottleId));
                   const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
@@ -5536,10 +5559,10 @@ export default function DriftApp() {
                                     name: user?.nickname || messageProfile?.nickname || currentThread.name,
                                     emoji: user?.emoji || messageProfile?.emoji || currentThread.emoji || "◌",
                                     image: user?.avatarUrl || messageProfile?.profileImageUrl || currentThread.avatarUrl,
-                                    mbti: originBottle?.mbti || user?.mbti || user?.identity?.mbti || messageIdentity?.mbti || "",
-                                    socionics: originBottle?.socionics || user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
-                                    enneagram: originBottle?.enneagram || user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
-                                    psycho: originBottle?.otherType || user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
+                                    mbti: /ダーリンちゃん/.test(currentThread.name) ? "INTP" : /LSI芋虫/.test(currentThread.name) ? "INTJ" : originBottle?.mbti || user?.mbti || user?.identity?.mbti || messageIdentity?.mbti || "",
+                                    socionics: /ダーリンちゃん/.test(currentThread.name) ? "ILI" : /LSI芋虫/.test(currentThread.name) ? "LSI" : originBottle?.socionics || user?.socionics || user?.identity?.socionics || messageIdentity?.socionics || "",
+                                    enneagram: /ダーリンちゃん/.test(currentThread.name) ? "5w4" : /LSI芋虫/.test(currentThread.name) ? "5w6" : originBottle?.enneagram || user?.enneagram || user?.identity?.enneagram || messageIdentity?.enneagram || "",
+                                    psycho: /ダーリンちゃん/.test(currentThread.name) ? "LVEF" : /LSI芋虫/.test(currentThread.name) ? "FVLE" : originBottle?.otherType || user?.otherType || user?.identity?.otherType || user?.identity?.other_type || messageIdentity?.otherType || "",
                                     links: (user?.links?.length ? user.links : messageProfile?.links) || [],
                                     overview: user?.bio || messageProfile?.bio || "広場で接続している住人のプロフィールです。自認情報は、本人が公開・共有している情報のみ表示されます。"
                                   });
