@@ -6,6 +6,10 @@ on:
     paths:
       - "backend/**"
       - "cloudflare/type-drift-api-fallback/index.js"
+      - "components/**"
+      - "lib/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/poll-vote-tests.yml"
 
 jobs:
@@ -31,3 +35,14 @@ jobs:
       - name: Check fallback Worker JavaScript syntax
         working-directory: .
         run: node --check cloudflare/type-drift-api-fallback/index.js
+
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
