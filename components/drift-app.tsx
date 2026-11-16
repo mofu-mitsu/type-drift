@@ -2059,9 +2059,23 @@ export default function DriftApp() {
         let savedInteractionPrefs: any = {};
         try { savedInteractionPrefs = JSON.parse(localStorage.getItem("type-drift-bottle-interaction-prefs") || "{}"); } catch {}
         const localInteraction = savedInteractionPrefs[String(row.id)] || {};
-        // API/DBドライバーによって boolean が文字列で返る場合もあるため、Boolean("false") を避ける。
+        // 自分の投稿にだけ残っている旧ローカル設定をDBへ同期し、他の閲覧者にも反映する。
         const isAi = row.is_ai === true || row.is_ai === "true";
         const isMine = row.is_mine === true || row.is_mine === "true";
+        const dbAllowsLikes = ![false, "false", 0, "0", "f"].includes(row.allow_likes ?? row.allowLikes ?? true as any);
+        const dbAllowsReplies = ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any);
+        if (isMine && (Object.prototype.hasOwnProperty.call(localInteraction, "likes") || Object.prototype.hasOwnProperty.call(localInteraction, "replies"))) {
+          const desired = { likes: Object.prototype.hasOwnProperty.call(localInteraction, "likes") ? localInteraction.likes === true : dbAllowsLikes, replies: Object.prototype.hasOwnProperty.call(localInteraction, "replies") ? localInteraction.replies === true : dbAllowsReplies };
+          if (desired.likes !== dbAllowsLikes || desired.replies !== dbAllowsReplies) {
+            const marker = `type-drift-bottle-prefs-synced:${row.id}`;
+            const signature = JSON.stringify(desired);
+            if (localStorage.getItem(marker) !== signature) {
+              void apiFetch(`/api/bottles/${Number(row.id)}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ allow_likes: desired.likes, allow_replies: desired.replies }) })
+                .then(response => { if (response.ok) localStorage.setItem(marker, signature); })
+                .catch(() => undefined);
+            }
+          }
+        }
         const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
         return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), allowLikes: Object.prototype.hasOwnProperty.call(localInteraction, "likes") ? localInteraction.likes === true : ![false, "false", 0, "0", "f"].includes(row.allow_likes ?? row.allowLikes ?? true as any),
             allowReplies: Object.prototype.hasOwnProperty.call(localInteraction, "replies") ? localInteraction.replies === true : ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
