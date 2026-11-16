@@ -5674,7 +5674,13 @@ async function runScheduledAiEngagement(env) {
       const replyBody = String(payload.replies?.find(item => item.character === chosen.name)?.body || payload.replies?.[0]?.body || "").trim().slice(0, 1500);
       if (!replyBody) continue;
       const inserted = await sql`WITH claimed AS (INSERT INTO ai_engagements (bottle_id, actor, action, created_at) VALUES (${post.id}, ${chosen.key}, 'reply', NOW()) ON CONFLICT DO NOTHING RETURNING bottle_id) INSERT INTO replies (bottle_id, guest_key, body, parent_reply_id, created_at, updated_at) SELECT ${post.id}, ${chosen.key}, ${replyBody}, NULL, NOW(), NOW() FROM claimed RETURNING id`;
-      if (inserted.length && post.guest_key) await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at) VALUES (${post.guest_key}, 'bottle_reply', ${String(post.id)}, ${chosen.emoji + " " + chosen.name + "からボトルに返信が届きました。"}, NOW(), NOW())`;
+      if (inserted.length && post.guest_key) {
+  const npcThreadId = "bottle-" + post.id + "-npc-pair-" + [chosen.key, String(post.guest_key)].sort().join("--");
+  const npcSenderProfile = JSON.stringify({ nickname: chosen.name, mbti: chosen.mbti || "", socionics: chosen.socionics || "", enneagram: chosen.enneagram || "", other_type: chosen.other_type || "" });
+  const npcRecipientProfile = JSON.stringify({ nickname: "あなた", mbti: post.mbti || "", socionics: post.socionics || "", enneagram: post.enneagram || "", other_type: post.other_type || "" });
+  await sql`INSERT INTO direct_messages (sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body, bottle_id, bottle_snippet, bottle_author, bottle_type, sender_profile, recipient_profile, created_at, updated_at) SELECT ${chosen.key}, ${post.guest_key}, ${npcThreadId}, ${chosen.name}, 'あなた', ${replyBody}, ${post.id}, ${body}, ${'匿名の' + (post.mbti || post.socionics || 'ボトル主')}, ${[post.mbti, post.socionics, post.enneagram, post.other_type].filter(Boolean).join(' · ')}, ${npcSenderProfile}::jsonb, ${npcRecipientProfile}::jsonb, NOW(), NOW() WHERE NOT EXISTS (SELECT 1 FROM direct_messages WHERE thread_id = ${npcThreadId} AND sender_guest_key = ${chosen.key} AND body = ${replyBody})`;
+  await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at) VALUES (${post.guest_key}, 'bottle_reply', ${String(post.id)}, ${chosen.emoji + " " + chosen.name + "からボトルに返信が届きました。"}, NOW(), NOW())`;
+}
     } catch (error) { console.error("[Type Drift AI engagement] reply failed", { bottleId: post.id, character: chosen.name, error: String(error) }); }
   }
 }
@@ -5790,6 +5796,21 @@ var index_default = {
         const b = await bodyOf(request);
         const text = clean(b.body, 5000);
         if (!text) return json({ message: "body is required" }, 422, env, request);
+        if (b.ai_reply === true) {
+          const character = clean(b.ai_character, 80);
+          const npcKey = /lsi|worm|芋虫/i.test(character) ? "ai:lsi-worm" : "ai:darling";
+          const npcName = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
+          const recipientKey = key;
+          const bottleId = b.bottle_id ? Number(b.bottle_id) : null;
+          const threadId = bottleId ? "bottle-" + bottleId + "-npc-pair-" + [npcKey, recipientKey].sort().join("--") : "dm-pair-" + [npcKey, recipientKey].sort().join("--");
+          const recipientName = clean(b.recipient_name, 24) || "あなた";
+          const senderProfile = JSON.stringify({ nickname: npcName, mbti: npcKey === "ai:darling" ? "ILI" : "", socionics: npcKey === "ai:lsi-worm" ? "LSI" : "", enneagram: npcKey === "ai:darling" ? "5w4" : "5w6" });
+          const recipientProfile = JSON.stringify(b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : {});
+          const savedAi = await sql`INSERT INTO direct_messages (sender_guest_key, recipient_guest_key, thread_id, sender_name, recipient_name, body, bottle_id, bottle_snippet, bottle_author, bottle_type, sender_profile, recipient_profile, created_at, updated_at) VALUES (${npcKey}, ${recipientKey}, ${threadId}, ${npcName}, ${recipientName}, ${text}, ${bottleId}, ${clean(b.bottle_snippet, 2500) || null}, ${clean(b.bottle_author, 120) || null}, ${clean(b.bottle_type, 120) || null}, ${senderProfile}::jsonb, ${recipientProfile}::jsonb, NOW(), NOW()) RETURNING *`;
+          await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at) VALUES (${recipientKey}, 'direct_message', ${threadId}, ${npcName + "から個別メッセージが届きました。"}, NOW(), NOW())`;
+          const message = savedAi[0];
+          return json({ message: { id: message.id, thread_id: message.thread_id, sender_name: message.sender_name, recipient_name: message.recipient_name, body: message.body, created_at: message.created_at } }, 201, env, request);
+        }
         let recipientKey = "";
         let threadId = "";
         let senderName = clean(b.sender_name, 24) || "匿名の誰か";
