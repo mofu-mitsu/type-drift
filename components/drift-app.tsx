@@ -3343,15 +3343,15 @@ export default function DriftApp() {
       const messageIdentity = last.isMine
         ? [cleanDmIdentity(recipientSnapshot?.mbti), cleanDmIdentity(recipientSnapshot?.socionics), cleanDmIdentity(recipientSnapshot?.enneagram), cleanDmIdentity(recipientSnapshot?.otherType)].filter(Boolean).join(" · ")
         : [cleanDmIdentity(last.senderIdentity?.mbti) || cleanDmIdentity(senderSnapshot?.mbti), cleanDmIdentity(last.senderIdentity?.socionics) || cleanDmIdentity(senderSnapshot?.socionics), cleanDmIdentity(last.senderIdentity?.enneagram) || cleanDmIdentity(senderSnapshot?.enneagram), cleanDmIdentity(last.senderIdentity?.otherType) || cleanDmIdentity(senderSnapshot?.otherType)].filter(Boolean).join(" · ");
-      // ボトルの会話では、主の自認は会話元のボトル記録を最優先にする。
-      // 「匿名の誰か」側は、メッセージに保存された送信者プロフィールを使う。
+      // ボトル主の自認と、返信してきた人の自認を混同しない。
+      // 自分が送ったメッセージの相手は元ボトルの主。受信メッセージの相手情報は送信者スナップショットだけから決める。
       const threadNpcLabel = `${thread.targetId} ${thread.name} ${directMessages.filter(message => message.threadId === thread.targetId).map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
       const isNpc = /ai:darling|ダーリンちゃん/.test(threadNpcLabel) || /ai:lsi-worm|LSI芋虫/.test(threadNpcLabel);
       thread.type = isNpc
         ? (/ai:darling|ダーリンちゃん/.test(threadNpcLabel) ? "AI · ILI · 5w4" : "AI · LSI · 5w6")
         : last.isMine
-          ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "ボトル主への返信")
-          : (messageIdentity || originalBottleIdentity || cleanDmIdentity(last.bottleType) || cleanDmIdentity(thread.type) || "匿名の誰か");
+          ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || "ボトル主への返信")
+          : (messageIdentity || cleanDmIdentity(last.bottleType) || "自認未設定");
     }
     return threads.sort((a, b) => {
       if (dmSortMode === "manual") {
