@@ -5927,6 +5927,44 @@ var index_default = {
       }
       if (path === "/api/direct-messages" && method === "GET") {
         if (!key) return json({ messages: [] }, 200, env, request);
+        // Backfill NPC replies already present on the user's own bottles into their bottle-specific DM threads.
+        // This also repairs older replies that were notified but saved without bottle_id/thread context.
+        const existingBottleReplies = await sql`
+          SELECT r.bottle_id, r.guest_key AS npc_key, r.body, r.created_at AS reply_created_at,
+                 b.body AS bottle_body, b.mbti, b.socionics, b.enneagram, b.other_type, b.ai_character
+          FROM replies r
+          JOIN bottles b ON b.id = r.bottle_id
+          WHERE b.guest_key = ${key}
+            AND r.guest_key IN ('ai:darling','ai:lsi-worm')
+            AND b.deleted_at IS NULL
+            AND (b.allow_replies IS NULL OR b.allow_replies = TRUE)
+          ORDER BY r.created_at ASC
+          LIMIT 300
+        `;
+        for (const reply of existingBottleReplies) {
+          const npcKey = String(reply.npc_key);
+          const npcName = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
+          const bottleId = Number(reply.bottle_id);
+          const participants = [npcKey, key].sort();
+          const threadId = `bottle-${bottleId}-npc-pair-${participants.join("--")}`;
+          const exists = await sql`SELECT id FROM direct_messages
+            WHERE sender_guest_key=${npcKey} AND recipient_guest_key=${key}
+              AND bottle_id=${bottleId} AND body=${reply.body}
+            LIMIT 1`;
+          if (exists.length) continue;
+          const recipientProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
+          const senderProfile = JSON.stringify({
+            nickname: npcName,
+            mbti: npcKey === "ai:darling" ? "INTP" : "INTJ",
+            socionics: npcKey === "ai:darling" ? "ILI" : "LSI",
+            enneagram: npcKey === "ai:darling" ? "5w4" : "5w6"
+          });
+          const recipientProfile = JSON.stringify(recipientProfileRows[0] || {});
+          const bottleType = String(reply.ai_character || [reply.mbti,reply.socionics,reply.enneagram,reply.other_type].filter(Boolean).join(" · ") || "ボトルへの返信");
+          await sql`INSERT INTO direct_messages
+            (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
+            VALUES (${npcKey},${key},${threadId},${npcName},${clean((recipientProfileRows[0] || {}).nickname,24) || "あなた"},${reply.body},${bottleId},${String(reply.bottle_body || "").slice(0,2500)},${npcName},${bottleType},${senderProfile}::jsonb,${recipientProfile}::jsonb,${reply.reply_created_at},NOW())`;
+        }
         const rows = await sql`SELECT dm.*, (SELECT r.guest_key FROM replies r WHERE r.bottle_id = dm.bottle_id AND r.body = dm.body AND r.guest_key IN ('ai:darling','ai:lsi-worm') ORDER BY r.created_at DESC LIMIT 1) AS matched_npc_key, p.nickname AS sender_nickname, p.mbti AS sender_mbti, p.socionics AS sender_socionics, p.enneagram AS sender_enneagram, p.other_type AS sender_other_type, p.bio AS sender_bio, p.links AS sender_links, p.profile_image_url AS sender_image, rp.nickname AS recipient_nickname, rp.mbti AS recipient_mbti, rp.socionics AS recipient_socionics, rp.enneagram AS recipient_enneagram, rp.other_type AS recipient_other_type, rp.bio AS recipient_bio, rp.links AS recipient_links, rp.profile_image_url AS recipient_image FROM direct_messages dm LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key) LEFT JOIN profiles rp ON (rp.guest_key = dm.recipient_guest_key OR ('user:' || rp.user_id::text) = dm.recipient_guest_key) WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key} ORDER BY dm.created_at DESC LIMIT 200`;
         return json({ messages: rows.reverse().map((row) => {
           const senderProfile = row.sender_profile || {nickname:row.sender_nickname || row.sender_name || "",mbti:row.sender_mbti || "",socionics:row.sender_socionics || "",enneagram:row.sender_enneagram || "",other_type:row.sender_other_type || "",bio:row.sender_bio || "",links:row.sender_links || [],profile_image_url:row.sender_image || ""};
