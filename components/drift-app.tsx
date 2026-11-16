@@ -5495,7 +5495,8 @@ export default function DriftApp() {
                     unread: 0,
                     lastMsg: activeFallbackMessage || ({ isMine: false, body: "", createdAt: Date.now() } as DirectMessage)
                   };
-                  const isBottleThread = activeDmThreadId.startsWith("bottle-") || directMessages.some(message => message.threadId === activeDmThreadId && Boolean(message.bottleId));
+                  const isNpcConversation = /ai:darling|ai:lsi-worm|ダーリンちゃん|LSI芋虫/.test(`${activeDmThreadId} ${fallbackLabel} ${currentThread.name}`);
+                  const isBottleThread = !isNpcConversation && (activeDmThreadId.startsWith("bottle-") || directMessages.some(message => message.threadId === activeDmThreadId && Boolean(message.bottleId)));
                   const isRevealed = revealedIdentityThreads.includes(activeDmThreadId);
                   const activePlazaUser = !isBottleThread ? (plazaUsers.find(item => item.sessionKey === activeDmThreadId) || plazaUsers.find(item => item.nickname === currentThread.name && item.nickname !== nickname)) : undefined;
                   const threadMessages = directMessages.filter(
@@ -5696,7 +5697,7 @@ export default function DriftApp() {
                                 name: currentThread.name,
                                 emoji: currentThread.emoji,
                                 type: currentThread.type,
-                                bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
+                                bottleInfo: !isNpcConversation && isBottleThread && relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                               },
                               dmReplyText
                             );
@@ -5720,7 +5721,7 @@ export default function DriftApp() {
                                       name: currentThread.name,
                                       emoji: currentThread.emoji,
                                       type: currentThread.type,
-                                      bottleInfo: relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
+                                      bottleInfo: !isNpcConversation && isBottleThread && relatedBottle ? { id: relatedBottle.id || 0, text: relatedBottle.text || "", author: relatedBottle.author, type: relatedBottle.type } : undefined
                                     },
                                     dmReplyText
                                   ).then(sent => { if (sent) { setDmReplyText(""); setActiveDmThreadId(sent); } });
