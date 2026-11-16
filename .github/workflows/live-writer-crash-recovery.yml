@@ -1,0 +1,129 @@
+name: Live staging Worker and crash recovery drill
+
+on:
+  workflow_dispatch:
+    inputs:
+      safety_confirmation:
+        description: "Type I_CONFIRM_ISOLATED_STAGING_DATABASES only after verifying the Worker and both PostgreSQL URLs are staging-only."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: type-drift-live-writer-staging-drill
+  cancel-in-progress: false
+
+jobs:
+  live-worker-and-crash-recovery:
+    if: ${{ inputs.safety_confirmation == 'I_CONFIRM_ISOLATED_STAGING_DATABASES' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      LIVE_WRITER_CONTROL_URL: ${{ secrets.STAGING_WRITER_CONTROL_URL }}
+      LIVE_WRITER_CONTROL_TOKEN: ${{ secrets.STAGING_WRITER_CONTROL_TOKEN }}
+      LIVE_DB_URL_NEON: ${{ secrets.STAGING_DB_URL_NEON }}
+      LIVE_DB_URL_SUPABASE: ${{ secrets.STAGING_DB_URL_SUPABASE }}
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          extensions: pdo_sqlite, pdo_pgsql
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+      - name: Validate explicit staging-only inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in LIVE_WRITER_CONTROL_URL LIVE_WRITER_CONTROL_TOKEN LIVE_DB_URL_NEON LIVE_DB_URL_SUPABASE; do
+            if [[ -z "${!key:-}" ]]; then echo "::error::Missing required staging secret: $key"; exit 1; fi
+          done
+          [[ "$LIVE_WRITER_CONTROL_URL" == https://* ]] || { echo "::error::Worker URL must use HTTPS"; exit 1; }
+          [[ "$LIVE_WRITER_CONTROL_URL" != *"type-drift-production-writer"* ]] || { echo "::error::Production Worker URL is forbidden"; exit 1; }
+          [[ "$LIVE_DB_URL_NEON" != "$LIVE_DB_URL_SUPABASE" ]] || { echo "::error::Both database URLs must be distinct"; exit 1; }
+      - name: Install backend dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Connect Laravel to the deployed Worker and selected PostgreSQL writer
+        run: php artisan test --filter=LiveWriterControlIntegrationTest
+      - name: Force-kill a lease-holding Laravel process and verify recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          control="$LIVE_WRITER_CONTROL_URL/v1/writer-control"
+          auth=(-H "Authorization: Bearer $LIVE_WRITER_CONTROL_TOKEN" -H "Content-Type: application/json")
+
+          state="$(curl --fail --silent --show-error "${auth[@]}" -d '{"action":"read"}' "$control")"
+          writer="$(jq -r '.state.writer' <<<"$state")"
+          epoch="$(jq -r '.state.epoch' <<<"$state")"
+          [[ "$writer" == "neon" || "$writer" == "supabase" ]] || { echo "::error::Unexpected writer state"; exit 1; }
+          if [[ "$writer" == "neon" ]]; then selected_db="$LIVE_DB_URL_NEON"; target="supabase"; else selected_db="$LIVE_DB_URL_SUPABASE"; target="neon"; fi
+
+          child_log="$(mktemp)"
+          child_pid=""
+          lease_id=""
+          cleanup() {
+            if [[ -n "$child_pid" ]] && kill -0 "$child_pid" 2>/dev/null; then
+              kill -9 "$child_pid" 2>/dev/null || true
+              wait "$child_pid" 2>/dev/null || true
+            fi
+            # Release only after the child process has stopped; never release a live writer lease.
+            if [[ -n "$lease_id" ]]; then
+              curl --silent --show-error "${auth[@]}" -d "$(jq -nc --arg id "$lease_id" '{action:"release",leaseId:$id}')" "$control" >/dev/null || true
+            fi
+            rm -f "$child_log"
+          }
+          trap cleanup EXIT
+
+          LIVE_WRITER_CONTROL_URL="$LIVE_WRITER_CONTROL_URL" \
+          LIVE_WRITER_CONTROL_TOKEN="$LIVE_WRITER_CONTROL_TOKEN" \
+          LIVE_DB_URL_NEON="$LIVE_DB_URL_NEON" \
+          LIVE_DB_URL_SUPABASE="$LIVE_DB_URL_SUPABASE" \
+            php tests/Support/live_writer_crash_worker.php >"$child_log" 2>&1 &
+          child_pid=$!
+
+          for attempt in $(seq 1 30); do
+            if grep -q '"lease_id"' "$child_log"; then break; fi
+            if ! kill -0 "$child_pid" 2>/dev/null; then cat "$child_log"; exit 1; fi
+            sleep 1
+          done
+          grep -q '"lease_id"' "$child_log" || { echo "::error::Child failed to acquire a lease"; cat "$child_log"; exit 1; }
+          details="$(head -n 1 "$child_log")"
+          lease_id="$(jq -r '.lease_id' <<<"$details")"
+          backend_pid="$(jq -r '.backend_pid' <<<"$details")"
+          [[ -n "$lease_id" && "$lease_id" != "null" ]] || { echo "::error::No lease id emitted"; exit 1; }
+
+          # Simulate an abrupt host/process death: no PHP finally block can run.
+          kill -9 "$child_pid"
+          wait "$child_pid" 2>/dev/null || true
+          child_pid=""
+
+          state_after_crash="$(curl --fail --silent --show-error "${auth[@]}" -d '{"action":"read"}' "$control")"
+          [[ "$(jq -r '.activeLeaseCount' <<<"$state_after_crash")" == "1" ]] || { echo "::error::Orphaned lease was not retained after crash"; exit 1; }
+          [[ "$(jq -r '.state.epoch' <<<"$state_after_crash")" == "$epoch" ]] || { echo "::error::Unexpected epoch change"; exit 1; }
+
+          prepare_body="$(jq -nc --arg target "$target" --argjson epoch "$epoch" '{action:"prepare",target:$target,expectedEpoch:$epoch}')"
+          prepare_code="$(curl --silent --show-error -o /tmp/writer-prepare.json -w '%{http_code}' "${auth[@]}" -d "$prepare_body" "$control")"
+          [[ "$prepare_code" == "409" ]] || { cat /tmp/writer-prepare.json; echo "::error::Cutover was not blocked by orphaned lease (HTTP $prepare_code)"; exit 1; }
+          [[ "$(jq -r '.error' /tmp/writer-prepare.json)" == "active_writes" ]] || { cat /tmp/writer-prepare.json; echo "::error::Cutover failed for an unexpected reason"; exit 1; }
+
+          # The killed PHP process must have dropped its PostgreSQL backend and rolled back its open transaction.
+          remaining="$(psql "$selected_db" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_stat_activity WHERE pid = $backend_pid")"
+          [[ "$remaining" == "0" ]] || { echo "::error::PostgreSQL backend $backend_pid is still alive; lease will not be released"; exit 1; }
+
+          release_body="$(jq -nc --arg id "$lease_id" '{action:"release",leaseId:$id}')"
+          release_code="$(curl --silent --show-error -o /tmp/writer-release.json -w '%{http_code}' "${auth[@]}" -d "$release_body" "$control")"
+          [[ "$release_code" == "200" ]] || { cat /tmp/writer-release.json; echo "::error::Could not release verified orphan lease"; exit 1; }
+          lease_id=""
+          final_state="$(curl --fail --silent --show-error "${auth[@]}" -d '{"action":"read"}' "$control")"
+          [[ "$(jq -r '.activeLeaseCount' <<<"$final_state")" == "0" ]] || { echo "::error::Lease cleanup verification failed"; exit 1; }
+          [[ "$(jq -r '.state.status' <<<"$final_state")" == "stable" ]] || { echo "::error::Writer state did not return to stable"; exit 1; }
+          echo "PASS: real Worker/Laravel lease, SIGKILL, cutover fencing, PostgreSQL backend disappearance, and safe orphan-lease recovery."
