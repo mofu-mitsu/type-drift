@@ -112,6 +112,9 @@ class DirectMessageController extends Controller
                         : $message->thread_id,
                     'sender_guest_key' => $message->sender_guest_key,
                     'recipient_guest_key' => $message->recipient_guest_key,
+                    // Older Laravel rows sometimes saved the generated NPC text under the bottle owner's identity.
+                    // Match the canonical replies row so the client can restore the NPC identity without merging users.
+                    'matched_npc_key' => $message->bottle_id ? DB::table('replies')->where('bottle_id', $message->bottle_id)->where('body', $message->body)->whereIn('guest_key', ['ai:darling', 'ai:lsi-worm'])->orderByDesc('created_at')->value('guest_key') : null,
                     'sender_user_id' => $message->sender_user_id,
                     'recipient_user_id' => $message->recipient_user_id,
                     'sender_name' => $message->sender_name,
