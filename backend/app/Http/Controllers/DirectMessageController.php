@@ -134,7 +134,11 @@ class DirectMessageController extends Controller
                         sort($participants, SORT_STRING);
                         $isNpcMessage = str_starts_with((string) $message->sender_guest_key, 'ai:')
                             || str_starts_with((string) $message->recipient_guest_key, 'ai:');
-                        if ($isNpcMessage && count($participants) === 2) return 'dm-pair-'.implode('--', $participants);
+                        if ($isNpcMessage && count($participants) === 2) {
+                            return $message->bottle_id
+                                ? 'bottle-'.$message->bottle_id.'-npc-pair-'.implode('--', $participants)
+                                : 'dm-pair-'.implode('--', $participants);
+                        }
                         if ($message->bottle_id && count($participants) === 2) return 'bottle-'.$message->bottle_id.'-pair-'.implode('--', $participants);
                         return $message->thread_id;
                     })(),
