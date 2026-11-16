@@ -351,7 +351,7 @@ class DirectMessageController extends Controller
                     ->whereIn('thread_id', [$threadId, $senderIdentity])
                     ->exists();
                 abort_if($blocked, 403, 'The recipient has blocked messages from this account.');
-            } catch (\Illuminate\\Database\\QueryException $exception) {
+            } catch (\Illuminate\Database\QueryException $exception) {
                 if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
             }
         }
