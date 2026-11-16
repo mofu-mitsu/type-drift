@@ -11,7 +11,15 @@ class NotificationController extends Controller
 {
     public function unread(Request $request)
     {
-        $query = Notification::query()->whereNull('read_at');
+        $query = Notification::query()->whereNull('read_at')
+            // A stale NPC reply must not keep showing as a bottle-reply notification after replies are disabled.
+            ->whereNotExists(function ($disabledBottle) {
+                $disabledBottle->selectRaw('1')
+                    ->from('bottles as notification_bottle')
+                    ->whereRaw('notification_bottle.id::text = notifications.entity_id')
+                    ->where('notification_bottle.allow_replies', false)
+                    ->where('notifications.type', 'bottle_reply');
+            });
         if ($request->user()) {
             $query->where('user_id', $request->user()->id);
         } else {
