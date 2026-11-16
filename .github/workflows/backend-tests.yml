@@ -36,6 +36,7 @@ jobs:
           restore-keys: composer-${{ runner.os }}-
       - run: composer update laravel/reverb --with-all-dependencies --no-interaction --prefer-dist
       - uses: stefanzweifel/git-auto-commit-action@v5
+        if: github.event_name == 'push'
         with:
           commit_message: "chore: update Composer lock for Laravel Reverb"
           file_pattern: backend/composer.lock
