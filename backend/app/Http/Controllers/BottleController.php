@@ -96,7 +96,7 @@ class BottleController extends Controller
                     ->whereIn('thread_id', ['bottle-'.$bottle->id, $senderIdentity, $guestKey ?: 'user:'.$userId])
                     ->exists();
                 abort_if($blocked, 403, 'The bottle owner has blocked messages from this account.');
-            } catch (\Illuminate\\Database\\QueryException $exception) {
+            } catch (\Illuminate\Database\QueryException $exception) {
                 // Older installations without the block table retain the normal reply flow.
                 if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
             }
