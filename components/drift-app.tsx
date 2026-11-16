@@ -2894,7 +2894,7 @@ export default function DriftApp() {
       return !hasError;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const replyMsg: DirectMessage = { id: `dm-ai-error-${Date.now()}`, threadId: target.bottleInfo ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcIdentityKey, getGuestKey()].sort().join("--")}` : `dm-pair-${[npcIdentityKey, getGuestKey()].sort().join("--")}`, sender: preferred, recipient: nickname || "あなた", targetEmoji: npcIdentityKey === "ai:darling" ? "🥺" : "🐛", targetType: target.type, body: `AI応答でエラーが起きたみたい。\nエラー内容「network_error」\n詳細: ${detail.slice(0, 180)}\n気になる場合は意見箱へ送ってね。`, createdAt: Date.now(), read: false, isMine: false, isAiError: true, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
+      const replyMsg: DirectMessage = { id: `dm-ai-error-${Date.now()}`, threadId: `dm-pair-${[npcIdentityKey, getGuestKey()].sort().join("--")}`, sender: preferred, recipient: nickname || "あなた", targetEmoji: npcIdentityKey === "ai:darling" ? "🥺" : "🐛", targetType: target.type, body: `AI応答でエラーが起きたみたい。\nエラー内容「network_error」\n詳細: ${detail.slice(0, 180)}\n気になる場合は意見箱へ送ってね。`, createdAt: Date.now(), read: false, isMine: false, isAiError: true, bottleId: target.bottleInfo?.id, bottleSnippet: target.bottleInfo?.text, bottleAuthor: target.bottleInfo?.author, bottleType: target.bottleInfo?.type };
       setDirectMessages(prev => { const updated = [...prev, replyMsg]; try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {} return updated; });
       console.error("[Type Drift AI] DM request failed", { character: preferred, detail });
       return false;
@@ -3026,9 +3026,10 @@ export default function DriftApp() {
     const isDarlingTarget = target.id === "darling" || target.name.includes("ダーリン") || target.emoji === "🥺" || /ダーリンちゃん/.test(target.type || "") || /ダーリンちゃん/.test(target.bottleInfo?.author || "") || /ダーリンちゃん/.test(target.bottleInfo?.type || "");
     const isWormTarget = target.id === "worm" || target.name.includes("芋虫") || target.emoji === "🐛" || /LSI芋虫/.test(target.type || "") || /LSI芋虫/.test(target.bottleInfo?.author || "") || /LSI芋虫/.test(target.bottleInfo?.type || "");
     const npcKeyForThread = isDarlingTarget ? "ai:darling" : isWormTarget ? "ai:lsi-worm" : "";
-    const localNpcThreadId = npcKeyForThread ? (target.bottleInfo
-      ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}`
-      : `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}`) : "";
+    // NPC会話はボトルIDでは分けず、常に同じ参加者ペアのスレッドへ入れる。
+    const localNpcThreadId = npcKeyForThread
+      ? `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}`
+      : "";
     let npcSavedMessage: any = null;
     if (npcKeyForThread) {
       try {
