@@ -1,0 +1,48 @@
+name: Poll vote regression tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "cloudflare/type-drift-api-fallback/index.js"
+      - "components/**"
+      - "lib/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/poll-vote-tests.yml"
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          extensions: pdo_sqlite, pdo_pgsql
+      - uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - run: composer update laravel/reverb --with-all-dependencies --no-interaction --prefer-dist
+      - run: APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan test
+      - name: Check fallback Worker JavaScript syntax
+        working-directory: .
+        run: node --check cloudflare/type-drift-api-fallback/index.js
+
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint

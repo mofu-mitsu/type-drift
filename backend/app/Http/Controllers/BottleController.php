@@ -246,6 +246,29 @@ class BottleController extends Controller
         return response()->json(['feedback' => ['id' => $feedback->id, 'status' => $feedback->status]], 201);
     }
 
+    public function voteResults(Request $request, Bottle $bottle)
+    {
+        $userId = $request->user()?->id;
+        $guestKey = $userId ? null : $request->header('X-Guest-Key');
+
+        $counts = PollVote::query()
+            ->where('bottle_id', $bottle->id)
+            ->selectRaw('option_index, COUNT(*) as votes')
+            ->groupBy('option_index')
+            ->orderBy('option_index')
+            ->get();
+
+        $myVote = null;
+        if ($userId || $guestKey) {
+            $myVote = PollVote::query()
+                ->where('bottle_id', $bottle->id)
+                ->when($userId, fn ($query) => $query->where('user_id', $userId), fn ($query) => $query->where('guest_key', $guestKey))
+                ->value('option_index');
+        }
+
+        return response()->json(['counts' => $counts, 'myVote' => $myVote]);
+    }
+
     public function vote(Request $request, Bottle $bottle)
     {
         abort_if($bottle->allow_replies === false, 403, 'Interactions are disabled for this bottle.');

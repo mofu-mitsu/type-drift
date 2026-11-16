@@ -29,6 +29,7 @@ Route::post('/bottles/{bottle}/reactions', [BottleController::class, 'react']);
 Route::post('/bottles/{bottle}/replies', [BottleController::class, 'reply']);
 Route::get('/bottles/{bottle}/replies', [BottleController::class, 'replies']);
 Route::post('/replies/{reply}/reactions', [BottleController::class, 'reactToReply']);
+Route::get('/bottles/{bottle}/votes', [BottleController::class, 'voteResults']);
 Route::post('/bottles/{bottle}/votes', [BottleController::class, 'vote']);
 Route::match(['put', 'patch'], '/profile', [BottleController::class, 'profile']);
 Route::get('/plaza/messages', [BottleController::class, 'plazaMessages']);

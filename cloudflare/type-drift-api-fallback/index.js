@@ -6012,7 +6012,7 @@ var index_default = {
         const options = poll[0]?.poll_options;
         if (!Array.isArray(options) || index >= options.length) return json({ error: "invalid_poll_option" }, 422, env, request);
         await sql`INSERT INTO bottle_poll_votes (bottle_id,guest_key,option_index) VALUES (${id},${key},${index}) ON CONFLICT (bottle_id,guest_key) DO UPDATE SET option_index=EXCLUDED.option_index,created_at=NOW()`;
-        const counts = await sql`SELECT option_index, COUNT(*)::int AS votes FROM bottle_poll_votesWHERE bottle_id=${id} GROUP BY option_index ORDER BY option_index`;
+        const counts = await sql`SELECT option_index, COUNT(*)::int AS votes FROM bottle_poll_votes WHERE bottle_id=${id} GROUP BY option_index ORDER BY option_index`;
         return json( { ok: true, counts }, 200, env, request);
       }
       if (path === "/api/notifications/unread" && method === "GET") {
