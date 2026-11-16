@@ -36,6 +36,8 @@ import {
 const DEFAULT_GAS_URL = process.env.NEXT_PUBLIC_GAS_WEBHOOK_URL || "";
 // Prevent double-submit paths from generating two NPC replies for the same message.
 const inFlightNpcReplies = new Set<string>();
+// Prevent the same form/button event from persisting a user message twice.
+const inFlightDmSends = new Map<string, Promise<string | false>>();
 
 type Bottle = { id: number; author: string; emoji: string; type: string; ai_character?: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; allowLikes?: boolean; allowReplies?: boolean; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; color: string };
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number; author?: string; emoji?: string };
@@ -2835,8 +2837,11 @@ export default function DriftApp() {
     const requestKey = `${npcIdentityKey}|${npcRecipientKey}|${target.bottleInfo ? `bottle-${Number(target.bottleInfo.id)}` : "plaza"}|${userText.trim()}`;
     if (inFlightNpcReplies.has(requestKey)) return true;
     inFlightNpcReplies.add(requestKey);
-    // NPCとのDMは入口のボトルIDに関係なく、NPCと受信者のペアで同じスレッドを使う。
-    let replyThreadId = `dm-pair-${[npcIdentityKey, npcRecipientKey].sort().join("--")}`;
+    // ボトル経由の会話はそのボトル専用スレッド、通常DMは参加者ペアのスレッドを使う。
+    const participantPair = [npcIdentityKey, npcRecipientKey].sort().join("--");
+    let replyThreadId = target.bottleInfo
+      ? `bottle-${Number(target.bottleInfo.id)}-npc-pair-${participantPair}`
+      : `dm-pair-${participantPair}`;
     try {
       const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: userText, character: preferred, mode: target.bottleInfo ? "bottle" : "dm", profile: { nickname: nickname || "", mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "", enneagram: profileIdentity.enneagram || "", otherType: profileIdentity.otherType || "", bio: profileBio || "" }, history: [...directMessages.filter(message => message.threadId === replyThreadId || (target.bottleInfo && Number(message.bottleId) === Number(target.bottleInfo.id) && (message.sender === preferred || message.recipient === preferred))).slice(-10).map(message => ({ author: message.sender, character: message.sender, body: message.body, kind: message.isMine ? "human" : "ai" })), { author: nickname || "あなた", character: "user", body: userText, kind: "human" }].slice(-12) }) });
       const data = await response.json().catch(() => null);
@@ -2904,7 +2909,7 @@ export default function DriftApp() {
     }
   };
 
-  const sendDirectMessage = async (
+  const sendDirectMessageInternal = async (
     target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } },
     text: string
   ): Promise<string | false> => {
@@ -3098,6 +3103,17 @@ export default function DriftApp() {
     logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
     setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
     return newMsg.threadId;
+  };
+
+  const sendDirectMessage = (target: { id: string; name: string; emoji: string; type?: string; bottleInfo?: { id: number; text: string; author: string; type: string } }, text: string): Promise<string | false> => {
+    const lockKey = `${target.id}|${text.trim()}`;
+    const existing = inFlightDmSends.get(lockKey);
+    if (existing) return existing;
+    const pending = sendDirectMessageInternal(target, text).finally(() => {
+      if (inFlightDmSends.get(lockKey) === pending) inFlightDmSends.delete(lockKey);
+    });
+    inFlightDmSends.set(lockKey, pending);
+    return pending;
   };
 
   useEffect(() => {
