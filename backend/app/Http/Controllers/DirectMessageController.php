@@ -39,6 +39,8 @@ class DirectMessageController extends Controller
             ->join('bottles as b', 'b.id', '=', 'r.bottle_id')
             ->whereIn('r.guest_key', ['ai:darling', 'ai:lsi-worm'])
             ->whereNull('b.deleted_at')
+            // A reply-disabled bottle must never be backfilled into a DM or trigger a DM notification.
+            ->where(function ($q) { $q->whereNull('b.allow_replies')->orWhere('b.allow_replies', true); })
             ->when($userId, fn ($q) => $q->where('b.user_id', $userId), fn ($q) => $q->where('b.guest_key', $guestKey))
             ->select('r.id as reply_id', 'r.bottle_id', 'r.guest_key as npc_key', 'r.body', 'r.created_at as reply_created_at',
                 'b.user_id as bottle_user_id', 'b.guest_key as bottle_guest_key', 'b.body as bottle_body',
@@ -107,9 +109,18 @@ class DirectMessageController extends Controller
 
                 return [
                     'id' => $message->id,
-                    'thread_id' => $message->bottle_id && $message->sender_guest_key && $message->recipient_guest_key
-                        ? 'bottle-'.$message->bottle_id.((str_starts_with((string) $message->sender_guest_key, 'ai:') || str_starts_with((string) $message->recipient_guest_key, 'ai:')) ? '-npc-pair-' : '-pair-').implode('--', (function () use ($message) { $participants = array_values(array_unique(array_filter([$message->sender_user_id ? 'user:'.$message->sender_user_id : $message->sender_guest_key, $message->recipient_user_id ? 'user:'.$message->recipient_user_id : $message->recipient_guest_key]))); sort($participants, SORT_STRING); return $participants; })())
-                        : $message->thread_id,
+                    'thread_id' => (function () use ($message) {
+                        $participants = array_values(array_unique(array_filter([
+                            $message->sender_user_id ? 'user:'.$message->sender_user_id : $message->sender_guest_key,
+                            $message->recipient_user_id ? 'user:'.$message->recipient_user_id : $message->recipient_guest_key,
+                        ])));
+                        sort($participants, SORT_STRING);
+                        $isNpcMessage = str_starts_with((string) $message->sender_guest_key, 'ai:')
+                            || str_starts_with((string) $message->recipient_guest_key, 'ai:');
+                        if ($isNpcMessage && count($participants) === 2) return 'dm-pair-'.implode('--', $participants);
+                        if ($message->bottle_id && count($participants) === 2) return 'bottle-'.$message->bottle_id.'-pair-'.implode('--', $participants);
+                        return $message->thread_id;
+                    })(),
                     'sender_guest_key' => $message->sender_guest_key,
                     'recipient_guest_key' => $message->recipient_guest_key,
                     // Older Laravel rows sometimes saved the generated NPC text under the bottle owner's identity.
