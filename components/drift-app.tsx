@@ -3262,8 +3262,21 @@ export default function DriftApp() {
         thread.emoji = npcEmoji || "🌊";
         if (npcEmoji) thread.name = npcEmoji === "🥺" ? "ダーリンちゃん" : "LSI芋虫";
       } else {
-        thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
-        thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
+        // NPCの固定アイコンは、オフライン時のプロフィールキャッシュで上書きさせない。
+        const npcLabel = `${thread.targetId} ${thread.name} ${messages.map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
+        const npcEmoji = /ai:darling|ダーリンちゃん|🥺/i.test(npcLabel)
+          ? "🥺"
+          : /ai:lsi-worm|LSI芋虫|🐛/i.test(npcLabel)
+            ? "🐛"
+            : "";
+        if (npcEmoji) {
+          thread.avatarUrl = undefined;
+          thread.emoji = npcEmoji;
+          thread.name = npcEmoji === "🥺" ? "ダーリンちゃん" : "LSI芋虫";
+        } else {
+          thread.avatarUrl = cachedUser?.avatarUrl || savedProfile?.profileImageUrl || thread.avatarUrl;
+          thread.emoji = cachedUser?.emoji || savedProfile?.emoji || thread.emoji;
+        }
       }
       if (!thread.type || thread.type === "広場の住人") {
         const identity = [cleanDmIdentity(savedProfile?.mbti), cleanDmIdentity(savedProfile?.socionics), cleanDmIdentity(savedProfile?.enneagram), cleanDmIdentity(savedProfile?.otherType)].filter(Boolean).join(" · ");
