@@ -108,7 +108,7 @@ class DirectMessageController extends Controller
                 return [
                     'id' => $message->id,
                     'thread_id' => $message->bottle_id && $message->sender_guest_key && $message->recipient_guest_key
-                        ? 'bottle-'.$message->bottle_id.'-pair-'.implode('--', (function () use ($message) { $participants = array_values(array_unique(array_filter([$message->sender_user_id ? 'user:'.$message->sender_user_id : $message->sender_guest_key, $message->recipient_user_id ? 'user:'.$message->recipient_user_id : $message->recipient_guest_key]))); sort($participants, SORT_STRING); return $participants; })())
+                        ? 'bottle-'.$message->bottle_id.((str_starts_with((string) $message->sender_guest_key, 'ai:') || str_starts_with((string) $message->recipient_guest_key, 'ai:')) ? '-npc-pair-' : '-pair-').implode('--', (function () use ($message) { $participants = array_values(array_unique(array_filter([$message->sender_user_id ? 'user:'.$message->sender_user_id : $message->sender_guest_key, $message->recipient_user_id ? 'user:'.$message->recipient_user_id : $message->recipient_guest_key]))); sort($participants, SORT_STRING); return $participants; })())
                         : $message->thread_id,
                     'sender_guest_key' => $message->sender_guest_key,
                     'recipient_guest_key' => $message->recipient_guest_key,
@@ -199,7 +199,8 @@ class DirectMessageController extends Controller
         $ownerIdentity = $bottle->user_id ? 'user:'.$bottle->user_id : $bottle->guest_key;
         $participants = array_values(array_unique(array_filter([$senderIdentity, $ownerIdentity])));
         sort($participants, SORT_STRING);
-        $threadId = 'bottle-'.$bottle->id.'-pair-'.implode('--', $participants);
+        $isNpcThread = str_starts_with((string) $ownerIdentity, 'ai:');
+        $threadId = 'bottle-'.$bottle->id.($isNpcThread ? '-npc-pair-' : '-pair-').implode('--', $participants);
         $lastMessage = DirectMessage::query()
             ->where('thread_id', $threadId)
             ->where(function ($query) use ($userId, $lookupKey) {
