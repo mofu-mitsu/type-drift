@@ -14,7 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Lease middleware must wrap session middleware too, so session persistence is inside the lease.
-        $middleware->prependToGroup('api', [\\App\\Http\\Middleware\\RequireWriterLease::class]);
+        $middleware->prependToGroup('api', [\App\Http\Middleware\RequireWriterLease::class]);
 
         // OAuthのセッションCookieを、Next.jsから呼ぶAPIでも解決できるようにする。
         $middleware->appendToGroup('api', [
