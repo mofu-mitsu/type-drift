@@ -4204,6 +4204,7 @@ export default function DriftApp() {
           {/* 🏷️ アプリタイトル */}
           <div className="hero-title-group">
             <p className="hero-super-title">Type Drift</p>
+            <p className="hero-title-reading" style={{ margin: "2px 0 8px", fontSize: 12, letterSpacing: "0.16em", color: "#8b6d94" }}>タイプ・ドリフト</p>
             <p className="eyebrow"><Sparkles size={14} /> TYPE IN A BOTTLE</p>
           </div>
 
