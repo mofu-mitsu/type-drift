@@ -185,6 +185,71 @@ class DirectMessageController extends Controller
             return response()->json(['ok' => true, 'action' => $action]);
         }
 
+        // Explicit NPC DM persistence. The Next.js route supports these payloads too, but Render/Laravel
+        // must use the same participant IDs and thread namespace when apiFetch targets the backend directly.
+        $payload = $request->all();
+        if (($payload['npc_message'] ?? false) === true || ($payload['ai_reply'] ?? false) === true) {
+            $userId = $request->user()?->id;
+            $guestKey = $request->header('X-Guest-Key');
+            $lookupKey = $userId ? 'user:'.$userId : $guestKey;
+            abort_unless($userId || $lookupKey, 422, 'A guest key is required.');
+            $character = (string) ($payload['ai_character'] ?? $payload['target_name'] ?? '');
+            $npcKey = str_contains($character, 'ダーリン') || stripos($character, 'darling') !== false || str_contains($character, '🥺')
+                ? 'ai:darling'
+                : (str_contains($character, '芋虫') || stripos($character, 'worm') !== false || str_contains($character, '🐛') ? 'ai:lsi-worm' : '');
+            abort_if($npcKey === '', 422, 'Unknown AI character.');
+            $body = trim((string) ($payload['body'] ?? ''));
+            abort_if($body === '' || mb_strlen($body) > 10000, 422, 'Invalid message body.');
+            $bottleId = isset($payload['bottle_id']) && is_numeric($payload['bottle_id']) ? (int) $payload['bottle_id'] : null;
+            $bottleMode = ($payload['conversation_mode'] ?? null) === 'bottle' && $bottleId !== null;
+            if ($bottleId !== null) abort_unless(Bottle::whereKey($bottleId)->exists(), 404, 'Bottle not found.');
+            $participants = array_values(array_unique(array_filter([$lookupKey, $npcKey])));
+            sort($participants, SORT_STRING);
+            $threadId = $bottleMode ? 'bottle-'.$bottleId.'-npc-pair-'.implode('--', $participants) : 'dm-pair-'.implode('--', $participants);
+            if (($payload['ai_reply'] ?? false) === true) {
+                $existing = DirectMessage::query()->where('sender_guest_key', $npcKey)->where('recipient_guest_key', $lookupKey)
+                    ->where('thread_id', $threadId)->where('body', $body)
+                    ->when($bottleMode, fn ($q) => $q->where('bottle_id', $bottleId), fn ($q) => $q->whereNull('bottle_id'))
+                    ->first();
+                if ($existing) return response()->json(['ok' => true, 'existing' => true, 'message' => $existing]);
+                $senderKey = $npcKey;
+                $recipientKey = $lookupKey;
+                $senderName = $npcKey === 'ai:darling' ? 'ダーリンちゃん' : 'LSI芋虫';
+                $recipientName = (string) ($payload['recipient_name'] ?? 'あなた');
+                $senderUserId = null;
+                $recipientUserId = $userId;
+                $senderProfile = null;
+                $recipientProfile = is_array($payload['recipient_profile'] ?? null) ? $payload['recipient_profile'] : null;
+            } else {
+                $senderKey = $lookupKey;
+                $recipientKey = $npcKey;
+                $senderName = (string) ($payload['sender_name'] ?? 'あなた');
+                $recipientName = $npcKey === 'ai:darling' ? 'ダーリンちゃん' : 'LSI芋虫';
+                $senderUserId = $userId;
+                $recipientUserId = null;
+                $senderProfile = is_array($payload['sender_profile'] ?? null) ? $payload['sender_profile'] : null;
+                $recipientProfile = null;
+            }
+            $bottle = $bottleMode ? Bottle::find($bottleId) : null;
+            $message = DirectMessage::create([
+                'sender_guest_key' => $senderKey, 'recipient_guest_key' => $recipientKey,
+                'sender_user_id' => $senderUserId, 'recipient_user_id' => $recipientUserId,
+                'thread_id' => $threadId, 'sender_name' => $senderName, 'recipient_name' => $recipientName,
+                'body' => $body, 'bottle_id' => $bottleMode ? $bottleId : null,
+                'bottle_snippet' => $bottle ? mb_substr((string) $bottle->body, 0, 500) : ($payload['bottle_snippet'] ?? null),
+                'bottle_author' => $bottle ? ($npcKey === 'ai:darling' ? 'ダーリンちゃん' : 'LSI芋虫') : null,
+                'bottle_type' => $bottle ? (string) ($payload['bottle_type'] ?? implode(' · ', array_filter([$bottle->mbti, $bottle->socionics, $bottle->enneagram, $bottle->other_type]))) : null,
+                'sender_profile' => $senderProfile, 'recipient_profile' => $recipientProfile,
+            ]);
+            return response()->json(['ok' => true, 'message' => [
+                'id' => $message->id, 'thread_id' => $message->thread_id, 'sender_name' => $message->sender_name,
+                'recipient_name' => $message->recipient_name, 'body' => $message->body, 'created_at' => $message->created_at,
+                'read' => false, 'is_mine' => ($payload['npc_message'] ?? false) === true,
+                'bottle_id' => $message->bottle_id, 'bottle_snippet' => $message->bottle_snippet,
+                'bottle_author' => $message->bottle_author, 'bottle_type' => $message->bottle_type,
+            ]], 201);
+        }
+
         $data = $request->validate([
             'bottle_id' => ['required', 'integer', 'exists:bottles,id'],
             'body' => ['required', 'string', 'max:5000'],
