@@ -28,3 +28,6 @@ jobs:
           restore-keys: composer-${{ runner.os }}-
       - run: composer update laravel/reverb --with-all-dependencies --no-interaction --prefer-dist
       - run: APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan test
+      - name: Check fallback Worker JavaScript syntax
+        working-directory: .
+        run: node --check cloudflare/type-drift-api-fallback/index.js
