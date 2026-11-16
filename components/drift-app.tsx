@@ -3013,8 +3013,14 @@ export default function DriftApp() {
           } : { mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType },
           senderProfile: saved.sender_profile && typeof saved.sender_profile === "object" ? {
             ...saved.sender_profile,
-            otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || "",
-            profileImageUrl: saved.sender_profile.profileImageUrl || saved.sender_profile.profile_image_url || "",
+            nickname: saved.sender_profile.nickname || nickname,
+            mbti: saved.sender_profile.mbti || profileIdentity.mbti,
+            socionics: saved.sender_profile.socionics || profileIdentity.socionics,
+            enneagram: saved.sender_profile.enneagram || profileIdentity.enneagram,
+            otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || profileIdentity.otherType,
+            bio: saved.sender_profile.bio || profileBio,
+            links: saved.sender_profile.links || profileLinks,
+            profileImageUrl: saved.sender_profile.profileImageUrl || saved.sender_profile.profile_image_url || profileImage || "",
           } : { nickname, ...profileIdentity, bio: profileBio, profileImageUrl: profileImage, links: profileLinks },
           recipientProfile: saved.recipient_profile && typeof saved.recipient_profile === "object" ? {
             ...saved.recipient_profile,
@@ -3797,7 +3803,7 @@ export default function DriftApp() {
     });
     setReply("");
     setReplyParentId(undefined);
-    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId }) });
+    const response = await apiFetch(`/api/bottles/${selected.id}/replies`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body, parent_reply_id: parentId, sender_profile: { nickname, mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType, bio: profileBio, profileImageUrl: profileImage, links: profileLinks } }) });
     if (!response.ok) {
       console.error("[Type Drift] bottle reply save failed", { bottleId: selected.id, status: response.status, detail: await response.clone().text().catch(() => "") });
       setPlazaToast(`返信を保存できませんでした（${response.status}）`);
@@ -3822,8 +3828,8 @@ export default function DriftApp() {
           bottleId: Number(saved.bottle_id || selected.id), bottleSnippet: saved.bottle_snippet || selected.text,
           bottleAuthor: saved.bottle_author || selected.author, bottleType: saved.bottle_type || selected.type,
           senderIdentity: saved.sender_profile && typeof saved.sender_profile === "object" ? {
-            mbti: saved.sender_profile.mbti || "", socionics: saved.sender_profile.socionics || "",
-            enneagram: saved.sender_profile.enneagram || "", otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || "",
+            mbti: saved.sender_profile.mbti || profileIdentity.mbti, socionics: saved.sender_profile.socionics || profileIdentity.socionics,
+            enneagram: saved.sender_profile.enneagram || profileIdentity.enneagram, otherType: saved.sender_profile.otherType || saved.sender_profile.other_type || profileIdentity.otherType,
           } : { mbti: profileIdentity.mbti, socionics: profileIdentity.socionics, enneagram: profileIdentity.enneagram, otherType: profileIdentity.otherType },
           senderProfile: saved.sender_profile && typeof saved.sender_profile === "object" ? {
             ...saved.sender_profile,
