@@ -7,6 +7,7 @@ use App\Models\Bottle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class PollVoteResultsTest extends TestCase
@@ -45,7 +46,7 @@ class PollVoteResultsTest extends TestCase
     {
         $route = Route::getRoutes()->match(Request::create('/api/bottles/123/votes', 'GET'));
 
-        $this->assertSame('App\\\\Http\\\\Controllers\\\\BottleController@voteResults', $route->getActionName());
+        $this->assertSame('App\\Http\\Controllers\\BottleController@voteResults', $route->getActionName());
     }
 
     public function test_returns_saved_counts_and_the_current_guests_vote(): void
