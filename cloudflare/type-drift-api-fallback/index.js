@@ -5815,8 +5815,9 @@ var index_default = {
           const npcKey = /lsi|worm|芋虫/i.test(character) ? "ai:lsi-worm" : /ダーリン|🥺|darling/i.test(character) ? "ai:darling" : "";
           if (!npcKey) return json({ message: "Unknown AI character." }, 422, env, request);
           const npcName = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
-          const threadId = "dm-pair-" + [npcKey, key].sort().join("--");
           const bottleId = b.conversation_mode === "bottle" && b.bottle_id ? Number(b.bottle_id) : null;
+          const participantPair = [npcKey, key].sort().join("--");
+          const threadId = bottleId ? `bottle-${bottleId}-npc-pair-${participantPair}` : "dm-pair-" + participantPair;
           const senderName = clean(b.sender_name, 24) || "あなた";
           const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
           const senderProfile = JSON.stringify(b.sender_profile && typeof b.sender_profile === "object" ? b.sender_profile : (senderProfileRows[0] || {}));
@@ -5841,7 +5842,8 @@ var index_default = {
           const npcName = npcKey === "ai:darling" ? "ダーリンちゃん" : "LSI芋虫";
           const recipientKey = key;
           const bottleId = b.bottle_id ? Number(b.bottle_id) : null;
-          const threadId = "dm-pair-" + [npcKey, recipientKey].sort().join("--");
+          const participantPair = [npcKey, recipientKey].sort().join("--");
+          const threadId = bottleId ? `bottle-${bottleId}-npc-pair-${participantPair}` : "dm-pair-" + participantPair;
           const recipientName = clean(b.recipient_name, 24) || "あなた";
           const senderProfile = JSON.stringify({ nickname: npcName, mbti: npcKey === "ai:darling" ? "ILI" : "", socionics: npcKey === "ai:lsi-worm" ? "LSI" : "", enneagram: npcKey === "ai:darling" ? "5w4" : "5w6" });
           const recipientProfile = JSON.stringify(b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : {});
@@ -5931,7 +5933,9 @@ var index_default = {
           const recipientProfile = row.recipient_profile || {nickname:row.recipient_nickname || row.recipient_name || "",mbti:row.recipient_mbti || "",socionics:row.recipient_socionics || "",enneagram:row.recipient_enneagram || "",other_type:row.recipient_other_type || "",bio:row.recipient_bio || "",links:row.recipient_links || [],profile_image_url:row.recipient_image || ""};
           const participants = [String(row.sender_guest_key || ""), String(row.recipient_guest_key || "")].filter(Boolean).sort();
            const isNpcMessage = String(row.sender_guest_key || "").startsWith("ai:") || String(row.recipient_guest_key || "").startsWith("ai:");
-           const canonicalThreadId = isNpcMessage && participants.length === 2 ? "dm-pair-" + participants.join("--") : row.thread_id;
+           const canonicalThreadId = isNpcMessage && participants.length === 2
+             ? (row.bottle_id ? `bottle-${row.bottle_id}-npc-pair-${participants.join("--")}` : "dm-pair-" + participants.join("--"))
+             : row.thread_id;
            return {id:row.id,thread_id:canonicalThreadId,matched_npc_key:row.matched_npc_key || null,sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:row.sender_guest_key === key,read:Boolean(row.read_at)};
         }) }, 200, env, request);
       }
