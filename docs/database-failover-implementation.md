@@ -50,6 +50,7 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [x] Laravel API middleware and reusable queued-job lease middleware groundwork (feature flag off by default).
 - [ ] Attach reusable lease middleware to every future database-writing queued job and audit scheduler/other services.
 - [ ] Runtime writer routing validated against both PostgreSQL URLs; lease release/recovery behavior tested end-to-end.
+- [x] Add automated unit tests for lease acquisition, fail-closed behavior, transition exclusion, and epoch increment; execution status awaits CI.
 - [ ] Recovery process for orphaned leases, validated with stopped process/DB connections.
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
 - [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
