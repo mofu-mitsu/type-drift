@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Http\Middleware\RequireWriterLease;
 use App\Support\Database\WriterLeaseManager;
 use Illuminate\Http\Request;
+use RuntimeException;
 use Tests\TestCase;
 
 class RequireWriterLeaseTest extends TestCase
@@ -26,7 +27,7 @@ class RequireWriterLeaseTest extends TestCase
         config(['database_failover.enabled' => true]);
         $manager = $this->createMock(WriterLeaseManager::class);
         $manager->method('enabled')->willReturn(true);
-        $manager->expects(self::once())->method('acquire')->willThrowException(new \RuntimeException('offline'));
+        $manager->expects(self::once())->method('acquire')->willThrowException(new RuntimeException('offline'));
 
         $middleware = new RequireWriterLease($manager);
         $response = $middleware->handle(Request::create('/api/bottles', 'POST'), fn () => response()->json(['ok' => true]));
@@ -51,6 +52,7 @@ class RequireWriterLeaseTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
     }
+
     public function test_lease_is_released_when_downstream_throws(): void
     {
         config(['database_failover.enabled' => true]);
@@ -66,12 +68,11 @@ class RequireWriterLeaseTest extends TestCase
 
         try {
             $middleware->handle(Request::create('/api/bottles', 'POST'), function () {
-                throw new \\RuntimeException('simulated request failure');
+                throw new RuntimeException('simulated request failure');
             });
             self::fail('The downstream exception should be rethrown.');
-        } catch (\\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             self::assertSame('simulated request failure', $exception->getMessage());
         }
     }
-
 }
