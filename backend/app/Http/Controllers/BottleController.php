@@ -346,7 +346,7 @@ class BottleController extends Controller
                     })
                     ->exists();
                 if ($blocked) return;
-            } catch (\\Illuminate\\Database\\QueryException $exception) {
+            } catch (\Illuminate\Database\QueryException $exception) {
                 if (!str_contains($exception->getMessage(), 'direct_message_blocks')) throw $exception;
             }
         }
