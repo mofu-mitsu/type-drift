@@ -36,6 +36,8 @@ jobs:
           php-version: "8.3"
           coverage: none
           extensions: pdo_sqlite, pdo_pgsql
+      - name: Lint crash-drill helper
+        run: php -l tests/Support/live_writer_crash_worker.php
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
