@@ -41,7 +41,10 @@ class DirectMessageController extends Controller
             ->whereNull('b.deleted_at')
             // A reply-disabled bottle must never be backfilled into a DM or trigger a DM notification.
             ->where(function ($q) { $q->whereNull('b.allow_replies')->orWhere('b.allow_replies', true); })
-            ->when($userId, fn ($q) => $q->where('b.user_id', $userId), fn ($q) => $q->where('b.guest_key', $guestKey))
+            ->where(function ($owner) use ($userId, $guestKey) {
+                if ($userId) $owner->where('b.user_id', $userId);
+                if ($guestKey) $owner->orWhere('b.guest_key', $guestKey);
+            })
             ->select('r.id as reply_id', 'r.bottle_id', 'r.guest_key as npc_key', 'r.body', 'r.created_at as reply_created_at',
                 'b.user_id as bottle_user_id', 'b.guest_key as bottle_guest_key', 'b.body as bottle_body',
                 'b.mbti', 'b.socionics', 'b.enneagram', 'b.other_type', 'b.ai_character')
