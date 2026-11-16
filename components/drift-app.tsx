@@ -2058,8 +2058,9 @@ export default function DriftApp() {
         try { savedInteractionPrefs = JSON.parse(localStorage.getItem("type-drift-bottle-interaction-prefs") || "{}"); } catch {}
         const localInteraction = savedInteractionPrefs[String(row.id)] || {};
         // 自分の投稿にだけ残っている旧ローカル設定をDBへ同期し、他の閲覧者にも反映する。
-        const isAi = row.is_ai === true || row.is_ai === "true";
-        const isMine = row.is_mine === true || row.is_mine === "true";
+        const isAi = row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim());
+        // NPCのボトルは、APIの所有者フラグが誤っていてもユーザー自身の投稿として扱わない。
+        const isMine = !isAi && (row.is_mine === true || row.is_mine === "true");
         const dbAllowsLikes = ![false, "false", 0, "0", "f"].includes(row.allow_likes ?? row.allowLikes ?? true as any);
         const dbAllowsReplies = ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any);
         if (isMine && (Object.prototype.hasOwnProperty.call(localInteraction, "likes") || Object.prototype.hasOwnProperty.call(localInteraction, "replies"))) {
@@ -2171,8 +2172,8 @@ export default function DriftApp() {
           const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
           return {
             id: Number(row.id),
-            author: (row.is_ai === true || row.is_ai === "true") ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`,
-            emoji: (row.is_ai === true || row.is_ai === "true") ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌",
+            author: (row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim())) ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`,
+            emoji: (row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim())) ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌",
             type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`,
             mbti: row.mbti || "未設定",
             socionics: row.socionics || "未設定",
@@ -2188,7 +2189,7 @@ export default function DriftApp() {
             aiLikers: Array.isArray(row.ai_likers) ? row.ai_likers.map(String) : [],
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
-            ai: (row.is_ai === true || row.is_ai === "true") ? String(row.ai_character || "AI") : undefined, ai_character: row.ai_character || undefined, mine: row.is_mine === true || row.is_mine === "true",
+            ai: (row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim())) ? String(row.ai_character || "AI") : undefined, ai_character: row.ai_character || undefined, mine: !(row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim())) && (row.is_mine === true || row.is_mine === "true"),
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
@@ -3803,7 +3804,7 @@ export default function DriftApp() {
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
   const deleteBottle = async (bottle: Bottle) => {
-    if (!bottle.mine) return;
+    if (!bottle.mine || bottle.ai || bottle.ai_character || bottle.id <= 0) return;
     const response = await apiFetch(`/api/bottles/${bottle.id}`, { method: "DELETE", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
     if (!response.ok) { setPlazaToast("この端末の投稿として確認できないため削除できません"); return; }
     setBottles(items => items.filter(item => item.id !== bottle.id));
