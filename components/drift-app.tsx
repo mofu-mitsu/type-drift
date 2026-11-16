@@ -3346,18 +3346,32 @@ export default function DriftApp() {
       ].filter(Boolean).join(" · ");
       const senderSnapshot = last.senderProfile;
       const recipientSnapshot = last.recipientProfile;
-      const messageIdentity = last.isMine
-        ? [cleanDmIdentity(recipientSnapshot?.mbti), cleanDmIdentity(recipientSnapshot?.socionics), cleanDmIdentity(recipientSnapshot?.enneagram), cleanDmIdentity(recipientSnapshot?.otherType)].filter(Boolean).join(" · ")
-        : [cleanDmIdentity(last.senderIdentity?.mbti) || cleanDmIdentity(senderSnapshot?.mbti), cleanDmIdentity(last.senderIdentity?.socionics) || cleanDmIdentity(senderSnapshot?.socionics), cleanDmIdentity(last.senderIdentity?.enneagram) || cleanDmIdentity(senderSnapshot?.enneagram), cleanDmIdentity(last.senderIdentity?.otherType) || cleanDmIdentity(senderSnapshot?.otherType)].filter(Boolean).join(" · ");
+      const senderIdentity = [
+        cleanDmIdentity(last.senderIdentity?.mbti) || cleanDmIdentity(senderSnapshot?.mbti),
+        cleanDmIdentity(last.senderIdentity?.socionics) || cleanDmIdentity(senderSnapshot?.socionics),
+        cleanDmIdentity(last.senderIdentity?.enneagram) || cleanDmIdentity(senderSnapshot?.enneagram),
+        cleanDmIdentity(last.senderIdentity?.otherType) || cleanDmIdentity(senderSnapshot?.otherType),
+      ].filter(Boolean).join(" · ");
+      const recipientIdentity = [
+        cleanDmIdentity(recipientSnapshot?.mbti),
+        cleanDmIdentity(recipientSnapshot?.socionics),
+        cleanDmIdentity(recipientSnapshot?.enneagram),
+        cleanDmIdentity(recipientSnapshot?.otherType),
+      ].filter(Boolean).join(" · ");
+      // 自分がボトル主なら、受信者フラグの誤判定に引きずられず送信者本人の自認だけを見る。
+      // ボトル主の自認（bottle_type / recipient_profile）を返信者へ流用しない。
+      const messageIdentity = originalBottle?.mine ? senderIdentity : (last.isMine ? recipientIdentity : senderIdentity);
       // ボトル主の自認と、返信してきた人の自認を混同しない。
       // 自分が送ったメッセージの相手は元ボトルの主。受信メッセージの相手情報は送信者スナップショットだけから決める。
       const threadNpcLabel = `${thread.targetId} ${thread.name} ${directMessages.filter(message => message.threadId === thread.targetId).map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
       const isNpc = /ai:darling|ダーリンちゃん/.test(threadNpcLabel) || /ai:lsi-worm|LSI芋虫/.test(threadNpcLabel);
       thread.type = isNpc
         ? (/ai:darling|ダーリンちゃん/.test(threadNpcLabel) ? "AI · ILI · 5w4" : "AI · LSI · 5w6")
-        : last.isMine
-          ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || "ボトル主への返信")
-          : (messageIdentity || "自認未設定");
+        : originalBottle?.mine
+          ? (messageIdentity || "自認未設定")
+          : last.isMine
+            ? (originalBottleIdentity || messageIdentity || "ボトル主への返信")
+            : (messageIdentity || "自認未設定");
     }
     return threads.sort((a, b) => {
       if (dmSortMode === "manual") {
