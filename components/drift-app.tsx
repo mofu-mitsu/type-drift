@@ -80,6 +80,12 @@ type DirectMessage = {
 };
 
 // AI/サーバーがJSON形式や壊れたJSONで保存した本文も、表示直前に必ず整形する。
+function hashReplyBody(bottleId: number, body: string): number {
+  let hash = bottleId || 1;
+  for (let index = 0; index < body.length; index++) hash = (hash * 31 + body.charCodeAt(index)) | 0;
+  return Math.abs(hash) || 1;
+}
+
 function normalizeDmBody(value: unknown, depth = 0): string {
   if (value == null) return "";
   if (typeof value === "object") {
@@ -3351,7 +3357,7 @@ export default function DriftApp() {
         ? (/ai:darling|ダーリンちゃん/.test(threadNpcLabel) ? "AI · ILI · 5w4" : "AI · LSI · 5w6")
         : last.isMine
           ? (originalBottleIdentity || messageIdentity || cleanDmIdentity(last.bottleType) || "ボトル主への返信")
-          : (messageIdentity || cleanDmIdentity(last.bottleType) || "自認未設定");
+          : (messageIdentity || "自認未設定");
     }
     return threads.sort((a, b) => {
       if (dmSortMode === "manual") {
@@ -3864,6 +3870,20 @@ export default function DriftApp() {
         for (const child of Array.isArray(row.children) ? row.children : []) visit(child, id);
       };
       for (const row of Array.isArray(data?.replies) ? data.replies : []) visit(row, row.parent_reply_id ? Number(row.parent_reply_id) : undefined);
+
+      // サーバー取得から漏れた場合でも、この端末で自分が書いたコメントは再表示する。
+      // 本文単位で照合し、サーバー側の保存済みコメントと二重表示しない。
+      let locallySavedBodies: string[] = [];
+      try {
+        const raw = localStorage.getItem("type-drift-my-replies");
+        const parsed = raw ? JSON.parse(raw) : {};
+        const stored = parsed && typeof parsed === "object" ? parsed[String(bottle.id)] : [];
+        if (Array.isArray(stored)) locallySavedBodies = stored.filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0);
+      } catch {}
+      for (const body of locallySavedBodies) {
+        if (flattened.some(item => item.body.trim() === body.trim())) continue;
+        flattened.push({ id: -Math.abs(hashReplyBody(bottle.id, body)), body, reaction: 0, author: "あなた", emoji: "💗" });
+      }
       setReplyItems(items => ({ ...items, [bottle.id]: flattened }));
 
       // Sync existing NPC comments from this bottle's actual reply thread into DMs.
