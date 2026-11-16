@@ -3764,7 +3764,9 @@ export default function DriftApp() {
             const recipientKey = saved.recipient_user_id != null ? `user:${saved.recipient_user_id}` : String(saved.recipient_guest_key || "");
             const isNpcMessage = senderKey.startsWith("ai:") || recipientKey.startsWith("ai:");
             return senderKey && recipientKey
-              ? `bottle-${Number(saved.bottle_id || selected.id)}${isNpcMessage ? "-npc-pair-" : "-pair-"}${[senderKey, recipientKey].sort().join("--")}`
+              ? (isNpcMessage
+                  ? `dm-pair-${[senderKey, recipientKey].sort().join("--")}`
+                  : `bottle-${Number(saved.bottle_id || selected.id)}-pair-${[senderKey, recipientKey].sort().join("--")}`)
               : String(saved.thread_id || `bottle-${selected.id}`);
           })(),
           sender: String(saved.sender_name || "あなた"), recipient: String(saved.recipient_name || "波間に漂うボトルの主（匿名）"),
@@ -3804,7 +3806,8 @@ export default function DriftApp() {
     window.dispatchEvent(new Event("type-drift:refresh-bottles"));
     // API由来の最新NPCボトルは、選択時の表示用フラグが欠ける場合があるため、作者名・ai_characterも確認する。
     // 本物のNPC投稿で、返信保存に成功した場合だけNPCに返答を依頼する。
-    // 返信設定が明示的にONのボトルだけ、NPC宛て呼びかけに応答させる。\n    if (response.ok && selected.allowReplies === true && (selected.ai || selected.ai_character)) { const darling = /ダーリン|🥺/.test(`${selected.author} ${selected.ai || ""} ${selected.ai_character || ""}`); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
+    // 返信設定が明示的にONのボトルだけ、NPC宛て呼びかけに応答させる。
+    if (response.ok && selected.allowReplies === true && (selected.ai || selected.ai_character)) { const darling = /ダーリン|🥺/.test(`${selected.author} ${selected.ai || ""} ${selected.ai_character || ""}`); void requestDmAiReply({ id: darling ? "darling" : "worm", name: selected.author, emoji: selected.emoji, type: selected.type, bottleInfo: { id: selected.id, text: selected.text, author: selected.author, type: selected.type } }, body); }
     logActivity(parentId ? "reply_to_reply" : "bottle_reply", { bodyLength: body.length, parentId: parentId || null }, { type: "bottle", id: selected.id });
   };
   const deleteBottle = async (bottle: Bottle) => {
