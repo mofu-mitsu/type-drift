@@ -569,12 +569,17 @@ export default function PlazaPanel({
               );
             }
 
-            const isCharacter = /ダーリンちゃん|LSI芋虫/.test(message.author);
+            const characterLabel = String(message.author || '');
+            const isDarlingCharacter = /ダーリンちゃん|ai:darling|🥺/i.test(characterLabel);
+            const isWormCharacter = /LSI芋虫|ai:lsi-worm|🐛/i.test(characterLabel);
+            const isCharacter = isDarlingCharacter || isWormCharacter;
             const isAi = message.kind === 'ai' || isCharacter;
-            // キャラクター名を優先してアイコンとAIラベルを固定する。
-            const avatarEmoji = isCharacter
-              ? (message.author.includes('芋虫') ? '🐛' : '🥺')
-              : (message.emoji || '◌');
+            // 表示名やプロフィールが欠落した配信でも、NPCのアイコンはキャラクターIDから固定する。
+            const avatarEmoji = isWormCharacter
+              ? '🐛'
+              : isDarlingCharacter
+                ? '🥺'
+                : (message.emoji || '◌');
             const messageProfile = !isCharacter ? onlineUsers.find(user => user.nickname === message.author) : undefined;
             const profileAvatar = messageProfile?.avatarUrl;
             const profileType = [messageProfile?.mbti || messageProfile?.identity?.mbti, messageProfile?.socionics || messageProfile?.identity?.socionics, messageProfile?.enneagram || messageProfile?.identity?.enneagram].filter(Boolean).join(" · ");
