@@ -31,5 +31,5 @@ jobs:
           path: backend/vendor
           key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
           restore-keys: composer-${{ runner.os }}-
-      - run: composer install --no-interaction --prefer-dist
+      - run: composer update laravel/reverb --with-all-dependencies --no-interaction --prefer-dist
       - run: php artisan test
