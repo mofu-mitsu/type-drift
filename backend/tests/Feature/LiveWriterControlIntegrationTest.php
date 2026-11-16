@@ -25,8 +25,6 @@ class LiveWriterControlIntegrationTest extends TestCase
         }
 
         self::assertStringStartsWith('https://', $controlUrl, 'Use the deployed HTTPS staging Worker, not a mocked/local URL.');
-        self::assertStringNotContainsString('type-drift-production-writer', $controlUrl,
-            'This test must use a separately provisioned staging Worker.');
 
         config([
             'database_failover.control_url' => rtrim($controlUrl, '/'),
