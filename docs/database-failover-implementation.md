@@ -51,7 +51,7 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [ ] Attach reusable lease middleware to every future database-writing queued job and audit scheduler/other services.
 - [x] Isolated writer routing tested against two disposable PostgreSQL instances; control-plane responses are mocked in this DB-routing test.
 - [x] Laravel request-exception path verifies lease release in `finally`; Worker tests verify transition exclusion and controlled release of an abandoned lease.
-- [ ] Full Worker-to-Laravel integration and hard-process-crash/DB-connection recovery drill.
+- [ ] Execute the newly added manual live-staging workflow (`live-writer-crash-recovery.yml`); the harness is committed but not yet run because staging secrets/Worker must be provisioned.
 - [x] Automated Laravel and Worker test suites executed successfully in GitHub Actions (including lease acquisition, fail-closed behavior, exception cleanup, transition exclusion, and epoch increment).
 - [ ] Recovery process for orphaned leases, validated with stopped process/DB connections.
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
