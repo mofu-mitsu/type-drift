@@ -1,9 +1,9 @@
 <?php
 
-namespace Tests\\Unit;
+namespace Tests\Unit;
 
-use App\\Support\\Database\\DatabaseFailoverPolicy;
-use PHPUnit\\Framework\\TestCase;
+use App\Support\Database\DatabaseFailoverPolicy;
+use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 class DatabaseFailoverPolicyTest extends TestCase
@@ -11,9 +11,8 @@ class DatabaseFailoverPolicyTest extends TestCase
     public function test_quota_error_triggers_immediate_failover_decision(): void
     {
         $policy = new DatabaseFailoverPolicy();
-        $exception = new RuntimeException('Compute quota exceeded for this project');
 
-        self::assertSame('quota', $policy->classify($exception));
+        self::assertSame('quota', $policy->classify(new RuntimeException('Compute quota exceeded for this project')));
         self::assertSame(
             DatabaseFailoverPolicy::SECONDARY,
             $policy->nextState(DatabaseFailoverPolicy::PRIMARY, 'quota', 1, 0, false),
@@ -23,9 +22,8 @@ class DatabaseFailoverPolicyTest extends TestCase
     public function test_transient_connection_error_requires_consecutive_failures(): void
     {
         $policy = new DatabaseFailoverPolicy();
-        $exception = new RuntimeException('could not connect to server', 0);
 
-        self::assertSame('transient', $policy->classify($exception));
+        self::assertSame('transient', $policy->classify(new RuntimeException('could not connect to server')));
         self::assertSame(
             DatabaseFailoverPolicy::PRIMARY,
             $policy->nextState(DatabaseFailoverPolicy::PRIMARY, 'transient', 1, 0, false),
@@ -39,9 +37,8 @@ class DatabaseFailoverPolicyTest extends TestCase
     public function test_sql_logic_error_does_not_trigger_failover(): void
     {
         $policy = new DatabaseFailoverPolicy();
-        $exception = new RuntimeException('SQLSTATE[23505]: unique violation');
 
-        self::assertSame('unrelated', $policy->classify($exception));
+        self::assertSame('unrelated', $policy->classify(new RuntimeException('SQLSTATE[23505]: unique violation')));
         self::assertSame(
             DatabaseFailoverPolicy::PRIMARY,
             $policy->nextState(DatabaseFailoverPolicy::PRIMARY, 'unrelated', 0, 0, false),
