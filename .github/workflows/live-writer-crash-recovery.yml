@@ -75,9 +75,10 @@ jobs:
               kill -9 "$child_pid" 2>/dev/null || true
               wait "$child_pid" 2>/dev/null || true
             fi
-            # Release only after the child process has stopped; never release a live writer lease.
+            # On failure, deliberately leave any orphan lease in place. An operator must verify
+            # the PostgreSQL backend is gone before manually releasing it.
             if [[ -n "$lease_id" ]]; then
-              curl --silent --show-error "${auth[@]}" -d "$(jq -nc --arg id "$lease_id" '{action:"release",leaseId:$id}')" "$control" >/dev/null || true
+              echo "::warning::Lease $lease_id was left blocking failover because recovery verification did not complete."
             fi
             rm -f "$child_log"
           }
@@ -116,7 +117,12 @@ jobs:
           [[ "$(jq -r '.error' /tmp/writer-prepare.json)" == "active_writes" ]] || { cat /tmp/writer-prepare.json; echo "::error::Cutover failed for an unexpected reason"; exit 1; }
 
           # The killed PHP process must have dropped its PostgreSQL backend and rolled back its open transaction.
-          remaining="$(psql "$selected_db" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_stat_activity WHERE pid = $backend_pid")"
+          remaining="1"
+          for attempt in $(seq 1 20); do
+            remaining="$(psql "$selected_db" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_stat_activity WHERE pid = $backend_pid")"
+            [[ "$remaining" == "0" ]] && break
+            sleep 1
+          done
           [[ "$remaining" == "0" ]] || { echo "::error::PostgreSQL backend $backend_pid is still alive; lease will not be released"; exit 1; }
 
           release_body="$(jq -nc --arg id "$lease_id" '{action:"release",leaseId:$id}')"
