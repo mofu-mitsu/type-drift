@@ -192,15 +192,27 @@ class BottleController extends Controller
 
     public function replies(Request $request, Bottle $bottle)
     {
-        // Reply bodies are visible only to the owner of the bottle. Counts remain public in the bottle feed.
+        // Counts are public, but reply bodies are private: the bottle owner can see all replies,
+        // while each reply author can see only their own replies on somebody else's bottle.
         $userId = $request->user()?->id;
         $guestKey = $userId ? null : $request->header('X-Guest-Key');
-        $isOwner = ($userId && $bottle->user_id === $userId)
-            || (!$userId && $guestKey && $bottle->guest_key === $guestKey);
-        if (!$isOwner) {
+        $isOwner = ($userId && (int) $bottle->user_id === (int) $userId)
+            || (!$userId && $guestKey && $bottle->guest_key && hash_equals($bottle->guest_key, $guestKey));
+        if ($isOwner) {
+            return response()->json(['replies' => $bottle->replies()->with(['reactions', 'children' => fn ($query) => $query->latest(), 'children.reactions'])->latest()->get()]);
+        }
+        if (!$userId && !$guestKey) {
             return response()->json(['replies' => []]);
         }
-        return response()->json(['replies' => $bottle->replies()->with(['reactions', 'children' => fn ($query) => $query->latest(), 'children.reactions'])->latest()->get()]);
+        $ownReplies = $bottle->replies()
+            ->when($userId, fn ($query) => $query->where('user_id', $userId), fn ($query) => $query->where('guest_key', $guestKey))
+            ->with('reactions')
+            ->latest()
+            ->get();
+        // If a reply was nested under somebody else's private reply, show the author's own
+        // reply as a root item rather than exposing its hidden parent or making it disappear.
+        $ownReplies->each(fn ($reply) => $reply->setAttribute('parent_reply_id', null));
+        return response()->json(['replies' => $ownReplies]);
     }
 
     public function reactToReply(Request $request, Reply $reply)
