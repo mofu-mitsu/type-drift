@@ -40,3 +40,12 @@ Do not enable Neon logical replication as the first solution: a live subscriber 
 - [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
 - [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
 - [ ] Enable only after staging validation.
+
+
+## Independent writer-control groundwork
+
+The new `cloudflare/database-control` Worker stores writer state in a single SQLite-backed Durable Object. The control record contains the current writer (`neon` or `supabase`), a monotonically increasing epoch, and a transition state. Mutations use a Durable Object storage transaction. The API requires a Worker secret and supports explicit prepare/commit/abort operations with expected-epoch checks, so concurrent stale control requests receive conflicts rather than silently overwriting newer state.
+
+This is only the independent control-plane primitive. It is not deployed and does not yet control Laravel routing. A Cloudflare epoch cannot retroactively stop an in-flight Laravel request from committing to its old database. Strict fencing still requires a tested write-boundary enforcement mechanism or a maintenance cutover that blocks new writes and drains all in-flight writers before committing the new writer epoch. Until that mechanism is integrated for API requests, queues, scheduled jobs, Reverb-related writers, and other write paths, automatic failover must remain disabled.
+
+The Worker is intentionally not connected to production. Its initial state defaults to Neon/epoch 1 only as a code default, not as proof of current production authority. The operator must initialize/verify it against the real active writer before any routing integration.
