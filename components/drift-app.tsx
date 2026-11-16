@@ -3052,10 +3052,19 @@ export default function DriftApp() {
           }),
         });
         const npcSaveData = await npcSaveResponse.json().catch(() => null);
-        if (npcSaveResponse.ok) npcSavedMessage = npcSaveData?.message || null;
-        else console.error("[Type Drift NPC DM] user message persistence failed", { status: npcSaveResponse.status, error: npcSaveData?.error });
+        if (!npcSaveResponse.ok || !npcSaveData?.message?.id) {
+          console.error("[Type Drift NPC DM] user message persistence failed", {
+            status: npcSaveResponse.status,
+            error: npcSaveData?.message || npcSaveData?.error || "No saved message returned",
+          });
+          setPlazaToast(`送信文を保存できませんでした（${npcSaveResponse.status}）。返信はまだ依頼していません`);
+          return false;
+        }
+        npcSavedMessage = npcSaveData.message;
       } catch (error) {
         console.error("[Type Drift NPC DM] user message persistence failed", error);
+        setPlazaToast("送信文を保存できませんでした。通信状態を確認してもう一度送ってね");
+        return false;
       }
     }
     const newMsg: DirectMessage = {
