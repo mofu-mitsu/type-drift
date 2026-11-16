@@ -112,11 +112,15 @@ class BottleController extends Controller
         $ownerGuestKey = $bottle->user_id ? 'user:'.$bottle->user_id : $bottle->guest_key;
         // A bottle addressed to an NPC starts a private conversation with that NPC,
         // not with the human who originally submitted the bottle.
-        $npcKey = preg_match('/ダーリンちゃん|ダーリン|🥺/u', (string) $bottle->body)
-            ? 'ai:darling'
-            : (preg_match('/LSI芋虫|芋虫|🐛/u', (string) $bottle->body) ? 'ai:lsi-worm' : null);
+        $npcCharacter = (string) ($bottle->ai_character ?? '');
+        // 本文に「LSI芋虫」などの語が含まれるだけでNPC宛てと判定しない。
+        // 実際にNPCとして登録されたボトルだけをNPC会話として扱う。
+        $isNpcBottle = (bool) $bottle->is_ai || $npcCharacter !== '';
+        $npcKey = $isNpcBottle
+            ? (preg_match('/ダーリン|🥺/u', $npcCharacter) ? 'ai:darling' : (preg_match('/芋虫|LSI|🐛/u', $npcCharacter) ? 'ai:lsi-worm' : null))
+            : null;
         $npcName = $npcKey === 'ai:darling' ? 'ダーリンちゃん' : ($npcKey === 'ai:lsi-worm' ? 'LSI芋虫' : null);
-        $isNpcConversation = $npcKey !== null;
+        $isNpcConversation = $isNpcBottle && $npcKey !== null;
         if ($isNpcConversation) $ownerGuestKey = $npcKey;
         $isOwnBottle = ($userId && $bottle->user_id && (int) $userId === (int) $bottle->user_id)
             || ($guestKey && $bottle->guest_key && hash_equals($bottle->guest_key, $guestKey));
@@ -155,7 +159,8 @@ class BottleController extends Controller
 
         // Broadcast only after the reply is committed so refreshes can retrieve it.
         $this->broadcastSafely(new BottleActivityUpdated($bottle->id, 'reply'));
-        $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reply', (string) $bottle->id, 'あなたのボトルに返信が届きました。', $userId, $guestKey);
+        // NPC宛ての返信はNPC会話として扱い、誤ってボトル所有者通知を発生させない。
+        if (!$isNpcConversation) $this->notifyOwner($bottle->user_id, $bottle->guest_key, 'bottle_reply', (string) $bottle->id, 'あなたのボトルに返信が届きました。', $userId, $guestKey);
         if (!empty($data['parent_reply_id'])) {
             $parent = Reply::find($data['parent_reply_id']);
             $this->notifyOwner($parent?->user_id, $parent?->guest_key, 'reply_reply', (string) $reply->id, 'あなたの返信に、さらに返事が届きました。', $userId, $guestKey);
