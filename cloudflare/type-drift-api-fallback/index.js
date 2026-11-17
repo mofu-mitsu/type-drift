@@ -6221,13 +6221,17 @@ var index_default = {
       // TEMPORARY diagnostic (Phase 3 switch debugging, 2026-11-17): tries the
       // Supabase driver directly (no fallback) and reports the error message.
       // Remove after the switch is verified.
-      if (!env.SUPABASE_DATABASE_URL) return json({ status: "missing-env" }, 200, env, request);
+      const target = url.searchParams.get("target") || "supa";
+      let connStr = env.SUPABASE_DATABASE_URL;
+      if (target === "neon") connStr = env.DATABASE_URL;
+      if (target === "supa-session" && connStr) { const u = new URL(connStr); u.port = "5432"; connStr = u.toString(); }
+      if (!connStr) return json({ status: "missing-env", target }, 200, env, request);
       try {
-        const d = pgwMakeDriver(env.SUPABASE_DATABASE_URL);
+        const d = pgwMakeDriver(connStr);
         await d`SELECT 1`;
-        return json({ status: "ok" }, 200, env, request);
+        return json({ status: "ok", target, diag: pgwLastDiag }, 200, env, request);
       } catch (e) {
-        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, trail: (e && e.trail) || pgw.getTrail(), diag: pgwLastDiag, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
+        return json({ status: "error", target, name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, trail: (e && e.trail) || pgw.getTrail(), diag: pgwLastDiag, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
       }
     }
     if (path === "/api/health") {
