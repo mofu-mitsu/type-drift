@@ -5850,17 +5850,22 @@ async function scramClientFinal(reader, transport, state, password, serverFirstR
 }
 
 // ---------- connection ----------
+let pgwTrail = [];
 async function connectPg(transport, connInfo) {
+  pgwTrail = ["connect"];
   const reader = new MessageReader(transport);
   await transport.write(startupFrame({ user: connInfo.user, database: connInfo.database, client_encoding: "UTF8" }));
+  pgwTrail.push("startup-sent");
   let scramState = null;
   let scramVerify = null;
   let ready = false;
   while (!ready) {
     const msg = await reader.readMessage();
+    pgwTrail.push("msg:" + msg.type);
     if (msg.type === "R") {
       const cur = new Cursor(msg.payload);
       const code = cur.int32();
+      pgwTrail.push("auth:" + code);
       if (code === 0) {
         // AuthenticationOk (may follow SASL final verification below)
         if (scramVerify) { /* server-final arrives as SASLContinue before this */ }
@@ -5889,6 +5894,7 @@ async function connectPg(transport, connInfo) {
     } else if (msg.type === "E") {
       throw pgError(msg.payload);
     } else if (msg.type === "Z") {
+      pgwTrail.push("ready");
       ready = true;
     }
     // S (ParameterStatus), K (BackendKeyData), N (Notice) are ignored during startup
@@ -5903,6 +5909,7 @@ async function connectPg(transport, connInfo) {
       } catch (e) {
         // SQL errors (ErrorResponse) leave the connection usable; anything else kills it.
         if (!e || e.isPgError !== true) session.dead = true;
+        if (e && !e.trail) e.trail = pgwTrail.join(",");
         throw e;
       }
     },
@@ -5934,6 +5941,7 @@ async function runExtendedQuery(reader, transport, text, values) {
     frame("S", new Uint8Array(0)),
   ]));
 
+  pgwTrail.push("query-sent");
   let fields = null;
   const rows = [];
   let error = null;
@@ -6043,7 +6051,7 @@ function makePgSql(openTransport) {
   };
 }
 
-  return { makePgSql };
+  return { makePgSql, getTrail: () => pgwTrail.join(",") };
 })();
 
 async function pgwWorkerTransport(info) {
@@ -6220,7 +6228,7 @@ var index_default = {
         await d`SELECT 1`;
         return json({ status: "ok" }, 200, env, request);
       } catch (e) {
-        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
+        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, trail: (e && e.trail) || pgw.getTrail(), message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
       }
     }
     if (path === "/api/health") {
