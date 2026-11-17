@@ -941,7 +941,7 @@ export default function DriftApp() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("type-drift-dm-profile-cache");
+      const raw = localStorage.getItem("type-drift-dm-profile-cache-v2");
       if (raw) setDmProfileCache(JSON.parse(raw));
       const hiddenRaw = localStorage.getItem("type-drift-dm-hidden-at");
       if (hiddenRaw) setDmHiddenAt(JSON.parse(hiddenRaw));
@@ -957,13 +957,13 @@ export default function DriftApp() {
   useEffect(() => {
     if (!plazaUsers.length) return;
     try {
-      const raw = localStorage.getItem("type-drift-dm-profile-cache");
+      const raw = localStorage.getItem("type-drift-dm-profile-cache-v2");
       const cached: Record<string, PlazaUser> = raw ? JSON.parse(raw) : {};
       for (const user of plazaUsers) {
         if (user.sessionKey) cached[user.sessionKey] = user;
         if (user.nickname) cached[user.nickname] = user;
       }
-      localStorage.setItem("type-drift-dm-profile-cache", JSON.stringify(cached));
+      localStorage.setItem("type-drift-dm-profile-cache-v2", JSON.stringify(cached));
       setDmProfileCache(cached);
     } catch {}
   }, [plazaUsers]);
@@ -1947,37 +1947,38 @@ export default function DriftApp() {
   useEffect(() => {
     if (!directMessages.length) return;
     try {
-      const raw = localStorage.getItem("type-drift-dm-profile-cache");
+      const raw = localStorage.getItem("type-drift-dm-profile-cache-v2");
       const cached: Record<string, PlazaUser> = raw ? JSON.parse(raw) : {};
       const saveSnapshot = (name: string, profile?: DirectMessage["senderProfile"]) => {
         if (!name || !profile) return;
-        const existing = cached[name] as (PlazaUser & { bio?: string; links?: ProfileLink[]; otherType?: string }) | undefined;
         const hasUsefulData = Boolean(profile.nickname || profile.mbti || profile.socionics || profile.enneagram ||
           profile.otherType || profile.bio || profile.profileImageUrl || profile.links?.length);
         if (!hasUsefulData) return;
-        const mbti = profile.mbti || existing?.mbti || existing?.identity?.mbti || "";
-        const socionics = profile.socionics || existing?.socionics || existing?.identity?.socionics || "";
-        const enneagram = profile.enneagram || existing?.enneagram || existing?.identity?.enneagram || "";
-        const otherType = profile.otherType || existing?.otherType || existing?.identity?.otherType || "";
+        // 名前キーには別人（全員「匿名の誰か」等）が集約されうるため、既存エントリからの
+        // 項目単位の補完はしない。補完すると別人の自認が項目ごとに混ざった混成
+        // プロフィールができる。スナップショットは丸ごと最新で置き換える。
+        const mbti = profile.mbti || "";
+        const socionics = profile.socionics || "";
+        const enneagram = profile.enneagram || "";
+        const otherType = profile.otherType || "";
         cached[name] = {
-          ...(existing || {}),
-          nickname: profile.nickname || existing?.nickname || name,
+          nickname: profile.nickname || name,
           mbti,
           socionics,
           enneagram,
           otherType,
-          identity: { ...(existing?.identity || {}), mbti, socionics, enneagram, otherType },
-          bio: profile.bio || existing?.bio || "",
-          links: profile.links?.length ? profile.links as ProfileLink[] : existing?.links || [],
-          avatarUrl: profile.profileImageUrl || existing?.avatarUrl || "",
-          emoji: profile.emoji || existing?.emoji || "◌",
+          identity: { mbti, socionics, enneagram, otherType },
+          bio: profile.bio || "",
+          links: profile.links?.length ? profile.links as ProfileLink[] : [],
+          avatarUrl: profile.profileImageUrl || "",
+          emoji: profile.emoji || "◌",
         } as PlazaUser;
       };
       for (const message of directMessages) {
         saveSnapshot(message.sender, message.senderProfile);
         saveSnapshot(message.recipient, message.recipientProfile);
       }
-      localStorage.setItem("type-drift-dm-profile-cache", JSON.stringify(cached));
+      localStorage.setItem("type-drift-dm-profile-cache-v2", JSON.stringify(cached));
       setDmProfileCache(cached);
     } catch {}
   }, [directMessages]);
@@ -2258,7 +2259,7 @@ export default function DriftApp() {
         if (typeof state.profileImage === "string") setProfileImage(state.profileImage);
       }
       // DM相手のプロフィールを復元（オンライン状態に依存せず「プロフィールを見る」に利用）。
-      const savedProfiles = localStorage.getItem("type-drift-dm-profile-cache");
+      const savedProfiles = localStorage.getItem("type-drift-dm-profile-cache-v2");
       if (savedProfiles) {
         try {
           const parsed = JSON.parse(savedProfiles);
@@ -2942,7 +2943,10 @@ export default function DriftApp() {
     const hasMatchingBottle = Boolean(target.bottleInfo?.id && targetBottleId === target.bottleInfo.id);
     const targetUser = plazaUsers.find(item => item.sessionKey === target.id) ||
       plazaUsers.find(item => item.nickname === target.name && item.nickname !== nickname) ||
-      dmProfileCache[target.id] || dmProfileCache[target.name];
+      dmProfileCache[target.id];
+    // dmProfileCache[target.name] は使わない。名前キーは別人のスナップショットと
+    // 混ざりうるため、引けない場合は recipient_profile を送らず Worker 側の
+    // スレッド文脈（context）由来のプロフィールに委ねる。
     const senderProfileSnapshot = {
       nickname: nickname || "",
       mbti: profileIdentity.mbti || "", socionics: profileIdentity.socionics || "",

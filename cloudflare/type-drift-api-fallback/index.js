@@ -5919,7 +5919,8 @@ var index_default = {
         const recipientProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${recipientKey} LIMIT 1`;
         const senderProfile = b.sender_profile && typeof b.sender_profile === "object" ? b.sender_profile : (senderProfileRows[0] || {});
         const contextProfile = context ? (contextIsSender ? context.recipient_profile : context.sender_profile) : null;
-        const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (contextProfile && typeof contextProfile === "object" ? contextProfile : (recipientProfileRows[0] || {nickname:recipientName}));
+        const contextHasIdentity = contextProfile && typeof contextProfile === "object" && Boolean(contextProfile.mbti || contextProfile.socionics || contextProfile.enneagram || contextProfile.other_type || contextProfile.otherType || contextProfile.nickname);
+        const recipientProfile = contextHasIdentity ? contextProfile : (b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (contextProfile && typeof contextProfile === "object" ? contextProfile : (recipientProfileRows[0] || {nickname:recipientName})));
         const senderSnapshot = JSON.stringify(senderProfile);
         const recipientSnapshot = JSON.stringify(recipientProfile);
         const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
