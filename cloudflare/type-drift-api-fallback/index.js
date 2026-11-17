@@ -6057,9 +6057,11 @@ function makePgSql(openTransport) {
 var pgwLastDiag = {};
 async function pgwWorkerTransport(info) {
   pgwLastDiag = { host: info.host, port: info.port, user: info.user, database: info.database, pwLen: info.password ? info.password.length : 0 };
-  // PostgreSQL TLS negotiation: plain TCP, SSLRequest, expect 'S', then startTls().
-  // (Supavisor rejects an immediate TLS handshake.)
-  let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "starttls", allowHalfOpen: true });
+  // PostgreSQL TLS negotiation mirroring pg-cloudflare's known-working flow:
+  // connect with secureTransport:"starttls", write SSLRequest, read the 'S'
+  // byte, release both locks, startTls(), immediately re-acquire the streams.
+  // Deliberately does NOT await socket.opened (pg-cloudflare never does).
+  let socket = connect(info.host + ":" + info.port, { secureTransport: "starttls" });
   {
     const reader = socket.readable.getReader();
     const writer = socket.writable.getWriter();
@@ -6076,13 +6078,6 @@ async function pgwWorkerTransport(info) {
     if (!first.value || first.value[0] !== 0x53) throw new Error("pg: server refused TLS upgrade");
   }
   socket = socket.startTls();
-  try {
-    await socket.opened;
-  } catch (e) {
-    const err = new Error("tls-opened: " + String((e && e.message) || e).slice(0, 150));
-    err.stage = "tls-opened";
-    throw err;
-  }
   const reader = socket.readable.getReader();
   const writer = socket.writable.getWriter();
   return {
