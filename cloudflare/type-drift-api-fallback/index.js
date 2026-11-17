@@ -6046,8 +6046,24 @@ function makePgSql(openTransport) {
   return { makePgSql };
 })();
 
-function pgwWorkerTransport(info) {
-  const socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "on", allowHalfOpen: false });
+async function pgwWorkerTransport(info) {
+  // PostgreSQL TLS negotiation: plain TCP, SSLRequest, expect 'S', then startTls().
+  // (Supavisor rejects an immediate TLS handshake.)
+  let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "off", allowHalfOpen: false });
+  {
+    const reader = socket.readable.getReader();
+    const writer = socket.writable.getWriter();
+    const req = new Uint8Array(8);
+    const dv = new DataView(req.buffer);
+    dv.setInt32(0, 8);
+    dv.setInt32(4, 80877103);
+    await writer.write(req);
+    const first = await reader.read();
+    try { reader.releaseLock(); } catch { /* ignore */ }
+    try { writer.releaseLock(); } catch { /* ignore */ }
+    if (!first.value || first.value[0] !== 0x53) throw new Error("pg: server refused TLS upgrade");
+  }
+  socket = socket.startTls();
   const reader = socket.readable.getReader();
   const writer = socket.writable.getWriter();
   return {
