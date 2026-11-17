@@ -77,6 +77,8 @@ type DirectMessage = {
   senderUserId?: number | null;
   recipientUserId?: number | null;
   isAiError?: boolean;
+  reactionTotal?: number;
+  myReactionLevel?: number;
 };
 
 // AI/サーバーがJSON形式や壊れたJSONで保存した本文も、表示直前に必ず整形する。
@@ -888,7 +890,7 @@ export default function DriftApp() {
           senderUserId: matchedNpcKey ? null : (row.sender_user_id == null ? null : Number(row.sender_user_id)), recipientUserId: row.recipient_user_id == null ? null : Number(row.recipient_user_id),
           sender: matchedNpcKey === "ai:darling" ? "ダーリンちゃん" : matchedNpcKey === "ai:lsi-worm" ? "LSI芋虫" : String(row.sender_name || "匿名の誰か"), recipient: matchedNpcKey ? "あなた" : String(row.recipient_name || "匿名のボトル主（匿名）"),
           targetEmoji: npcKey === "ai:darling" ? "🥺" : npcKey === "ai:lsi-worm" ? "🐛" : "🌊", targetType: matchedNpcKey ? (matchedNpcKey === "ai:darling" ? "AI · ILI · 5w4" : "AI · LSI · 5w6") : row.bottle_type || "ボトルへの返信", body: normalizeDmBody(row.body || ""),
-          createdAt: new Date(row.created_at).getTime() || Date.now(), read: asBoolean(row.read), isMine: asBoolean(row.is_mine),
+          createdAt: new Date(row.created_at).getTime() || Date.now(), read: asBoolean(row.read), isMine: asBoolean(row.is_mine), reactionTotal: Number(row.reaction_total || 0), myReactionLevel: Number(row.my_reaction_level || 0),
           bottleId: row.bottle_id ? Number(row.bottle_id) : undefined, bottleSnippet: row.bottle_snippet || undefined,
           bottleAuthor: row.bottle_author || undefined, bottleType: row.bottle_type || undefined,
           senderIdentity: matchedNpcKey ? (matchedNpcKey === "ai:darling" ? { mbti: "INTP", socionics: "ILI", enneagram: "5w4", otherType: "LVEF" } : { mbti: "INTJ", socionics: "LSI", enneagram: "5w6", otherType: "FVLE" }) : row.sender_identity && typeof row.sender_identity === "object" ? {
@@ -3539,6 +3541,8 @@ export default function DriftApp() {
         ? `自認相談室のコメントに${items.length}件のリアクションが届きました`
         : type === "reply_reaction"
           ? (items.length === 1 && items[0].message ? items[0].message : `返信に${items.length}件のリアクションが届きました`)
+        : type === "direct_message_reaction"
+          ? (items.length === 1 && items[0].message ? items[0].message : `メッセージに${items.length}件のいいねが届きました`)
           : `ボトルに${items.length}件のいいねが届きました`,
       created_at: items.reduce((latest, item) => item.created_at > latest ? item.created_at : latest, items[0].created_at),
     }));
@@ -3930,6 +3934,21 @@ export default function DriftApp() {
     setBottles(items => items.filter(item => item.id !== bottle.id));
     setSelected(null);
     setPlazaToast("ボトルを海から回収しました");
+  };
+  const reactToDirectMessage = async (message: DirectMessage) => {
+    if (!message.serverId) return;
+    setDirectMessages(current => current.map(item => item.id === message.id ? { ...item, reactionTotal: (item.reactionTotal || 0) + 1, myReactionLevel: (item.myReactionLevel || 0) + 1 } : item));
+    try {
+      const response = await apiFetch(`/api/direct-messages/${message.serverId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
+      if (!response.ok) {
+        setDirectMessages(current => current.map(item => item.id === message.id ? { ...item, reactionTotal: Math.max(0, (item.reactionTotal || 1) - 1), myReactionLevel: Math.max(0, (item.myReactionLevel || 1) - 1) } : item));
+        if (response.status !== 404) setPlazaToast(`メッセージへの反応を保存できませんでした（${response.status}）`);
+        return;
+      }
+      logActivity("direct_message_reaction", {}, { type: "direct_message", id: message.serverId });
+    } catch {
+      setDirectMessages(current => current.map(item => item.id === message.id ? { ...item, reactionTotal: Math.max(0, (item.reactionTotal || 1) - 1), myReactionLevel: Math.max(0, (item.myReactionLevel || 1) - 1) } : item));
+    }
   };
   const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const response = await apiFetch(`/api/replies/${replyId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`返信への反応を保存できませんでした（${response.status}）`); logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
   const openBottle = async (bottle: Bottle) => {
@@ -5801,6 +5820,12 @@ export default function DriftApp() {
                             )}
                             <div className="dm-bubble-content">
                               {normalizeDmBody(msg.body)}
+                              {(Boolean(msg.serverId) || (msg.reactionTotal || 0) > 0) && (
+                                <div className="dm-reaction-row">
+                                  {!msg.isMine && msg.serverId && <button type="button" className={`dm-reaction-btn ${(msg.myReactionLevel || 0) > 0 ? "active" : ""}`} onClick={() => void reactToDirectMessage(msg)} aria-label="このメッセージにいいね">♡</button>}
+                                  {(msg.reactionTotal || 0) > 0 && <span className="dm-reaction-count">❤ {msg.reactionTotal}</span>}
+                                </div>
+                              )}
                               {msg.isAiError && <button type="button" className="dm-ai-error-report" onClick={() => window.dispatchEvent(new CustomEvent("type-drift:open-feedback", { detail: { category: "AIエラー", body: `[AI応答エラー]\n${msg.body}` } }))}>このエラーを意見箱へ送る</button>}
                             </div>
                             <div className="dm-bubble-meta">

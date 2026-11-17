@@ -5710,6 +5710,7 @@ var index_default = {
       const replyReactionMatch = path.match(/^\/api\/replies\/(\d+)\/reactions$/);
       const notificationMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
       const directMessageReadMatch = path.match(/^\/api\/direct-messages\/(\d+)\/read$/);
+      const directMessageReactionMatch = path.match(/^\/api\/direct-messages\/(\d+)\/reactions$/);
       if (path === "/api/bottles" && method === "GET") {
         const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
         const offset = (page - 1) * 20;
@@ -5971,7 +5972,8 @@ var index_default = {
             (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
             VALUES (${npcKey},${key},${threadId},${npcName},${clean((recipientProfileRows[0] || {}).nickname,24) || "あなた"},${reply.body},${bottleId},${String(reply.bottle_body || "").slice(0,2500)},${npcName},${bottleType},${senderProfile}::jsonb,${recipientProfile}::jsonb,${reply.reply_created_at},NOW())`;
         }
-        const rows = await sql`SELECT dm.*, (SELECT r.guest_key FROM replies r WHERE r.bottle_id = dm.bottle_id AND r.body = dm.body AND r.guest_key IN ('ai:darling','ai:lsi-worm') ORDER BY r.created_at DESC LIMIT 1) AS matched_npc_key, p.nickname AS sender_nickname, p.mbti AS sender_mbti, p.socionics AS sender_socionics, p.enneagram AS sender_enneagram, p.other_type AS sender_other_type, p.bio AS sender_bio, p.links AS sender_links, p.profile_image_url AS sender_image, rp.nickname AS recipient_nickname, rp.mbti AS recipient_mbti, rp.socionics AS recipient_socionics, rp.enneagram AS recipient_enneagram, rp.other_type AS recipient_other_type, rp.bio AS recipient_bio, rp.links AS recipient_links, rp.profile_image_url AS recipient_image FROM direct_messages dm LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key) LEFT JOIN profiles rp ON (rp.guest_key = dm.recipient_guest_key OR ('user:' || rp.user_id::text) = dm.recipient_guest_key) WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key} ORDER BY dm.created_at DESC LIMIT 200`;
+        await sql`CREATE TABLE IF NOT EXISTS direct_message_reactions (id BIGSERIAL PRIMARY KEY, message_id BIGINT NOT NULL REFERENCES direct_messages(id) ON DELETE CASCADE, guest_key TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (message_id, guest_key))`;
+        const rows = await sql`SELECT dm.*, (SELECT COALESCE(SUM(dmr.level),0)::int FROM direct_message_reactions dmr WHERE dmr.message_id=dm.id) AS reaction_total, COALESCE((SELECT dmr.level FROM direct_message_reactions dmr WHERE dmr.message_id=dm.id AND dmr.guest_key=${key}),0)::int AS my_reaction_level, (SELECT r.guest_key FROM replies r WHERE r.bottle_id = dm.bottle_id AND r.body = dm.body AND r.guest_key IN ('ai:darling','ai:lsi-worm') ORDER BY r.created_at DESC LIMIT 1) AS matched_npc_key, p.nickname AS sender_nickname, p.mbti AS sender_mbti, p.socionics AS sender_socionics, p.enneagram AS sender_enneagram, p.other_type AS sender_other_type, p.bio AS sender_bio, p.links AS sender_links, p.profile_image_url AS sender_image, rp.nickname AS recipient_nickname, rp.mbti AS recipient_mbti, rp.socionics AS recipient_socionics, rp.enneagram AS recipient_enneagram, rp.other_type AS recipient_other_type, rp.bio AS recipient_bio, rp.links AS recipient_links, rp.profile_image_url AS recipient_image FROM direct_messages dm LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key) LEFT JOIN profiles rp ON (rp.guest_key = dm.recipient_guest_key OR ('user:' || rp.user_id::text) = dm.recipient_guest_key) WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key} ORDER BY dm.created_at DESC LIMIT 200`;
         return json({ messages: rows.reverse().map((row) => {
           const senderProfile = row.sender_profile || {nickname:row.sender_nickname || row.sender_name || "",mbti:row.sender_mbti || "",socionics:row.sender_socionics || "",enneagram:row.sender_enneagram || "",other_type:row.sender_other_type || "",bio:row.sender_bio || "",links:row.sender_links || [],profile_image_url:row.sender_image || ""};
           const recipientProfile = row.recipient_profile || {nickname:row.recipient_nickname || row.recipient_name || "",mbti:row.recipient_mbti || "",socionics:row.recipient_socionics || "",enneagram:row.recipient_enneagram || "",other_type:row.recipient_other_type || "",bio:row.recipient_bio || "",links:row.recipient_links || [],profile_image_url:row.recipient_image || ""};
@@ -5980,13 +5982,35 @@ var index_default = {
            const canonicalThreadId = isNpcMessage && participants.length === 2
              ? (row.bottle_id ? `bottle-${row.bottle_id}-npc-pair-${participants.join("--")}` : "dm-pair-" + participants.join("--"))
              : row.thread_id;
-           return {id:row.id,thread_id:canonicalThreadId,matched_npc_key:row.matched_npc_key || null,sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:row.sender_guest_key === key,read:Boolean(row.read_at)};
+           return {id:row.id,thread_id:canonicalThreadId,matched_npc_key:row.matched_npc_key || null,sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:row.sender_guest_key === key,read:Boolean(row.read_at),reaction_total:Number(row.reaction_total || 0),my_reaction_level:Number(row.my_reaction_level || 0)};
         }) }, 200, env, request);
       }
       if (directMessageReadMatch && method === "POST") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         await sql`UPDATE direct_messages SET read_at=NOW(),updated_at=NOW() WHERE id=${Number(directMessageReadMatch[1])} AND recipient_guest_key=${key} AND read_at IS NULL`;
         return json({ ok: true }, 200, env, request);
+      }
+      if (directMessageReactionMatch && method === "POST") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        const id = Number(directMessageReactionMatch[1]);
+        await sql`CREATE TABLE IF NOT EXISTS direct_message_reactions (id BIGSERIAL PRIMARY KEY, message_id BIGINT NOT NULL REFERENCES direct_messages(id) ON DELETE CASCADE, guest_key TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (message_id, guest_key))`;
+        const msgRows = await sql`SELECT id, sender_guest_key, recipient_guest_key, bottle_id FROM direct_messages WHERE id=${id} LIMIT 1`;
+        const msg = msgRows[0];
+        if (!msg) return json({ message: "Message not found." }, 404, env, request);
+        if (String(msg.sender_guest_key) === key) return json({ message: "自分のメッセージにはリアクションできません。" }, 422, env, request);
+        if (String(msg.recipient_guest_key) !== key) return json({ message: "このスレッドの参加者だけがリアクションできます。" }, 403, env, request);
+        const existed = await sql`SELECT 1 FROM direct_message_reactions WHERE message_id=${id} AND guest_key=${key} LIMIT 1`;
+        const rows = await sql`WITH updated AS (UPDATE direct_message_reactions SET level=level+1,updated_at=NOW() WHERE message_id=${id} AND guest_key=${key} RETURNING level)
+          INSERT INTO direct_message_reactions (message_id,guest_key,level,created_at,updated_at) SELECT ${id},${key},1,NOW(),NOW() WHERE NOT EXISTS (SELECT 1 FROM updated) RETURNING level`;
+        const level = rows.length ? rows[0].level : (await sql`SELECT level FROM direct_message_reactions WHERE message_id=${id} AND guest_key=${key} ORDER BY id DESC LIMIT 1`)[0]?.level;
+        const totals = await sql`SELECT COALESCE(SUM(level),0)::int AS total FROM direct_message_reactions WHERE message_id=${id}`;
+        if (!existed.length) {
+          const authorKey = String(msg.sender_guest_key || "");
+          if (authorKey && !authorKey.startsWith("ai:")) {
+            await sql`INSERT INTO notifications (guest_key,type,message,bottle_id,reply_id,created_at,updated_at) VALUES (${authorKey},'direct_message_reaction','あなたのメッセージにいいねが届きました。',${msg.bottle_id ?? null},NULL,NOW(),NOW())`;
+          }
+        }
+        return json({ reaction: { message_id: id, level, total: totals[0]?.total ?? level } }, 200, env, request);
       }
       if (bottleMatch && method === "GET" && bottleMatch[2] === "replies") {
         const rows = key ? await sql`SELECT r.* FROM replies r JOIN bottles b ON b.id=r.bottle_id WHERE r.bottle_id=${Number(bottleMatch[1])} AND b.guest_key=${key} AND r.deleted_at IS NULL ORDER BY r.created_at DESC` : [];
