@@ -1,3 +1,4 @@
+import { connect } from "cloudflare:sockets";
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -5605,13 +5606,473 @@ var nullable = /* @__PURE__ */ __name((value) => clean(value, 300) || null, "nul
 var fail = /* @__PURE__ */ __name((error) => {
   console.error("type-drift-api fallback error", error);
 }, "fail");
+
+// ================= Postgres wire client for Supabase (Phase 3 failover) =================
+// The Neon driver (ys) can only talk to Neon. dbSql() below returns this pg
+// client instead when DATABASE_URL points at Supabase, so switching databases
+// is just a secret change. Validated against a real PostgreSQL engine + RFC
+// 7677 SCRAM vectors before deployment (2026-11-17).
+const pgw = (() => {
+// pg-wire-client (inlined for the Worker bundle)
+// Minimal PostgreSQL wire-protocol client for Cloudflare Workers (cloudflare:sockets)
+// and Node (tests). Implements: startup, SCRAM-SHA-256 + cleartext auth, extended
+// query protocol (unnamed statement), text-format results with Neon-driver-like
+// type parsing. One connection per query (mirrors Neon HTTP driver semantics).
+//
+// Transport contract: { write(Uint8Array): Promise<void>, read(): Promise<Uint8Array|null> }
+// read() returns the next chunk (any size); null on EOF.
+
+const te = new TextEncoder();
+const td = new TextDecoder();
+
+function b64encode(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+function b64decode(str) {
+  const bin = atob(str);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function sha256(data) {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+}
+async function hmacSha256(key, data) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, data));
+}
+async function pbkdf2Sha256(password, salt, iterations) {
+  const k = await crypto.subtle.importKey("raw", te.encode(password), "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, k, 256));
+}
+function xorBytes(a, b) {
+  const out = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = a[i] ^ b[i];
+  return out;
+}
+function randomNonce() {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return b64encode(bytes);
+}
+
+// ---------- byte buffer / message reader ----------
+class MessageReader {
+  constructor(transport) {
+    this.transport = transport;
+    this.buf = new Uint8Array(0);
+    this.eof = false;
+  }
+  async fill(min) {
+    while (this.buf.length < min && !this.eof) {
+      const chunk = await this.transport.read();
+      if (chunk === null) { this.eof = true; break; }
+      const merged = new Uint8Array(this.buf.length + chunk.length);
+      merged.set(this.buf, 0);
+      merged.set(chunk, this.buf.length);
+      this.buf = merged;
+    }
+    if (this.buf.length < min) throw new Error("pg: unexpected EOF from server");
+  }
+  async readMessage() {
+    await this.fill(5);
+    const type = String.fromCharCode(this.buf[0]);
+    const len = new DataView(this.buf.buffer, this.buf.byteOffset + 1, 4).getInt32(0);
+    await this.fill(1 + len);
+    const payload = this.buf.slice(5, 1 + len);
+    this.buf = this.buf.slice(1 + len);
+    return { type, payload };
+  }
+  async readRaw(n) {
+    await this.fill(n);
+    const out = this.buf.slice(0, n);
+    this.buf = this.buf.slice(n);
+    return out;
+  }
+}
+
+class Cursor {
+  constructor(bytes) { this.b = bytes; this.o = 0; }
+  int16() { const v = new DataView(this.b.buffer, this.b.byteOffset + this.o, 2).getInt16(0); this.o += 2; return v; }
+  int32() { const v = new DataView(this.b.buffer, this.b.byteOffset + this.o, 4).getInt32(0); this.o += 4; return v; }
+  byte() { return this.b[this.o++]; }
+  bytes(n) { const v = this.b.slice(this.o, this.o + n); this.o += n; return v; }
+  cstr() {
+    let end = this.o;
+    while (end < this.b.length && this.b[end] !== 0) end++;
+    const v = td.decode(this.b.slice(this.o, end));
+    this.o = end + 1;
+    return v;
+  }
+}
+
+function frame(type, payload) {
+  const out = new Uint8Array(1 + 4 + payload.length);
+  out[0] = type.charCodeAt(0);
+  new DataView(out.buffer).setInt32(1, 4 + payload.length);
+  out.set(payload, 5);
+  return out;
+}
+function startupFrame(params) {
+  const parts = [];
+  const proto = new Uint8Array(4);
+  new DataView(proto.buffer).setInt32(0, 196608);
+  parts.push(proto);
+  for (const [k, v] of Object.entries(params)) {
+    parts.push(te.encode(k), new Uint8Array([0]), te.encode(v), new Uint8Array([0]));
+  }
+  parts.push(new Uint8Array([0]));
+  const total = parts.reduce((n, p) => n + p.length, 4);
+  const out = new Uint8Array(total);
+  new DataView(out.buffer).setInt32(0, total);
+  let o = 4;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+function cstrBytes(s) {
+  const body = te.encode(s);
+  const out = new Uint8Array(body.length + 1);
+  out.set(body, 0);
+  return out;
+}
+function int32Bytes(n) {
+  const out = new Uint8Array(4);
+  new DataView(out.buffer).setInt32(0, n);
+  return out;
+}
+function int16Bytes(n) {
+  const out = new Uint8Array(2);
+  new DataView(out.buffer).setInt16(0, n);
+  return out;
+}
+function concatBytes(list) {
+  const total = list.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const p of list) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+// ---------- value encoding / decoding ----------
+function encodeParam(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value ? "t" : "f";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : null;
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return encodeArrayLiteral(value);
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+function encodeArrayLiteral(arr) {
+  const parts = arr.map((v) => {
+    if (v === null || v === undefined) return "NULL";
+    const s = encodeParam(v);
+    return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+  });
+  return "{" + parts.join(",") + "}";
+}
+function parseArrayLiteral(text, elemOid) {
+  // Minimal PG array literal parser (handles quoted elements, nesting not needed here).
+  const out = [];
+  let i = 1; // skip {
+  let cur = "";
+  let inQuotes = false;
+  let has = false;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === "\\") { cur += text[i + 1]; i += 2; continue; }
+      if (ch === '"') { inQuotes = false; i++; continue; }
+      cur += ch; i++; continue;
+    }
+    if (ch === '"') { inQuotes = true; has = true; i++; continue; }
+    if (ch === "," || ch === "}") {
+      if (has || cur.length) out.push(cur === "NULL" ? null : convertValue(cur, elemOid));
+      cur = ""; has = false; i++; continue;
+    }
+    cur += ch; has = true; i++;
+  }
+  return out;
+}
+const ARRAY_ELEM_OID = { 1000: 16, 1005: 21, 1007: 23, 1016: 20, 1009: 25, 1015: 25, 1231: 1700, 1021: 700, 1022: 701, 3807: 3802, 2951: 2950 };
+function convertValue(text, oid) {
+  if (text === null) return null;
+  switch (oid) {
+    case 16: return text === "t" || text === "true";
+    case 21: case 23: return parseInt(text, 10);
+    case 20: return text; // int8 stays a string (Neon driver behaviour)
+    case 700: case 701: return parseFloat(text);
+    case 1700: return text; // numeric stays a string
+    case 114: case 3802:
+      try { return JSON.parse(text); } catch { return text; }
+    default:
+      if (ARRAY_ELEM_OID[oid] !== undefined) return parseArrayLiteral(text, ARRAY_ELEM_OID[oid]);
+      return text;
+  }
+}
+
+// ---------- SCRAM-SHA-256 ----------
+async function scramClientFirst(reader, transport, username) {
+  const clientNonce = randomNonce();
+  const bare = `n=${username.replace(/=/g, "=3D").replace(/,/g, "=2C")},r=${clientNonce}`;
+  const first = `n,,${bare}`;
+  const payload = concatBytes([
+    cstrBytes("SCRAM-SHA-256"),
+    int32Bytes(te.encode(first).length),
+    te.encode(first),
+  ]);
+  await transport.write(frame("p", payload));
+  return { clientNonce, bare };
+}
+async function scramClientFinal(reader, transport, state, password, serverFirstRaw) {
+  const parts = {};
+  for (const kv of serverFirstRaw.split(",")) {
+    const idx = kv.indexOf("=");
+    parts[kv.slice(0, idx)] = kv.slice(idx + 1);
+  }
+  const fullNonce = parts.r;
+  const salt = b64decode(parts.s);
+  const iterations = parseInt(parts.i, 10);
+  const salted = await pbkdf2Sha256(password, salt, iterations);
+  const clientKey = await hmacSha256(salted, te.encode("Client Key"));
+  const storedKey = await sha256(clientKey);
+  const withoutProof = `c=biws,r=${fullNonce}`;
+  const authMessage = `${state.bare},${serverFirstRaw},${withoutProof}`;
+  const clientSignature = await hmacSha256(storedKey, te.encode(authMessage));
+  const proof = xorBytes(clientKey, clientSignature);
+  const finalMsg = `${withoutProof},p=${b64encode(proof)}`;
+  await transport.write(frame("p", te.encode(finalMsg)));
+  const serverKey = await hmacSha256(salted, te.encode("Server Key"));
+  return { serverKey, authMessage };
+}
+
+// ---------- connection ----------
+async function connectPg(transport, connInfo) {
+  const reader = new MessageReader(transport);
+  await transport.write(startupFrame({ user: connInfo.user, database: connInfo.database, client_encoding: "UTF8" }));
+  let scramState = null;
+  let scramVerify = null;
+  let ready = false;
+  while (!ready) {
+    const msg = await reader.readMessage();
+    if (msg.type === "R") {
+      const cur = new Cursor(msg.payload);
+      const code = cur.int32();
+      if (code === 0) {
+        // AuthenticationOk (may follow SASL final verification below)
+        if (scramVerify) { /* server-final arrives as SASLContinue before this */ }
+      } else if (code === 3) {
+        await transport.write(frame("p", cstrBytes(connInfo.password)));
+      } else if (code === 10) {
+        // SASL: choose SCRAM-SHA-256
+        const mechs = [];
+        let name;
+        while ((name = cur.cstr()) !== "") mechs.push(name);
+        if (!mechs.includes("SCRAM-SHA-256")) throw new Error("pg: server does not offer SCRAM-SHA-256");
+        scramState = await scramClientFirst(reader, transport, connInfo.user);
+      } else if (code === 11) {
+        const serverFirst = td.decode(cur.bytes(msg.payload.length - 4));
+        scramVerify = await scramClientFinal(reader, transport, scramState, connInfo.password, serverFirst);
+      } else if (code === 12) {
+        const serverFinal = td.decode(cur.bytes(msg.payload.length - 4));
+        const v = serverFinal.split(",").find((p) => p.startsWith("v="));
+        if (v && scramVerify) {
+          const expected = b64encode(await hmacSha256(scramVerify.serverKey, te.encode(scramVerify.authMessage)));
+          if (v.slice(2) !== expected) throw new Error("pg: SCRAM server signature mismatch");
+        }
+      } else {
+        throw new Error(`pg: unsupported auth method ${code}`);
+      }
+    } else if (msg.type === "E") {
+      throw pgError(msg.payload);
+    } else if (msg.type === "Z") {
+      ready = true;
+    }
+    // S (ParameterStatus), K (BackendKeyData), N (Notice) are ignored during startup
+  }
+
+  const session = {
+    dead: false,
+    async query(text, values) {
+      if (session.dead) throw new Error("pg: session is dead");
+      try {
+        return await runExtendedQuery(reader, transport, text, values);
+      } catch (e) {
+        // SQL errors (ErrorResponse) leave the connection usable; anything else kills it.
+        if (!e || e.isPgError !== true) session.dead = true;
+        throw e;
+      }
+    },
+    async close() {
+      try { await transport.write(frame("X", new Uint8Array(0))); } catch { /* ignore */ }
+      try { await transport.close?.(); } catch { /* ignore */ }
+    },
+  };
+  return session;
+}
+
+async function runExtendedQuery(reader, transport, text, values) {
+  // Extended query protocol, unnamed statement/portal, all-text params and results.
+  const encoded = values.map(encodeParam);
+  const parsePayload = concatBytes([cstrBytes(""), cstrBytes(text), int16Bytes(0)]);
+  const bindParts = [cstrBytes(""), cstrBytes(""), int16Bytes(0), int16Bytes(encoded.length)];
+  for (const v of encoded) {
+    if (v === null) bindParts.push(int32Bytes(-1));
+    else { const b = te.encode(v); bindParts.push(int32Bytes(b.length), b); }
+  }
+  bindParts.push(int16Bytes(0)); // all result columns in text format
+  const describePayload = concatBytes([new Uint8Array([0x50]), cstrBytes("")]); // 'P' portal
+  const executePayload = concatBytes([cstrBytes(""), int32Bytes(0)]);
+  await transport.write(concatBytes([
+    frame("P", parsePayload),
+    frame("B", concatBytes(bindParts)),
+    frame("D", describePayload),
+    frame("E", executePayload),
+    frame("S", new Uint8Array(0)),
+  ]));
+
+  let fields = null;
+  const rows = [];
+  let error = null;
+  for (;;) {
+    const msg = await reader.readMessage();
+    if (msg.type === "T") {
+      const cur = new Cursor(msg.payload);
+      const n = cur.int16();
+      fields = [];
+      for (let i = 0; i < n; i++) {
+        const fname = cur.cstr();
+        cur.int32(); // table oid
+        cur.int16(); // column attr
+        const typeOid = cur.int32();
+        cur.int16(); // type len
+        cur.int32(); // type mod
+        cur.int16(); // format
+        fields.push({ name: fname, typeOid });
+      }
+    } else if (msg.type === "D") {
+      const cur = new Cursor(msg.payload);
+      const n = cur.int16();
+      const row = {};
+      for (let i = 0; i < n; i++) {
+        const len = cur.int32();
+        const raw = len === -1 ? null : td.decode(cur.bytes(len));
+        const f = fields[i];
+        row[f.name] = convertValue(raw, f.typeOid);
+      }
+      rows.push(row);
+    } else if (msg.type === "E") {
+      if (!error) error = pgError(msg.payload);
+    } else if (msg.type === "Z") {
+      break;
+    }
+    // 1 ParseComplete, 2 BindComplete, 3 CloseComplete, C CommandComplete, s PortalSuspended: ignored
+  }
+  if (error) throw error;
+  return rows;
+}
+function pgError(payload) {
+  const cur = new Cursor(payload);
+  const fields = {};
+  for (;;) {
+    const code = cur.byte();
+    if (code === 0) break;
+    fields[String.fromCharCode(code)] = cur.cstr();
+  }
+  const err = new Error(fields.M || "PostgreSQL error");
+  err.code = fields.C || null;
+  err.detail = fields.D || null;
+  err.severity = fields.S || null;
+  err.isPgError = true;
+  return err;
+}
+
+// ---------- connection-string handling ----------
+function parseConnString(url) {
+  const u = new URL(url);
+  return {
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    host: u.hostname,
+    port: u.port ? parseInt(u.port, 10) : 5432,
+    database: decodeURIComponent(u.pathname.replace(/^\//, "")) || decodeURIComponent(u.username),
+  };
+}
+
+// Build a Neon-driver-compatible tagged-template sql function.
+// One lazily-opened connection per sql instance (the Worker creates one sql
+// instance per request), queries serialized on that connection, and the
+// connection is reopened if it dies. openTransport: async (connInfo) => transport
+function makePgSql(openTransport) {
+  return function sqlFromConnString(connString) {
+    const info = parseConnString(connString);
+    let sessionPromise = null;
+    let chain = Promise.resolve();
+    const getSession = () => {
+      if (!sessionPromise) {
+        sessionPromise = (async () => {
+          const transport = await openTransport(info);
+          return connectPg(transport, info);
+        })().catch((e) => { sessionPromise = null; throw e; });
+      }
+      return sessionPromise;
+    };
+    const run = (text, values) => {
+      const task = chain.then(async () => {
+        const session = await getSession();
+        try {
+          return await session.query(text, values);
+        } catch (e) {
+          if (session.dead) { sessionPromise = null; try { await session.close(); } catch { /* ignore */ } }
+          throw e;
+        }
+      });
+      chain = task.catch(() => { /* keep the queue alive after errors */ });
+      return task;
+    };
+    const sql = async (strings, ...values) => {
+      let text = strings[0];
+      for (let i = 0; i < values.length; i++) text += `$${i + 1}` + strings[i + 1];
+      return run(text, values);
+    };
+    sql.query = (text, values = []) => run(text, values);
+    return sql;
+  };
+}
+
+  return { makePgSql };
+})();
+
+function pgwWorkerTransport(info) {
+  const socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "on", allowHalfOpen: false });
+  const reader = socket.readable.getReader();
+  const writer = socket.writable.getWriter();
+  return {
+    write: (bytes) => writer.write(bytes),
+    read: async () => { const r = await reader.read(); return r.done ? null : r.value; },
+    close: async () => { try { await socket.close(); } catch { /* ignore */ } },
+  };
+}
+const pgwSqlFromConnString = pgw.makePgSql(async (info) => pgwWorkerTransport(info));
+function dbSql(url) {
+  try {
+    const host = new URL(url).hostname;
+    if (host.includes("supabase")) return pgwSqlFromConnString(url);
+  } catch { /* fall through to the Neon driver */ }
+  return ys(url);
+}
+// ================= end Postgres wire client =================
+
 const AI_ACTORS = [
   { key: "ai:darling", name: "ダーリンちゃん", emoji: "🥺" },
   { key: "ai:lsi-worm", name: "LSI芋虫", emoji: "🐛" }
 ];
 async function runScheduledAiEngagement(env) {
   if (!env.DATABASE_URL) return;
-  const sql = ys(env.DATABASE_URL);
+  const sql = dbSql(env.DATABASE_URL);
   await sql`CREATE TABLE IF NOT EXISTS ai_engagements (bottle_id BIGINT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (bottle_id, actor, action))`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_engagements_one_reply_per_bottle ON ai_engagements (bottle_id) WHERE action = 'reply'`;
   const posts = await sql`SELECT b.id, b.body, b.guest_key, b.poll_options, b.allow_replies, b.mbti, b.socionics, b.enneagram, b.other_type FROM bottles b WHERE b.deleted_at IS NULL AND COALESCE(b.is_ai, FALSE) = FALSE AND COALESCE(b.allow_replies, TRUE) = TRUE AND b.created_at > NOW() - INTERVAL '7 days' ORDER BY b.created_at DESC LIMIT 40`;
@@ -5692,7 +6153,7 @@ var index_default = {
     if (path === "/api/health") {
       if (!env.DATABASE_URL) return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
       try {
-        await ys(env.DATABASE_URL)`SELECT 1`;
+        await dbSql(env.DATABASE_URL)`SELECT 1`;
         return json({ status: "ok", database: "connected", service: "type-drift-api-fallback" }, 200, env, request);
       } catch {
         return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
@@ -5700,7 +6161,7 @@ var index_default = {
     }
     if (!env.DATABASE_URL) return json({ error: "DATABASE_URL is not configured" }, 503, env, request);
     try {
-      const sql = ys(env.DATABASE_URL);
+      const sql = dbSql(env.DATABASE_URL);
       const method = request.method;
       const rawKey = guest(request);
       const accountKey = clean(request.headers.get("X-User-Key"), 120);
