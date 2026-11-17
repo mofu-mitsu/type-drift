@@ -6054,7 +6054,9 @@ function makePgSql(openTransport) {
   return { makePgSql, getTrail: () => pgwTrail.join(",") };
 })();
 
+var pgwLastDiag = {};
 async function pgwWorkerTransport(info) {
+  pgwLastDiag = { host: info.host, port: info.port, user: info.user, database: info.database, pwLen: info.password ? info.password.length : 0 };
   // PostgreSQL TLS negotiation: plain TCP, SSLRequest, expect 'S', then startTls().
   // (Supavisor rejects an immediate TLS handshake.)
   let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "starttls", allowHalfOpen: false });
@@ -6067,6 +6069,8 @@ async function pgwWorkerTransport(info) {
     dv.setInt32(4, 80877103);
     await writer.write(req);
     const first = await reader.read();
+    pgwLastDiag.sByte = first.value ? first.value[0] : null;
+    pgwLastDiag.sChunk = first.value ? first.value.length : 0;
     try { reader.releaseLock(); } catch { /* ignore */ }
     try { writer.releaseLock(); } catch { /* ignore */ }
     if (!first.value || first.value[0] !== 0x53) throw new Error("pg: server refused TLS upgrade");
@@ -6228,7 +6232,7 @@ var index_default = {
         await d`SELECT 1`;
         return json({ status: "ok" }, 200, env, request);
       } catch (e) {
-        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, trail: (e && e.trail) || pgw.getTrail(), message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
+        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, trail: (e && e.trail) || pgw.getTrail(), diag: pgwLastDiag, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
       }
     }
     if (path === "/api/health") {
