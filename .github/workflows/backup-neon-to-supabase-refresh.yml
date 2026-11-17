@@ -78,7 +78,7 @@ jobs:
             echo 'GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;'
             echo 'GRANT ALL ON SCHEMA public TO postgres, service_role;'
             cat restore-filtered.sql
-            echo 'DO \\$verify\\$'
+            echo 'DO $verify$'
             echo 'DECLARE actual_tables text[]; expected_tables text[] := ARRAY['"$expected_tables"'];'
             echo 'BEGIN'
             echo "  SELECT array_agg(table_name ORDER BY table_name) INTO actual_tables FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
@@ -88,7 +88,7 @@ jobs:
               echo "  IF (SELECT count(*) FROM public.\"$quoted_table\") <> $expected_count THEN RAISE EXCEPTION 'row-count mismatch for $table (expected $expected_count)'; END IF;"
             done < source-counts.tsv
             echo 'END'
-            echo '\\$verify\\$;'
+            echo '$verify$;'
             echo 'COMMIT;'
           } > transactional-refresh.sql
 
