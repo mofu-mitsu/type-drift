@@ -422,7 +422,7 @@ export default function PlazaPanel({
             setMessages(curr => [...curr, aiMsg].slice(-80));
             sendRelay({ type: 'plaza_ai_message', character: 'ダーリンちゃん', body: String(aiRow.body) });
           }
-          if (!data?.game_judged && !handledByLocalGame) window.setTimeout(() => void requestAi(body), 350);
+          if (!data?.game_judged && !data?.psych_judged && !handledByLocalGame) window.setTimeout(() => void requestAi(body), 350);
         })
         .catch(() => { if (!handledByLocalGame) window.setTimeout(() => void requestAi(body), 350); });
     } else if (!handledByLocalGame) {

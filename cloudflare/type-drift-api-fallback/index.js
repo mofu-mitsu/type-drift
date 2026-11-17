@@ -6331,6 +6331,15 @@ var index_default = {
         return finish(`【${guess}】？ ……ハズレ♡ ウチがそんなにお気楽で能天気に見えるん？ おめでたい頭してはるわ……。ハズレだから『好き』って言う準備、しときなよ？♡\n（※『好き』か『愛してる』って告白するまで次の数字は無効よ♡）`);
       };
       const ensurePlazaGameTable = async () => { await sql`CREATE TABLE IF NOT EXISTS plaza_game_states (id INTEGER PRIMARY KEY, target INTEGER, status TEXT NOT NULL DEFAULT 'idle', guess_count INTEGER NOT NULL DEFAULT 0, penalties JSONB NOT NULL DEFAULT '{}'::jsonb, started_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`; };
+      const DARLING_PSYCH_OPENING = (title, question) => `🔮【ダーリンちゃんの深層心理テスト】\nお題:「${title}」\n${question}\n\n……直感で選んでみて？ 広場のチャットに『A』か『B』って送ってくれたら、あなたの隠された本性を暴いてあげるわ♡`;
+      const psychChoice = (rawText) => {
+        const normalized = String(rawText || "").trim().replace(/[Ａａ]/g, "A").replace(/[Ｂｂ]/g, "B").replace(/[！!？?。．、，]/g, "").trim();
+        if (/^(?:A|A\s*(?:を選ぶ|を選んだ|です|だよ|かな|にする|にします|で))$/i.test(normalized)) return "A";
+        if (/^(?:B|B\s*(?:を選ぶ|を選んだ|です|だよ|かな|にする|にします|で))$/i.test(normalized)) return "B";
+        return null;
+      };
+      const ensurePlazaPsychTable = async () => { await sql`CREATE TABLE IF NOT EXISTS plaza_psych_states (id INTEGER PRIMARY KEY, test_id INTEGER, title TEXT, question TEXT, answer_a TEXT, answer_b TEXT, started_by TEXT, answered JSONB NOT NULL DEFAULT '[]'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`; };
+      const psychActive = (row) => Boolean(row && row.title && (Date.now() - new Date(row.created_at).getTime() <= 10 * 60 * 1000));
       if (path === "/api/bottles" && method === "GET") {
         const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
         const offset = (page - 1) * 20;
@@ -6792,6 +6801,31 @@ var index_default = {
         const active = Boolean(game && game.status === "active" && (Date.now() - new Date(game.updated_at).getTime() <= 30 * 60 * 1000));
         return json({ game: { status: active ? "active" : "idle", guess_count: active ? Number(game.guess_count || 0) : 0, penalty: active ? Boolean((game.penalties || {})[key]) : false, mine: active ? String(game.started_by || "") === key : false } }, 200, env, request);
       }
+      if (path === "/api/plaza/psych/start" && method === "POST") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        const b2 = await bodyOf(request);
+        const title = clean(b2.title, 120);
+        const question = clean(b2.question, 2000);
+        const answerA = clean(b2.answerA, 2000);
+        const answerB = clean(b2.answerB, 2000);
+        if (!title || !question || !answerA || !answerB) return json({ message: "title, question, answerA and answerB are required" }, 422, env, request);
+        await ensurePlazaPsychTable();
+        const existing = await sql`SELECT * FROM plaza_psych_states WHERE id=1`;
+        const current = existing[0];
+        if (psychActive(current) && String(current.started_by || "") !== key) return json({ error: "already_active" }, 409, env, request);
+        const testId = Number.isFinite(Number(b2.test_id)) ? Math.floor(Number(b2.test_id)) : null;
+        await sql`INSERT INTO plaza_psych_states (id,test_id,title,question,answer_a,answer_b,started_by,answered,created_at,updated_at) VALUES (1,${testId},${title},${question},${answerA},${answerB},${key},'[]'::jsonb,NOW(),NOW()) ON CONFLICT (id) DO UPDATE SET test_id=EXCLUDED.test_id,title=EXCLUDED.title,question=EXCLUDED.question,answer_a=EXCLUDED.answer_a,answer_b=EXCLUDED.answer_b,started_by=EXCLUDED.started_by,answered='[]'::jsonb,created_at=NOW(),updated_at=NOW()`;
+        const opening = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES ('ai:darling','ダーリンちゃん',${DARLING_PSYCH_OPENING(title, question)},NOW(),NOW()) RETURNING *`;
+        return json({ psych: { status: "active", title, answered_count: 0 }, message: opening[0] }, 201, env, request);
+      }
+      if (path === "/api/plaza/psych" && method === "GET") {
+        await ensurePlazaPsychTable();
+        const psychRows = await sql`SELECT title, answered, started_by, created_at FROM plaza_psych_states WHERE id=1`;
+        const row = psychRows[0];
+        const active = psychActive(row);
+        const answeredList = active && Array.isArray(row.answered) ? row.answered : [];
+        return json({ psych: { status: active ? "active" : "idle", title: active ? row.title : null, answered_count: answeredList.length, mine: active ? String(row.started_by || "") === key : false, answered: active ? answeredList.includes(key) : false } }, 200, env, request);
+      }
       if (path === "/api/plaza/messages" && method === "GET") return json({ messages: await sql`SELECT * FROM (SELECT * FROM plaza_messages ORDER BY created_at DESC LIMIT 50) m ORDER BY created_at ASC` }, 200, env, request);
       if (path === "/api/plaza/messages" && method === "POST") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
@@ -6819,7 +6853,27 @@ var index_default = {
             }
           }
         } catch { /* game judging must never break plain plaza chat */ }
-        return json({ message: rows[0], ai_message: aiMessage, game_judged: gameJudged }, 201, env, request);
+        let psychJudged = false;
+        if (!gameJudged) {
+          try {
+            await ensurePlazaPsychTable();
+            const psychRows = await sql`SELECT * FROM plaza_psych_states WHERE id=1`;
+            const psych = psychRows[0];
+            if (psychActive(psych)) {
+              const answered = Array.isArray(psych.answered) ? psych.answered : [];
+              const choice = psychChoice(text);
+              if (choice && !answered.includes(key)) {
+                const answer = choice === "A" ? psych.answer_a : psych.answer_b;
+                const resultBody = `🔮【心理テスト「${psych.title}」の診断結果: ${choice}】\n${answer}\n\n……ふふ、ダーリンの深層心理、覗かせてもらっちゃった♡`;
+                const aiRows = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES ('ai:darling','ダーリンちゃん',${resultBody},NOW(),NOW()) RETURNING *`;
+                aiMessage = aiRows[0];
+                psychJudged = true;
+                await sql`UPDATE plaza_psych_states SET answered=${JSON.stringify([...answered, key])}::jsonb, updated_at=NOW() WHERE id=1`;
+              }
+            }
+          } catch { /* psych judging must never break plain plaza chat */ }
+        }
+        return json({ message: rows[0], ai_message: aiMessage, game_judged: gameJudged, psych_judged: psychJudged }, 201, env, request);
       }
       if (path === "/api/worm/ranking" && method === "GET") {
         const clientKey = clean(url.searchParams.get("clientKey"), 100);

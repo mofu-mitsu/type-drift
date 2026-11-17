@@ -972,8 +972,7 @@ export default function DriftApp() {
 
 
 
-  // ダーリンちゃんのミニゲーム・心理テスト用State
-  const [activeDarlingPsychTest, setActiveDarlingPsychTest] = useState<{ id: number; title: string; question: string; answerA: string; answerB: string } | null>(null);
+  // 心理テストの開催状態はサーバー側（/api/plaza/psych）で保持する（参加者全員で共有）
   const [editingBottle, setEditingBottle] = useState<Bottle | null>(null);
   const [editBottleDraft, setEditBottleDraft] = useState("");
   const [editBottleMbti, setEditBottleMbti] = useState("");
@@ -1663,17 +1662,34 @@ export default function DriftApp() {
     }
   };
 
-  const startDarlingPsychTest = () => {
+  const startDarlingPsychTest = async () => {
+    // 共有テスト: 開催状態と判定はサーバー側で保持し、参加者全員の回答が判定される
     const chosen = DARLING_PSYCH_TESTS[Math.floor(Math.random() * DARLING_PSYCH_TESTS.length)];
-    setActiveDarlingPsychTest(chosen);
-    setExternalPlazaMessage({
-      author: "ダーリンちゃん",
-      body: `🔮【ダーリンちゃんの深層心理テスト】\nお題:「${chosen.title}」\n${chosen.question}\n\n……直感で選んでみて？ 広場のチャットに『A』か『B』って送ってくれたら、あなたの隠された本性を暴いてあげるわ♡`,
-      kind: "ai",
-      emoji: "🥺",
-      id: Date.now()
-    });
-    setPlazaToast("ダーリンちゃんが心理テストを出題しました 🔮");
+    try {
+      const response = await apiFetch("/api/plaza/psych/start", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ test_id: chosen.id, title: chosen.title, question: chosen.question, answerA: chosen.answerA, answerB: chosen.answerB }) });
+      if (response.status === 409) {
+        setPlazaToast("🔮 心理テストは進行中です。広場のチャットで『A』か『B』と答えて参加しよう");
+        return;
+      }
+      if (!response.ok) {
+        setPlazaToast("心理テストを開始できませんでした");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      const opening = data?.message;
+      if (opening?.body) {
+        setExternalPlazaMessage({
+          author: "ダーリンちゃん",
+          body: String(opening.body),
+          kind: "ai",
+          emoji: "🥺",
+          id: Date.now()
+        });
+      }
+      setPlazaToast("ダーリンちゃんが心理テストを出題しました 🔮");
+    } catch {
+      setPlazaToast("心理テストを開始できませんでした");
+    }
   };
 
   const askWormLogic = () => {
@@ -1688,43 +1704,10 @@ export default function DriftApp() {
     setPlazaToast("LSI芋虫が境界テストを発令しました 📐");
   };
 
-  // チャット発言検知（1〜100ゲームの判定＆心理テストA/B自動返信）
-  const handlePlazaUserMessage = (msgBody: string) => {
-    const clean = msgBody.trim();
-    if (!clean) return true;
+  // チャット発言検知: 判定はすべてサーバー側（気分当ては game_judged、心理テストは psych_judged として
+  // /api/plaza/messages の応答で返る）ため、ローカル判定は行わない。
+  const handlePlazaUserMessage = (_msgBody: string) => false;
 
-    // ② A/B心理テストの判定
-    if (activeDarlingPsychTest !== null) {
-      // 全角英字や「Aを選ぶ」「Bです」なども選択肢として認識する。
-      // 発言全体が選択回答のときだけテンプレートを返し、通常会話を奪わない。
-      const normalizedChoice = clean
-        .replace(/[Ａａ]/g, "A")
-        .replace(/[Ｂｂ]/g, "B")
-        .replace(/[！!？?。．、，]/g, "")
-        .trim();
-      const isA = /^(?:A|A\s*(?:を選ぶ|を選んだ|です|だよ|かな|にする|にします|で))$/i.test(normalizedChoice);
-      const isB = /^(?:B|B\s*(?:を選ぶ|を選んだ|です|だよ|かな|にする|にします|で))$/i.test(normalizedChoice);
-
-      if (isA || isB) {
-        const test = activeDarlingPsychTest;
-        const choice = isA ? "A" : "B";
-        const answer = isA ? test.answerA : test.answerB;
-        // 回答済みテストを解除し、次の普通の発言までテンプレートが残らないようにする。
-        setActiveDarlingPsychTest(null);
-        setTimeout(() => {
-          setExternalPlazaMessage({
-            author: "ダーリンちゃん",
-            body: `🔮【心理テスト「${test.title}」の診断結果: ${choice}】\n${answer}\n\n……ふふ、ダーリンの深層心理、覗かせてもらっちゃった♡`,
-            kind: "ai",
-            emoji: "🥺",
-            id: Date.now() + 2
-          });
-        }, 600);
-        return true;
-      }
-    }
-    return false;
-  };
   const giftBuri = (target: "darling" | "worm" | "guest" | `player:${string}`) => {
     if (buriCount <= 0) {
       setPlazaToast("ブリを持っていません。海を覗くとたまにブリが釣れます 🐟");

@@ -15,6 +15,7 @@ function isWorkerRoute(path: string, init?: RequestInit) {
   if (pathname === "/api/consultations/events" || pathname === "/api/activity-events" || pathname === "/api/feedback") return method === "POST";
   if (pathname === "/api/question-prompts" || pathname === "/api/plaza/chain" || pathname === "/api/plaza/messages") return method === "GET" || method === "POST";
   if (pathname === "/api/plaza/game" || pathname === "/api/plaza/game/start") return method === "GET" || method === "POST";
+  if (pathname === "/api/plaza/psych" || pathname === "/api/plaza/psych/start") return method === "GET" || method === "POST";
   if (pathname === "/api/direct-messages") return method === "GET" || method === "POST";
   if (/^\/api\/direct-messages\/\d+\/read$/.test(pathname)) return method === "POST";
   if (/^\/api\/direct-messages\/\d+\/reactions$/.test(pathname)) return method === "POST";
