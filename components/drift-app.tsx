@@ -230,7 +230,7 @@ function BottleTextWithLinks({ text }: { text: string }) {
   </>;
 }
 
-function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete, onQuote }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onEdit?: (bottle: Bottle) => void; onDelete?: (bottle: Bottle) => void; onQuote?: (bottle: Bottle) => void }) {
+function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete, onQuote, onOpenQuoted }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onEdit?: (bottle: Bottle) => void; onDelete?: (bottle: Bottle) => void; onQuote?: (bottle: Bottle) => void; onOpenQuoted?: (quoted: NonNullable<Bottle["quoted"]>) => void }) {
   const [poll, setPoll] = useState(bottle.poll);
   const [moreOpen, setMoreOpen] = useState(false);
   const [voted, setVoted] = useState<number | null>(null);
@@ -277,7 +277,7 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete, onQuote }: { bo
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
     <div className="bottle-text"><BottleTextWithLinks text={normalizeDmBody(bottle.text)} /></div>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
-    {bottle.quoted && <div className="quoted-bottle">{bottle.quoted.deleted ? <span className="quoted-bottle__deleted">🌊 このボトルは回収されました</span> : <><div className="quoted-bottle__head"><Quote size={11} /><span>{bottle.quoted.ai ? bottle.quoted.ai : "匿名の誰か"}</span><small>{bottle.quoted.ai ? (bottle.quoted.mbti || "") : ([bottle.quoted.mbti, bottle.quoted.socionics, bottle.quoted.enneagram, bottle.quoted.otherType].filter(Boolean).join(" · ") || "自認未設定")}</small></div><p className="quoted-bottle__text">{bottle.quoted.text}</p></>}</div>}
+    {bottle.quoted && <div className={`quoted-bottle${!bottle.quoted.deleted && onOpenQuoted ? " is-link" : ""}`} {...(!bottle.quoted.deleted && onOpenQuoted ? { role: "button", title: "引用元のボトルを開く", onClick: () => onOpenQuoted(bottle.quoted!) } : {})}>{bottle.quoted.deleted ? <span className="quoted-bottle__deleted">🌊 このボトルは回収されました</span> : <><div className="quoted-bottle__head"><Quote size={11} /><span>{bottle.quoted.ai ? bottle.quoted.ai : "匿名の誰か"}</span><small>{bottle.quoted.ai ? (bottle.quoted.mbti || "") : ([bottle.quoted.mbti, bottle.quoted.socionics, bottle.quoted.enneagram, bottle.quoted.otherType].filter(Boolean).join(" · ") || "自認未設定")}</small></div><p className="quoted-bottle__text">{bottle.quoted.text}</p></>}</div>}
     {poll && <div className="poll-box"><div className="poll-box__heading"><span>🌊 みんなの投票</span><small>{poll.votes.reduce((sum, count) => sum + count, 0)}票</small></div>{poll.options.map((option, index) => { const total = poll.votes.reduce((sum, count) => sum + count, 0); const percent = total ? Math.round(poll.votes[index] / total * 100) : 0; return <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)} disabled={voted !== null}><span className="poll-option__label">{option}</span>{voted !== null && <span className="poll-option__result"><span className="poll-option__bar"><i style={{ width: `${percent}%` }} /></span><small>{poll.votes[index]}票 · {percent}%</small></span>}</button>;})}{voted !== null && <p className="poll-box__thanks">投票ありがとう！結果はみんなで共有中 🫧</p>}</div>}
     <div className="bottle-card__bottom">{bottle.allowLikes !== false && <button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button>}{bottle.allowReplies !== false && <button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button>}{bottle.allowReplies !== false && bottle.id > 0 && onQuote && <button type="button" onClick={() => onQuote(bottle)} className="reaction" aria-label="引用する"><Quote size={16} /><small>引用</small></button>}<div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={event => { event.stopPropagation(); setMoreOpen(open => !open); }}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
     {Boolean(bottle.aiLikers?.length) && <div style={{ padding: "4px 12px 10px", color: "#9d174d", fontSize: "11px" }}>AIからのいいね：{bottle.aiLikers?.join(" · ")}</div>}
@@ -3835,6 +3835,12 @@ export default function DriftApp() {
     }
   };
   const reactToReply = async (bottleId: number, replyId: number) => { setReplyItems(items => ({ ...items, [bottleId]: (items[bottleId] || []).map(item => item.id === replyId ? { ...item, reaction: item.reaction + 1 } : item) })); const response = await apiFetch(`/api/replies/${replyId}/reactions`, { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } }); if (!response.ok) setPlazaToast(`返信への反応を保存できませんでした（${response.status}）`); logActivity("reply_reaction", {}, { type: "reply", id: replyId }); };
+  const openQuotedBottle = (quoted: NonNullable<Bottle["quoted"]>) => {
+    if (quoted.deleted) return;
+    const found = bottles.find(item => item.id === quoted.id);
+    if (found) { void openBottle(found); return; }
+    void openBottle({ id: quoted.id, author: quoted.ai || "匿名の誰か", emoji: quoted.ai ? (quoted.ai.includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${quoted.socionics} · ${quoted.enneagram}`, mbti: quoted.mbti, socionics: quoted.socionics, enneagram: quoted.enneagram, otherType: quoted.otherType, text: quoted.text, reactions: 0, replies: 0, time: "", ai: quoted.ai, color: "mint" } as Bottle);
+  };
   const openBottle = async (bottle: Bottle) => {
     setSelected(bottle);
     setPicked(true);
@@ -4277,7 +4283,7 @@ export default function DriftApp() {
         </div>
         <p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p>
         <div className="bottle-grid">
-          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} onQuote={quoteBottle} />)}
+          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} onQuote={quoteBottle} onOpenQuoted={openQuotedBottle} />)}
         </div>
       </section>
     )}
@@ -5371,7 +5377,7 @@ export default function DriftApp() {
                     const userReplies = myRepliesMap[bottle.id] || [];
                     return (
                       <div key={bottle.id} className="v2-replied-card-wrapper">
-                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} onQuote={quoteBottle} />
+                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} onQuote={quoteBottle} onOpenQuoted={openQuotedBottle} />
                         {activityTab === "replied" && userReplies.length > 0 && (
                           <div className="v2-my-replies-box">
                             <div className="v2-my-replies-head">
@@ -6899,7 +6905,7 @@ export default function DriftApp() {
             <X size={18} />
           </button>
           <span className="detail-label">あなたが拾った秘密</span>
-          <BottleCard bottle={selected} onReact={react} onOpen={() => {}} />
+          <BottleCard bottle={selected} onReact={react} onOpen={() => {}} onOpenQuoted={openQuotedBottle} />
           {selected.mine && <button type="button" className="bottle-delete-btn" onClick={() => void deleteBottle(selected)}>このボトルを回収する</button>}
 
           <ReplyThread
