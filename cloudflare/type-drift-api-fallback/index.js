@@ -5859,6 +5859,7 @@ var index_default = {
         let senderName = clean(b.sender_name, 24) || "匿名の誰か";
         let recipientName = clean(b.recipient_name, 24) || "匿名の誰か";
         let context = null;
+        let contextIsSender = true;
         let bottleId = null;
         if (b.bottle_id || b.thread_id) {
           bottleId = b.bottle_id ? Number(b.bottle_id) : null;
@@ -5868,6 +5869,7 @@ var index_default = {
           context = lastRows[0] || null;
           if (context) {
             const currentIsSender = context.sender_guest_key === key;
+            contextIsSender = currentIsSender;
             recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
             senderName = currentIsSender ? context.sender_name : context.recipient_name;
             recipientName = currentIsSender ? context.recipient_name : context.sender_name;
@@ -5916,7 +5918,8 @@ var index_default = {
         const senderProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${key} LIMIT 1`;
         const recipientProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${recipientKey} LIMIT 1`;
         const senderProfile = b.sender_profile && typeof b.sender_profile === "object" ? b.sender_profile : (senderProfileRows[0] || {});
-        const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (context?.recipient_profile && typeof context.recipient_profile === "object" ? context.recipient_profile : (recipientProfileRows[0] || {nickname:recipientName}));
+        const contextProfile = context ? (contextIsSender ? context.recipient_profile : context.sender_profile) : null;
+        const recipientProfile = b.recipient_profile && typeof b.recipient_profile === "object" ? b.recipient_profile : (contextProfile && typeof contextProfile === "object" ? contextProfile : (recipientProfileRows[0] || {nickname:recipientName}));
         const senderSnapshot = JSON.stringify(senderProfile);
         const recipientSnapshot = JSON.stringify(recipientProfile);
         const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
@@ -5991,9 +5994,20 @@ var index_default = {
       if (replyReactionMatch && method === "POST") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         const id = Number(replyReactionMatch[1]);
+        const existed = await sql`SELECT 1 FROM reply_reactions WHERE reply_id=${id} AND guest_key=${key} LIMIT 1`;
         const rows = await sql`WITH updated AS (UPDATE reply_reactions SET level=level+1,updated_at=NOW() WHERE reply_id=${id} AND guest_key=${key} RETURNING level)
           INSERT INTO reply_reactions (reply_id,guest_key,level,created_at,updated_at) SELECT ${id},${key},1,NOW(),NOW() WHERE NOT EXISTS (SELECT 1 FROM updated) RETURNING level`;
         const level = rows.length ? rows[0].level : (await sql`SELECT level FROM reply_reactions WHERE reply_id=${id} AND guest_key=${key} ORDER BY id DESC LIMIT 1`)[0]?.level;
+        if (!existed.length) {
+          const replyRows = await sql`SELECT guest_key, bottle_id FROM replies WHERE id=${id} AND deleted_at IS NULL LIMIT 1`;
+          const reply = replyRows[0];
+          if (reply?.guest_key && reply.guest_key !== key) {
+            const bottleRows = await sql`SELECT guest_key FROM bottles WHERE id=${reply.bottle_id} LIMIT 1`;
+            const likedByOwner = bottleRows[0]?.guest_key === key;
+            const notice = likedByOwner ? "ボトルの投稿主があなたの返信にいいねしました。" : "あなたの返信に新しい反応が届きました。";
+            await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at) VALUES (${reply.guest_key}, 'reply_reaction', ${String(id)}, ${notice}, NOW(), NOW())`;
+          }
+        }
         return json({ level: Number(level || 1) }, 200, env, request);
       }
       if (bottleMatch && bottleMatch[2] === "votes" && method === "GET") {

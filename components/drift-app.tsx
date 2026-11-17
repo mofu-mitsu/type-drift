@@ -3374,9 +3374,10 @@ export default function DriftApp() {
         cleanDmIdentity(recipientSnapshot?.enneagram),
         cleanDmIdentity(recipientSnapshot?.otherType),
       ].filter(Boolean).join(" · ");
-      // 自分がボトル主なら、受信者フラグの誤判定に引きずられず送信者本人の自認だけを見る。
-      // ボトル主の自認（bottle_type / recipient_profile）を返信者へ流用しない。
-      const messageIdentity = originalBottle?.mine ? senderIdentity : (last.isMine ? recipientIdentity : senderIdentity);
+      // 相手の自認は「最後のメッセージの向き」で決める。
+      // 自分が送ったメッセージなら相手は受信者、相手から届いたメッセージなら相手は送信者。
+      // （ボトル主視点でも同じ：自分の送信が最後なら、相手＝返信者は受信者側のスナップショットにある）
+      const messageIdentity = last.isMine ? recipientIdentity : senderIdentity;
       // ボトル主の自認と、返信してきた人の自認を混同しない。
       // 自分が送ったメッセージの相手は元ボトルの主。受信メッセージの相手情報は送信者スナップショットだけから決める。
       const threadNpcLabel = `${thread.targetId} ${thread.name} ${directMessages.filter(message => message.threadId === thread.targetId).map(message => `${message.sender} ${message.recipient}`).join(" ")}`;
@@ -3385,9 +3386,7 @@ export default function DriftApp() {
         ? (/ai:darling|ダーリンちゃん/.test(threadNpcLabel) ? "AI · ILI · 5w4" : "AI · LSI · 5w6")
         : originalBottle?.mine
           ? (messageIdentity || "自認未設定")
-          : last.isMine
-            ? (originalBottleIdentity || messageIdentity || "ボトル主への返信")
-            : (messageIdentity || "自認未設定");
+          : (originalBottleIdentity || last.bottleType || messageIdentity || (last.isMine ? "ボトル主への返信" : "自認未設定"));
     }
     return threads.sort((a, b) => {
       if (dmSortMode === "manual") {
@@ -3535,7 +3534,7 @@ export default function DriftApp() {
       message: type === "consultation_reaction"
         ? `自認相談室のコメントに${items.length}件のリアクションが届きました`
         : type === "reply_reaction"
-          ? `返信に${items.length}件のリアクションが届きました`
+          ? (items.length === 1 && items[0].message ? items[0].message : `返信に${items.length}件のリアクションが届きました`)
           : `ボトルに${items.length}件のいいねが届きました`,
       created_at: items.reduce((latest, item) => item.created_at > latest ? item.created_at : latest, items[0].created_at),
     }));
