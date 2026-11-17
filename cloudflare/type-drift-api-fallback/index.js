@@ -6059,7 +6059,7 @@ async function pgwWorkerTransport(info) {
   pgwLastDiag = { host: info.host, port: info.port, user: info.user, database: info.database, pwLen: info.password ? info.password.length : 0 };
   // PostgreSQL TLS negotiation: plain TCP, SSLRequest, expect 'S', then startTls().
   // (Supavisor rejects an immediate TLS handshake.)
-  let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "starttls", allowHalfOpen: false });
+  let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "starttls", allowHalfOpen: true });
   {
     const reader = socket.readable.getReader();
     const writer = socket.writable.getWriter();
