@@ -6203,6 +6203,19 @@ var index_default = {
     if (request.method === "OPTIONS") return json({}, 204, env, request);
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
+    if (path === "/api/health/supabase-diag") {
+      // TEMPORARY diagnostic (Phase 3 switch debugging, 2026-11-17): tries the
+      // Supabase driver directly (no fallback) and reports the error message.
+      // Remove after the switch is verified.
+      if (!env.SUPABASE_DATABASE_URL) return json({ status: "missing-env" }, 200, env, request);
+      try {
+        const d = pgwMakeDriver(env.SUPABASE_DATABASE_URL);
+        await d`SELECT 1`;
+        return json({ status: "ok" }, 200, env, request);
+      } catch (e) {
+        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
+      }
+    }
     if (path === "/api/health") {
       if (!env.DATABASE_URL) return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
       try {
