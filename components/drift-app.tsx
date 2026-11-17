@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 // Keep cached DM history isolated per signed-in account or guest identity.
 // The previous global key let separate accounts in the same browser merge conversations.
@@ -473,6 +473,10 @@ export default function DriftApp() {
   const [externalEmote, setExternalEmote] = useState<{ emote: string; label: string; id: number } | null>(null);
   const [activePlazaSplashes, setActivePlazaSplashes] = useState<Array<{ id: number; icon: string; top: number; left: number; delay: number }>>([]);
   const [externalPlazaMessage, setExternalPlazaMessage] = useState<{ author: string; body: string; kind: "human" | "ai" | "system"; emoji?: string; id: number } | null>(null);
+  // ボタン押下のアナウンスは、押すたびに別イベントとして広場へ流すための目印。
+  // 見た目は変わらない不可視文字を先頭に付け、受信側の「同一文の重複抑制」に吸われないようにする。
+  const announceNonce = useRef(0);
+  const announceBody = (body: string) => { announceNonce.current += 1; return "\u200b".repeat(Math.min(announceNonce.current, 24)) + body; };
   const [buriCount, setBuriCount] = useState<number>(0);
   const [buriCaughtModalOpen, setBuriCaughtModalOpen] = useState(false);
   const [swimmingBuriVisible, setSwimmingBuriVisible] = useState(true);
@@ -1649,7 +1653,7 @@ export default function DriftApp() {
       if (response.status === 409) {
         const conflict = await response.json().catch(() => null);
         if (conflict?.message?.body) {
-          setExternalPlazaMessage({ author: "ダーリンちゃん", body: String(conflict.message.body), kind: "ai", emoji: "🥺", id: Date.now() });
+          setExternalPlazaMessage({ author: "ダーリンちゃん", body: announceBody(String(conflict.message.body)), kind: "ai", emoji: "🥺", id: Date.now() });
         }
         setPlazaToast("🎯 気分当てゲームは進行中です。広場のチャットで数字を言って参加しよう");
         return;
@@ -1663,7 +1667,7 @@ export default function DriftApp() {
       if (opening?.body) {
         setExternalPlazaMessage({
           author: "ダーリンちゃん",
-          body: String(opening.body),
+          body: announceBody(String(opening.body)),
           kind: "ai",
           emoji: "🥺",
           id: Date.now()
@@ -1683,7 +1687,7 @@ export default function DriftApp() {
       if (response.status === 409) {
         const conflict = await response.json().catch(() => null);
         if (conflict?.message?.body) {
-          setExternalPlazaMessage({ author: "ダーリンちゃん", body: String(conflict.message.body), kind: "ai", emoji: "🥺", id: Date.now() });
+          setExternalPlazaMessage({ author: "ダーリンちゃん", body: announceBody(String(conflict.message.body)), kind: "ai", emoji: "🥺", id: Date.now() });
         }
         setPlazaToast("🔮 心理テストは進行中です。広場のチャットで『A』か『B』と答えて参加しよう");
         return;
@@ -1697,7 +1701,7 @@ export default function DriftApp() {
       if (opening?.body) {
         setExternalPlazaMessage({
           author: "ダーリンちゃん",
-          body: String(opening.body),
+          body: announceBody(String(opening.body)),
           kind: "ai",
           emoji: "🥺",
           id: Date.now()

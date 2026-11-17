@@ -533,13 +533,8 @@ export default function PlazaPanel({
       emoji: externalMessage.emoji,
       createdAt: Date.now(),
     };
-    setMessages(curr => {
-      const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-      const duplicate = curr.some(item => item.author === newMsg.author &&
-        normalize(item.body) === normalize(newMsg.body) &&
-        Math.abs(item.createdAt - newMsg.createdAt) < 15_000);
-      return duplicate ? curr : [...curr, newMsg].slice(-80);
-    });
+    // 外部アナウンス（ゲーム・テスト開始など）は、同じ文面でも押すたびに必ず表示する。
+    setMessages(curr => [...curr, newMsg].slice(-80));
     // システム通知も全参加者へ中継する。受信側では kind='system' として表示。
     if (externalMessage.kind === 'system') {
       sendRelay({ type: 'plaza_system_message', author: externalMessage.author, body: externalMessage.body, emoji: externalMessage.emoji });
