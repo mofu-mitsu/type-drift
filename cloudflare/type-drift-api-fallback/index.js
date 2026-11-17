@@ -6277,33 +6277,6 @@ var index_default = {
     if (request.method === "OPTIONS") return json({}, 204, env, request);
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
-    if (path === "/api/health/supabase-diag") {
-      // TEMPORARY diagnostic (Phase 3 switch debugging, 2026-11-17): tries the
-      // Supabase driver directly (no fallback) and reports the error message.
-      // Remove after the switch is verified.
-      const target = url.searchParams.get("target") || "supa";
-      if (target === "hyper") {
-        if (!env.HYPERDRIVE || !env.HYPERDRIVE.connectionString) return json({ status: "missing-binding", target }, 200, env, request);
-        try {
-          const d = pgwMakeHyperDriver(env.HYPERDRIVE.connectionString);
-          await d`SELECT 1`;
-          return json({ status: "ok", target, diag: pgwLastDiag }, 200, env, request);
-        } catch (e) {
-          return json({ status: "error", target, name: (e && e.name) || null, code: (e && e.code) || null, trail: (e && e.trail) || pgw.getTrail(), diag: pgwLastDiag, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
-        }
-      }
-      let connStr = env.SUPABASE_DATABASE_URL;
-      if (target === "neon") connStr = env.DATABASE_URL;
-      if (target === "supa-session" && connStr) { const u = new URL(connStr); u.port = "5432"; connStr = u.toString(); }
-      if (!connStr) return json({ status: "missing-env", target }, 200, env, request);
-      try {
-        const d = pgwMakeDriver(connStr);
-        await d`SELECT 1`;
-        return json({ status: "ok", target, diag: pgwLastDiag }, 200, env, request);
-      } catch (e) {
-        return json({ status: "error", target, name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, trail: (e && e.trail) || pgw.getTrail(), diag: pgwLastDiag, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
-      }
-    }
     if (path === "/api/health") {
       if (!env.DATABASE_URL) return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
       try {
