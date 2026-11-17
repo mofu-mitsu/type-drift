@@ -6049,7 +6049,7 @@ function makePgSql(openTransport) {
 async function pgwWorkerTransport(info) {
   // PostgreSQL TLS negotiation: plain TCP, SSLRequest, expect 'S', then startTls().
   // (Supavisor rejects an immediate TLS handshake.)
-  let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "off", allowHalfOpen: false });
+  let socket = connect({ hostname: info.host, port: info.port }, { secureTransport: "starttls", allowHalfOpen: false });
   {
     const reader = socket.readable.getReader();
     const writer = socket.writable.getWriter();
