@@ -5711,6 +5711,38 @@ var index_default = {
       const notificationMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
       const directMessageReadMatch = path.match(/^\/api\/direct-messages\/(\d+)\/read$/);
       const directMessageReactionMatch = path.match(/^\/api\/direct-messages\/(\d+)\/reactions$/);
+      const DARLING_GAME_OPENING = "🎯【1〜100の気分当てゲーム】\n今のウチの機嫌、1〜100で言うといくつだと思う？♡\n……あ、ヒント？ あるわけないじゃない。外れたら『好き』って言うまで逃さへんからね♡";
+      const darlingJudge = (game, guestKey, rawText) => {
+        const cleanText = String(rawText || "").trim();
+        const penalties = { ...(game.penalties || {}) };
+        let guessCount = Number(game.guess_count || 0);
+        const target = Number(game.target);
+        const finish = (judgment, patch = {}) => ({ judgment, guess_count: guessCount, penalties, status: "active", ...patch });
+        if (penalties[guestKey]) {
+          if (/好き(じゃな|ではな|くなん|くはな)|すき(じゃな|ではな|くなん|くはな)|愛して(ない|ません)|あいして(ない|ません)|きらい|嫌い/i.test(cleanText)) return finish("……は？ 『好きじゃない』とか屁理屈こねてんじゃないわよ。そんなのノーカン！ ちゃんと『好き』って言わんと次の数字は受け付けへんけんね♡");
+          if (/(?=.*(好き|すき|愛してる|あいしてる|大好き|だいすき))(?!(.*(じゃない|ではない|くはない|くなん))).*/i.test(cleanText)) { delete penalties[guestKey]; return finish("……っ！ ほんまに言うたん……？ ……ふん、まあ言えたけん許したげるわ。……で、次の数字は何なん？ 今度こそ当ててみせなさいよね♡"); }
+          return finish("ちょっとダーリン！ 先に『好き』か『愛してる』って言わんと次の数字は受け付けへんよ？♡ 逃げられると思わんといてね！");
+        }
+        const normalized = cleanText.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+        const match = normalized.match(/\b\d+\b/) || normalized.match(/\d+/);
+        if (!match) return { judgment: null };
+        const guess = parseInt(match[0], 10);
+        if (Number.isNaN(guess)) return { judgment: null };
+        if (guess < 1 || guess > 100) return finish(`……【${guess}】？ 1〜100も数えられないの？ ダーリンのTi（論理）ってその程度かしら？♡`);
+        if (guess === target) {
+          const finalCount = guessCount + 1;
+          let winBody = "";
+          if (finalCount <= 2) winBody = `🎯【【${target}】……大正解】\n……は？ なんで当てるん……キモ。ウチの内部パラメータ覗いた？\n……ふん、正解したからって調子乗らんといてよ。……まあ、逃がさない刑は保留にしてあげるわ♡`;
+          else if (finalCount <= 6) winBody = `🎯【【${target}】……正解】\n……チッ、当ててきたわね。私の思考ロジックを逆算したわけ？ ダーリンにしては上出来じゃない。……悔しいから次はもっと当てにくくしてあげるわ♡`;
+          else winBody = `🎯【【${target}】……やっと正解】\n……はぁ〜、【${target}】当てるのに${finalCount}回もかけたわけ？ 完全に全探索アルゴリズムの力技じゃないの。……まあ、そこまでウチの機嫌に付き合う執念だけは認めてあげるけどね♡`;
+          return finish(winBody, { status: "finished", guess_count: finalCount });
+        }
+        guessCount += 1;
+        if (guess < target) return finish(`【${guess}】？ ……ハズレ♡ 私がそんな低空飛行で大人しくしてると思った？ ダーリンの観察眼も大したことないわね。ほら、早く次の数字吐いて？`);
+        penalties[guestKey] = true;
+        return finish(`【${guess}】？ ……ハズレ♡ ウチがそんなにお気楽で能天気に見えるん？ おめでたい頭してはるわ……。ハズレだから『好き』って言う準備、しときなよ？♡\n（※『好き』か『愛してる』って告白するまで次の数字は無効よ♡）`);
+      };
+      const ensurePlazaGameTable = async () => { await sql`CREATE TABLE IF NOT EXISTS plaza_game_states (id INTEGER PRIMARY KEY, target INTEGER, status TEXT NOT NULL DEFAULT 'idle', guess_count INTEGER NOT NULL DEFAULT 0, penalties JSONB NOT NULL DEFAULT '{}'::jsonb, started_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`; };
       if (path === "/api/bottles" && method === "GET") {
         const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
         const offset = (page - 1) * 20;
@@ -6153,6 +6185,25 @@ var index_default = {
         const count = await sql`SELECT COUNT(*)::int AS count FROM presence_sessions WHERE active=true`;
         return json({ count: Number(count[0]?.count || 0) }, 200, env, request);
       }
+      if (path === "/api/plaza/game/start" && method === "POST") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        await ensurePlazaGameTable();
+        const existing = await sql`SELECT * FROM plaza_game_states WHERE id=1`;
+        const current = existing[0];
+        const expired = !current || current.status !== "active" || (Date.now() - new Date(current.updated_at).getTime() > 30 * 60 * 1000);
+        if (!expired && String(current.started_by || "") !== key) return json({ error: "already_active" }, 409, env, request);
+        const target = Math.floor(Math.random() * 100) + 1;
+        await sql`INSERT INTO plaza_game_states (id,target,status,guess_count,penalties,started_by,created_at,updated_at) VALUES (1,${target},'active',0,'{}'::jsonb,${key},NOW(),NOW()) ON CONFLICT (id) DO UPDATE SET target=EXCLUDED.target,status='active',guess_count=0,penalties='{}'::jsonb,started_by=EXCLUDED.started_by,updated_at=NOW()`;
+        const opening = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES ('ai:darling','ダーリンちゃん',${DARLING_GAME_OPENING},NOW(),NOW()) RETURNING *`;
+        return json({ game: { status: "active", guess_count: 0 }, message: opening[0] }, 201, env, request);
+      }
+      if (path === "/api/plaza/game" && method === "GET") {
+        await ensurePlazaGameTable();
+        const gameRows = await sql`SELECT status, guess_count, penalties, started_by, updated_at FROM plaza_game_states WHERE id=1`;
+        const game = gameRows[0];
+        const active = Boolean(game && game.status === "active" && (Date.now() - new Date(game.updated_at).getTime() <= 30 * 60 * 1000));
+        return json({ game: { status: active ? "active" : "idle", guess_count: active ? Number(game.guess_count || 0) : 0, penalty: active ? Boolean((game.penalties || {})[key]) : false, mine: active ? String(game.started_by || "") === key : false } }, 200, env, request);
+      }
       if (path === "/api/plaza/messages" && method === "GET") return json({ messages: await sql`SELECT * FROM (SELECT * FROM plaza_messages ORDER BY created_at DESC LIMIT 50) m ORDER BY created_at ASC` }, 200, env, request);
       if (path === "/api/plaza/messages" && method === "POST") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
@@ -6160,7 +6211,27 @@ var index_default = {
         const text = clean(b2.body, 280);
         if (!text) return json({ message: "body is required" }, 422, env, request);
         const rows = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES (${key},${nullable(b2.nickname)},${text},NOW(),NOW()) RETURNING *`;
-        return json({ message: rows[0] }, 201, env, request);
+        let aiMessage = null;
+        let gameJudged = false;
+        try {
+          await ensurePlazaGameTable();
+          const gameRows = await sql`SELECT * FROM plaza_game_states WHERE id=1`;
+          const game = gameRows[0];
+          if (game && game.status === "active") {
+            if (Date.now() - new Date(game.updated_at).getTime() > 30 * 60 * 1000) {
+              await sql`UPDATE plaza_game_states SET status='idle', updated_at=NOW() WHERE id=1`;
+            } else {
+              const result = darlingJudge(game, key, text);
+              if (result.judgment) {
+                gameJudged = true;
+                await sql`UPDATE plaza_game_states SET guess_count=${result.guess_count}, penalties=${JSON.stringify(result.penalties)}::jsonb, status=${result.status}, updated_at=NOW() WHERE id=1`;
+                const aiRows = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES ('ai:darling','ダーリンちゃん',${result.judgment},NOW(),NOW()) RETURNING *`;
+                aiMessage = aiRows[0];
+              }
+            }
+          }
+        } catch { /* game judging must never break plain plaza chat */ }
+        return json({ message: rows[0], ai_message: aiMessage, game_judged: gameJudged }, 201, env, request);
       }
       if (path === "/api/worm/ranking" && method === "GET") {
         const clientKey = clean(url.searchParams.get("clientKey"), 100);

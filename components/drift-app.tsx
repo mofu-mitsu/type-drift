@@ -973,9 +973,6 @@ export default function DriftApp() {
 
 
   // ダーリンちゃんのミニゲーム・心理テスト用State
-  const [darlingTargetNumber, setDarlingTargetNumber] = useState<number | null>(null);
-  const [darlingGuessCount, setDarlingGuessCount] = useState<number>(0);
-  const [darlingPenaltyActive, setDarlingPenaltyActive] = useState<boolean>(false);
   const [activeDarlingPsychTest, setActiveDarlingPsychTest] = useState<{ id: number; title: string; question: string; answerA: string; answerB: string } | null>(null);
   const [editingBottle, setEditingBottle] = useState<Bottle | null>(null);
   const [editBottleDraft, setEditBottleDraft] = useState("");
@@ -1637,20 +1634,33 @@ export default function DriftApp() {
     setPlazaToast("ダーリンちゃんが思考のお題を投げかけました 🎲");
   };
 
-  const startDarlingGame = () => {
-    // 押す毎に正解は別の新しい数字（1〜100）に更新される
-    const secret = Math.floor(Math.random() * 100) + 1;
-    setDarlingTargetNumber(secret);
-    setDarlingGuessCount(0);
-    setDarlingPenaltyActive(false);
-    setExternalPlazaMessage({
-      author: "ダーリンちゃん",
-      body: `🎯【1〜100の気分当てゲーム】\n今のウチの機嫌、1〜100で言うといくつだと思う？♡\n……あ、ヒント？ あるわけないじゃない。外れたら『好き』って言うまで逃さへんからね♡`,
-      kind: "ai",
-      emoji: "🥺",
-      id: Date.now()
-    });
-    setPlazaToast("ダーリンちゃんが理不尽なゲームを開始しました 🎯");
+  const startDarlingGame = async () => {
+    // 共有ゲーム: 正解はサーバー側で保持し、判定もサーバーが行う（参加者全員に同じゲームが見える）
+    try {
+      const response = await apiFetch("/api/plaza/game/start", { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
+      if (response.status === 409) {
+        setPlazaToast("🎯 気分当てゲームは進行中です。広場のチャットで数字を言って参加しよう");
+        return;
+      }
+      if (!response.ok) {
+        setPlazaToast("ゲームを開始できませんでした");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      const opening = data?.message;
+      if (opening?.body) {
+        setExternalPlazaMessage({
+          author: "ダーリンちゃん",
+          body: String(opening.body),
+          kind: "ai",
+          emoji: "🥺",
+          id: Date.now()
+        });
+      }
+      setPlazaToast("ダーリンちゃんが理不尽なゲームを開始しました 🎯");
+    } catch {
+      setPlazaToast("ゲームを開始できませんでした");
+    }
   };
 
   const startDarlingPsychTest = () => {
@@ -1682,138 +1692,6 @@ export default function DriftApp() {
   const handlePlazaUserMessage = (msgBody: string) => {
     const clean = msgBody.trim();
     if (!clean) return true;
-
-    // ① ダーリンちゃんの1〜100気分当てゲーム
-    if (darlingTargetNumber !== null) {
-      // 罰ゲーム中（高い数字を言って「好き」と言わされていない状態）
-      if (darlingPenaltyActive) {
-        // 「好きじゃない」「愛してない」などの否定表現を無効判定
-        const isDenial = /好き(じゃな|ではな|くなん|くはな)|すき(じゃな|ではな|くなん|くはな)|愛して(ない|ません)|あいして(ない|ません)|きらい|嫌い/i.test(clean);
-        if (isDenial) {
-          setTimeout(() => {
-            setExternalPlazaMessage({
-              author: "ダーリンちゃん",
-              body: `……は？ 『好きじゃない』とか屁理屈こねてんじゃないわよ。そんなのノーカン！ ちゃんと『好き』って言わんと次の数字は受け付けへんけんね♡`,
-              kind: "ai",
-              emoji: "🥺",
-              id: Date.now() + 2
-            });
-          }, 600);
-          return true;
-        }
-
-        // 「好き」「すき」「愛してる」「あいしてる」「大好き」「だいすき」の告白判定
-        const isLove = /(?=.*(好き|すき|愛してる|あいしてる|大好き|だいすき))(?!(.*(じゃない|ではない|くはない|くなん))).*/i.test(clean);
-        if (isLove) {
-          setDarlingPenaltyActive(false);
-          setTimeout(() => {
-            setExternalPlazaMessage({
-              author: "ダーリンちゃん",
-              body: `……っ！ ほんまに言うたん……？ ……ふん、まあ言えたけん許したげるわ。……で、次の数字は何なん？ 今度こそ当ててみせなさいよね♡`,
-              kind: "ai",
-              emoji: "🥺",
-              id: Date.now() + 2
-            });
-            setPlazaToast("ダーリンちゃんが動揺して罰ゲームが解除されました 😳");
-          }, 600);
-          return true;
-        }
-
-        // それ以外の入力（数字や無関係な発言など）はすべてブロック
-        setTimeout(() => {
-          setExternalPlazaMessage({
-            author: "ダーリンちゃん",
-            body: `ちょっとダーリン！ 先に『好き』か『愛してる』って言わんと次の数字は受け付けへんよ？♡ 逃げられると思わんといてね！`,
-            kind: "ai",
-            emoji: "🥺",
-            id: Date.now() + 2
-          });
-        }, 600);
-        return true;
-      }
-
-      // 全角数字を半角に正規化して判定
-      const normalized = clean.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-      const match = normalized.match(/\b\d+\b/) || normalized.match(/\d+/);
-      if (match) {
-        const guess = parseInt(match[0], 10);
-        if (!isNaN(guess)) {
-          if (guess < 1 || guess > 100) {
-            setTimeout(() => {
-              setExternalPlazaMessage({
-                author: "ダーリンちゃん",
-                body: `……【${guess}】？ 1〜100も数えられないの？ ダーリンのTi（論理）ってその程度かしら？♡`,
-                kind: "ai",
-                emoji: "🥺",
-                id: Date.now() + 2
-              });
-            }, 600);
-            return true;
-          }
-
-          if (guess === darlingTargetNumber) {
-            // 当たり！
-            const target = darlingTargetNumber;
-            const finalCount = darlingGuessCount + 1;
-            setDarlingTargetNumber(null);
-            setDarlingGuessCount(0);
-            setDarlingPenaltyActive(false);
-
-            setTimeout(() => {
-              let winBody = "";
-              if (finalCount <= 2) {
-                // 1〜2回（神がかり的・チート）
-                winBody = `🎯【【${target}】……大正解】\n……は？ なんで当てるん……キモ。ウチの内部パラメータ覗いた？\n……ふん、正解したからって調子乗らんといてよ。……まあ、逃がさない刑は保留にしてあげるわ♡`;
-              } else if (finalCount <= 6) {
-                // 3〜6回（適正な推論）
-                winBody = `🎯【【${target}】……正解】\n……チッ、当ててきたわね。私の思考ロジックを逆算したわけ？ ダーリンにしては上出来じゃない。……悔しいから次はもっと当てにくくしてあげるわ♡`;
-              } else {
-                // 7回以上（執念の総当たり探索）
-                winBody = `🎯【【${target}】……やっと正解】\n……はぁ〜、【${target}】当てるのに${finalCount}回もかけたわけ？ 完全に全探索アルゴリズムの力技じゃないの。……まあ、そこまでウチの機嫌に付き合う執念だけは認めてあげるけどね♡`;
-              }
-
-              setExternalPlazaMessage({
-                author: "ダーリンちゃん",
-                body: winBody,
-                kind: "ai",
-                emoji: "🥺",
-                id: Date.now() + 2
-              });
-              setPlazaToast(`🎯 気分当てゲーム的中！（試行回数: ${finalCount}回）`);
-            }, 600);
-            return true;
-          } else if (guess < darlingTargetNumber) {
-            // 低い（不機嫌・煽り）
-            setDarlingGuessCount(prev => prev + 1);
-            setTimeout(() => {
-              setExternalPlazaMessage({
-                author: "ダーリンちゃん",
-                body: `【${guess}】？ ……ハズレ♡ 私がそんな低空飛行で大人しくしてると思った？ ダーリンの観察眼も大したことないわね。ほら、早く次の数字吐いて？`,
-                kind: "ai",
-                emoji: "🥺",
-                id: Date.now() + 2
-              });
-            }, 600);
-            return true;
-          } else {
-            // 高い（ドン引き・冷め＋罰ゲーム発動！）
-            setDarlingGuessCount(prev => prev + 1);
-            setDarlingPenaltyActive(true);
-            setTimeout(() => {
-              setExternalPlazaMessage({
-                author: "ダーリンちゃん",
-                body: `【${guess}】？ ……ハズレ♡ ウチがそんなにお気楽で能天気に見えるん？ おめでたい頭してはるわ……。ハズレだから『好き』って言う準備、しときなよ？♡\n（※『好き』か『愛してる』って告白するまで次の数字は無効よ♡）`,
-                kind: "ai",
-                emoji: "🥺",
-                id: Date.now() + 2
-              });
-              setPlazaToast("⚠️ ダーリンちゃんへの愛の告白ロックが発動しました！");
-            }, 600);
-            return true;
-          }
-        }
-      }
-    }
 
     // ② A/B心理テストの判定
     if (activeDarlingPsychTest !== null) {

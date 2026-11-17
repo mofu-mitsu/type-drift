@@ -411,11 +411,25 @@ export default function PlazaPanel({
       setMessages(curr => [...curr, localMsg]);
     }
     const api = process.env.NEXT_PUBLIC_API_URL;
-    if (api) void apiFetch('/api/plaza/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ nickname: author, body }) }).catch(() => undefined);
+    const handledByLocalGame = onUserMessageSent?.(body, author) === true;
+    if (api) {
+      void apiFetch('/api/plaza/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Key': getGuestKey() }, body: JSON.stringify({ nickname: author, body }) })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+          const aiRow = data?.ai_message;
+          if (aiRow?.body) {
+            const aiMsg: PlazaMessage = { id: `srv-${aiRow.id}`, author: 'ダーリンちゃん', body: String(aiRow.body), kind: 'ai', emoji: '🥺', createdAt: Date.now() };
+            setMessages(curr => [...curr, aiMsg].slice(-80));
+            sendRelay({ type: 'plaza_ai_message', character: 'ダーリンちゃん', body: String(aiRow.body) });
+          }
+          if (!data?.game_judged && !handledByLocalGame) window.setTimeout(() => void requestAi(body), 350);
+        })
+        .catch(() => { if (!handledByLocalGame) window.setTimeout(() => void requestAi(body), 350); });
+    } else if (!handledByLocalGame) {
+      window.setTimeout(() => void requestAi(body), 350);
+    }
     logActivity('plaza_message', { bodyLength: body.length, author });
     setText('');
-    const handledByLocalGame = onUserMessageSent?.(body, author) === true;
-    if (!handledByLocalGame) window.setTimeout(() => void requestAi(body), 350);
   };
 
   const appendChain = () => {
