@@ -6519,10 +6519,31 @@ var index_default = {
         let bottleId = null;
         if (b.bottle_id || b.thread_id) {
           bottleId = b.bottle_id ? Number(b.bottle_id) : null;
-          threadId = bottleId ? (String(b.thread_id || "").startsWith("bottle-" + bottleId + "-pair-") ? clean(b.thread_id, 240) : "bottle-" + bottleId) : clean(b.thread_id, 240);
+          const passedThread = String(b.thread_id || "");
+          threadId = bottleId ? ((passedThread.startsWith("bottle-" + bottleId + "-pair-") || passedThread.startsWith("bottle-" + bottleId + "-npc-pair-")) ? clean(passedThread, 240) : "bottle-" + bottleId) : clean(passedThread, 240);
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
           const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
           context = lastRows[0] || null;
+          if (!context && bottleId) {
+            // The client rebuilds thread IDs from participant identities (guest keys or
+            // signed-in user IDs), which may not string-match the stored thread_id.
+            // Resolve the conversation by bottle + participation instead of failing.
+            const wantNpc = String(b.thread_id || "").includes("npc-pair");
+            const anyRows = await sql`SELECT * FROM direct_messages WHERE bottle_id=${bottleId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 20`;
+            const picked = anyRows.find((row) => {
+              const other = row.sender_guest_key === key ? row.recipient_guest_key : row.sender_guest_key;
+              return wantNpc ? String(other || "").startsWith("ai:") : !String(other || "").startsWith("ai:");
+            }) || anyRows[0];
+            if (picked) { context = picked; threadId = String(picked.thread_id || threadId); }
+          }
+          if (!context && String(b.thread_id || "").includes("ai:")) {
+            const npcHit = String(b.thread_id || "").match(/ai:(darling|lsi-worm)/);
+            if (npcHit) {
+              const npcK = "ai:" + npcHit[1];
+              const npcRows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${npcK} AND recipient_guest_key=${key}) OR (sender_guest_key=${key} AND recipient_guest_key=${npcK})) ORDER BY created_at DESC LIMIT 1`;
+              if (npcRows[0]) { context = npcRows[0]; threadId = String(npcRows[0].thread_id || threadId); bottleId = bottleId || (npcRows[0].bottle_id ? Number(npcRows[0].bottle_id) : null); }
+            }
+          }
           if (context) {
             const currentIsSender = context.sender_guest_key === key;
             contextIsSender = currentIsSender;
@@ -6538,6 +6559,7 @@ var index_default = {
             if (owner.is_ai) return json({ message: "AI bottle owners are not available for server DM" }, 422, env, request);
             recipientKey = String(owner.guest_key);
             const ownerType = [owner.mbti, owner.socionics, owner.enneagram, owner.other_type].filter(Boolean).join(" · ");
+            const ownerProfileRows = await sql`SELECT nickname,mbti,socionics,enneagram,other_type,bio,links,profile_image_url FROM profiles WHERE guest_key=${owner.guest_key} LIMIT 1`;
             const savedOwnerProfile = ownerProfileRows[0] || {};
             context = {
               bottle_snippet: owner.body,
@@ -6551,6 +6573,12 @@ var index_default = {
                 other_type: owner.other_type || savedOwnerProfile.other_type || "",
               },
             };
+            const pairThreadId = `bottle-${bottleId}-pair-${[key, recipientKey].sort().join("--")}`;
+            const pairRows = await sql`SELECT thread_id, bottle_snippet, bottle_author, bottle_type, recipient_profile FROM direct_messages WHERE thread_id=${pairThreadId} ORDER BY created_at DESC LIMIT 1`;
+            if (pairRows[0]) {
+              threadId = pairThreadId;
+              context = { bottle_snippet: pairRows[0].bottle_snippet, bottle_author: pairRows[0].bottle_author, bottle_type: pairRows[0].bottle_type, recipient_profile: pairRows[0].recipient_profile || context.recipient_profile };
+            }
           } else if (threadId.startsWith("dm-")) {
             const prefix = `dm-${key}-`;
             const suffix = `-${key}`;
@@ -6649,11 +6677,16 @@ var index_default = {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
         const id = Number(directMessageReactionMatch[1]);
         await sql`CREATE TABLE IF NOT EXISTS direct_message_reactions (id BIGSERIAL PRIMARY KEY, message_id BIGINT NOT NULL REFERENCES direct_messages(id) ON DELETE CASCADE, guest_key TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (message_id, guest_key))`;
-        const msgRows = await sql`SELECT id, sender_guest_key, recipient_guest_key, bottle_id FROM direct_messages WHERE id=${id} LIMIT 1`;
+        const msgRows = await sql`SELECT id, sender_guest_key, recipient_guest_key, bottle_id, thread_id FROM direct_messages WHERE id=${id} LIMIT 1`;
         const msg = msgRows[0];
         if (!msg) return json({ message: "Message not found." }, 404, env, request);
         if (String(msg.sender_guest_key) === key) return json({ message: "自分のメッセージにはリアクションできません。" }, 422, env, request);
-        if (String(msg.recipient_guest_key) !== key) return json({ message: "このスレッドの参加者だけがリアクションできます。" }, 403, env, request);
+        if (String(msg.recipient_guest_key) !== key) {
+          // Account holders can appear under a canonical profile key that differs from
+          // the key stored on older rows; accept any participant of the same thread.
+          const partRows = await sql`SELECT 1 FROM direct_messages WHERE thread_id=${msg.thread_id} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) LIMIT 1`;
+          if (!partRows.length) return json({ message: "このスレッドの参加者だけがリアクションできます。" }, 403, env, request);
+        }
         const existed = await sql`SELECT 1 FROM direct_message_reactions WHERE message_id=${id} AND guest_key=${key} LIMIT 1`;
         const rows = await sql`WITH updated AS (UPDATE direct_message_reactions SET level=level+1,updated_at=NOW() WHERE message_id=${id} AND guest_key=${key} RETURNING level)
           INSERT INTO direct_message_reactions (message_id,guest_key,level,created_at,updated_at) SELECT ${id},${key},1,NOW(),NOW() WHERE NOT EXISTS (SELECT 1 FROM updated) RETURNING level`;
