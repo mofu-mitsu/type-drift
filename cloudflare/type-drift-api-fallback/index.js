@@ -6064,6 +6064,13 @@ async function pgwWorkerTransport(info) {
     if (!first.value || first.value[0] !== 0x53) throw new Error("pg: server refused TLS upgrade");
   }
   socket = socket.startTls();
+  try {
+    await socket.opened;
+  } catch (e) {
+    const err = new Error("tls-opened: " + String((e && e.message) || e).slice(0, 150));
+    err.stage = "tls-opened";
+    throw err;
+  }
   const reader = socket.readable.getReader();
   const writer = socket.writable.getWriter();
   return {
@@ -6213,7 +6220,7 @@ var index_default = {
         await d`SELECT 1`;
         return json({ status: "ok" }, 200, env, request);
       } catch (e) {
-        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
+        return json({ status: "error", name: (e && e.name) || null, code: (e && e.code) || null, stage: (e && e.stage) || null, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
       }
     }
     if (path === "/api/health") {
