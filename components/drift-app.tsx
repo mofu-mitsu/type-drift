@@ -15,7 +15,7 @@ function getDirectMessageStorageKey(): string {
   return "type-drift-direct-messages:guest:anonymous";
 }
 import type { ReactNode } from "react";
-import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, MoreHorizontal, Plus, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
+import { Anchor, ArrowUpRight, Bell, Bot, CheckCheck, ChevronLeft, Compass, ExternalLink, Heart, HelpCircle, Home, LogIn, Menu, MessageCircle, MessageSquare, MoreHorizontal, Plus, Quote, RotateCcw, Send, Sparkles, Waves, X } from "lucide-react";
 import WormGame from "./worm-game";
 import PlazaPanel, { type PlazaUser } from "./plaza-panel";
 import CognitiveConstellation from "./cognitive-constellation";
@@ -39,7 +39,14 @@ const inFlightNpcReplies = new Set<string>();
 // Prevent the same form/button event from persisting a user message twice.
 const inFlightDmSends = new Map<string, Promise<string | false>>();
 
-type Bottle = { id: number; author: string; emoji: string; type: string; ai_character?: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; allowLikes?: boolean; allowReplies?: boolean; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; color: string };
+type Bottle = { id: number; author: string; emoji: string; type: string; ai_character?: string; mbti: string; socionics: string; enneagram: string; otherType?: string; text: string; imageUrl?: string; poll?: { options: string[]; votes: number[] }; reactions: number; replies: number; allowLikes?: boolean; allowReplies?: boolean; userReaction?: number; aiLikers?: string[]; time: string; ai?: string; mine?: boolean; quoted?: { id: number; text: string; deleted: boolean; ai?: string; mbti: string; socionics: string; enneagram: string; otherType?: string }; color: string };
+
+function quotedFromRow(row: any): Bottle["quoted"] {
+  if (row?.quoted_bottle_id == null) return undefined;
+  const deleted = !(row.quoted_deleted === false || row.quoted_deleted === "false");
+  const isAi = row.quoted_is_ai === true || row.quoted_is_ai === "true" || Boolean(String(row.quoted_ai_character || "").trim());
+  return { id: Number(row.quoted_bottle_id), text: String(row.quoted_body || ""), deleted, ai: isAi ? String(row.quoted_ai_character || "AI") : undefined, mbti: row.quoted_mbti || "未設定", socionics: row.quoted_socionics || "未設定", enneagram: row.quoted_enneagram || "未設定", otherType: row.quoted_other_type || "" };
+}
 type ReplyItem = { id: number; body: string; parentId?: number; reaction: number; author?: string; emoji?: string };
 
 const BOTTLE_PROMPTS = [
@@ -223,7 +230,7 @@ function BottleTextWithLinks({ text }: { text: string }) {
   </>;
 }
 
-function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onEdit?: (bottle: Bottle) => void; onDelete?: (bottle: Bottle) => void }) {
+function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete, onQuote }: { bottle: Bottle; onReact: (id: number) => void; onOpen: (bottle: Bottle) => void; onEdit?: (bottle: Bottle) => void; onDelete?: (bottle: Bottle) => void; onQuote?: (bottle: Bottle) => void }) {
   const [poll, setPoll] = useState(bottle.poll);
   const [moreOpen, setMoreOpen] = useState(false);
   const [voted, setVoted] = useState<number | null>(null);
@@ -270,8 +277,9 @@ function BottleCard({ bottle, onReact, onOpen, onEdit, onDelete }: { bottle: Bot
     {bottle.ai && <span className="ai-chip"><Bot size={12} /> {bottle.ai}</span>}
     <div className="bottle-text"><BottleTextWithLinks text={normalizeDmBody(bottle.text)} /></div>
     {bottle.imageUrl && <img className="bottle-image" src={bottle.imageUrl} alt="ボトルに添付された画像" />}
+    {bottle.quoted && <div className="quoted-bottle">{bottle.quoted.deleted ? <span className="quoted-bottle__deleted">🌊 このボトルは回収されました</span> : <><div className="quoted-bottle__head"><Quote size={11} /><span>{bottle.quoted.ai ? bottle.quoted.ai : "匿名の誰か"}</span><small>{bottle.quoted.ai ? (bottle.quoted.mbti || "") : ([bottle.quoted.mbti, bottle.quoted.socionics, bottle.quoted.enneagram, bottle.quoted.otherType].filter(Boolean).join(" · ") || "自認未設定")}</small></div><p className="quoted-bottle__text">{bottle.quoted.text}</p></>}</div>}
     {poll && <div className="poll-box"><div className="poll-box__heading"><span>🌊 みんなの投票</span><small>{poll.votes.reduce((sum, count) => sum + count, 0)}票</small></div>{poll.options.map((option, index) => { const total = poll.votes.reduce((sum, count) => sum + count, 0); const percent = total ? Math.round(poll.votes[index] / total * 100) : 0; return <button type="button" key={option} className={voted === index ? "poll-option selected" : "poll-option"} onClick={() => vote(index)} disabled={voted !== null}><span className="poll-option__label">{option}</span>{voted !== null && <span className="poll-option__result"><span className="poll-option__bar"><i style={{ width: `${percent}%` }} /></span><small>{poll.votes[index]}票 · {percent}%</small></span>}</button>;})}{voted !== null && <p className="poll-box__thanks">投票ありがとう！結果はみんなで共有中 🫧</p>}</div>}
-    <div className="bottle-card__bottom">{bottle.allowLikes !== false && <button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button>}{bottle.allowReplies !== false && <button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button>}<div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={event => { event.stopPropagation(); setMoreOpen(open => !open); }}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
+    <div className="bottle-card__bottom">{bottle.allowLikes !== false && <button type="button" onClick={() => onReact(bottle.id)} className={`reaction reaction--${bottle.userReaction || 0}`} aria-label="いいね"><Heart size={16} /><small>{bottle.mine ? (bottle.reactions > 0 ? bottle.reactions : "いいね") : (bottle.userReaction ? `自分 ${bottle.userReaction}` : "いいね")}</small></button>}{bottle.allowReplies !== false && <button type="button" onClick={() => onOpen(bottle)} className="reaction" aria-label="返信を読む"><MessageCircle size={16} /><small>{bottle.replies > 0 ? bottle.replies : "返信"}</small></button>}{bottle.allowReplies !== false && bottle.id > 0 && onQuote && <button type="button" onClick={() => onQuote(bottle)} className="reaction" aria-label="引用する"><Quote size={16} /><small>引用</small></button>}<div className="bottle-more-wrap"><button type="button" className="more" aria-label="その他" aria-expanded={moreOpen} onClick={event => { event.stopPropagation(); setMoreOpen(open => !open); }}>•••</button>{moreOpen && <div className="bottle-more-menu" role="menu">{bottle.mine && !bottle.ai && bottle.id > 0 ? <><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onEdit?.(bottle); }}>編集する</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete?.(bottle); }}>回収（削除）</button></> : <button type="button" role="menuitem" onClick={() => setMoreOpen(false)}>閉じる</button>}</div>}</div></div>
     {Boolean(bottle.aiLikers?.length) && <div style={{ padding: "4px 12px 10px", color: "#9d174d", fontSize: "11px" }}>AIからのいいね：{bottle.aiLikers?.join(" · ")}</div>}
   </article>;
 }
@@ -439,6 +447,7 @@ export default function DriftApp() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [quotingBottle, setQuotingBottle] = useState<Bottle | null>(null);
   const [draftImage, setDraftImage] = useState<string | undefined>();
   const [imageUploading, setImageUploading] = useState(false);
   const [picked, setPicked] = useState(false);
@@ -1638,6 +1647,10 @@ export default function DriftApp() {
     try {
       const response = await apiFetch("/api/plaza/game/start", { method: "POST", credentials: "include", headers: { "X-Guest-Key": getGuestKey() } });
       if (response.status === 409) {
+        const conflict = await response.json().catch(() => null);
+        if (conflict?.message?.body) {
+          setExternalPlazaMessage({ author: "ダーリンちゃん", body: String(conflict.message.body), kind: "ai", emoji: "🥺", id: Date.now() });
+        }
         setPlazaToast("🎯 気分当てゲームは進行中です。広場のチャットで数字を言って参加しよう");
         return;
       }
@@ -1668,6 +1681,10 @@ export default function DriftApp() {
     try {
       const response = await apiFetch("/api/plaza/psych/start", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ test_id: chosen.id, title: chosen.title, question: chosen.question, answerA: chosen.answerA, answerB: chosen.answerB }) });
       if (response.status === 409) {
+        const conflict = await response.json().catch(() => null);
+        if (conflict?.message?.body) {
+          setExternalPlazaMessage({ author: "ダーリンちゃん", body: String(conflict.message.body), kind: "ai", emoji: "🥺", id: Date.now() });
+        }
         setPlazaToast("🔮 心理テストは進行中です。広場のチャットで『A』か『B』と答えて参加しよう");
         return;
       }
@@ -1959,7 +1976,7 @@ export default function DriftApp() {
         }
         const options = Array.isArray(row.poll_options) ? row.poll_options.map(String) : [];
         return { id: Number(row.id), author: isAi ? String(row.ai_character || "AI") : `匿名の${String(row.mbti || row.socionics || "誰か").toUpperCase()}`, emoji: isAi ? (String(row.ai_character || "").includes("芋虫") ? "🐛" : "🥺") : "◌", type: `${row.socionics || "未設定"} · ${row.enneagram || "?"}`, mbti: row.mbti || "未設定", socionics: row.socionics || "未設定", enneagram: row.enneagram || "未設定", otherType: row.other_type || "", text: String(row.body || ""), imageUrl: row.image_url || undefined, poll: options.length > 1 ? { options, votes: options.map(() => 0) } : undefined, reactions: Number(row.reactions_sum_level || 0), replies: Number(row.replies_count || 0), allowLikes: Object.prototype.hasOwnProperty.call(localInteraction, "likes") ? localInteraction.likes === true : ![false, "false", 0, "0", "f"].includes(row.allow_likes ?? row.allowLikes ?? true as any),
-            allowReplies: Object.prototype.hasOwnProperty.call(localInteraction, "replies") ? localInteraction.replies === true : ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, color: "mint" } as Bottle;
+            allowReplies: Object.prototype.hasOwnProperty.call(localInteraction, "replies") ? localInteraction.replies === true : ![false, "false", 0, "0", "f"].includes(row.allow_replies ?? row.allowReplies ?? true as any), userReaction: Number(row.reaction_level || 0), time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから", mine: isMine, ai: isAi ? String(row.ai_character || "AI") : undefined, quoted: quotedFromRow(row), color: "mint" } as Bottle;
       });
       // API投稿を正本にしつつ、固定の初期NPC投稿だけは常に一緒に表示する。
       const npcSeeds = initialBottles.filter(item => Boolean(item.ai)).map(item => ({ ...item, id: -Math.abs(item.id), mine: false }));
@@ -2074,6 +2091,7 @@ export default function DriftApp() {
             userReaction: Number(row.reaction_level || 0),
             time: row.created_at ? new Date(row.created_at).toLocaleString("ja-JP") : "海の向こうから",
             ai: (row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim())) ? String(row.ai_character || "AI") : undefined, ai_character: row.ai_character || undefined, mine: !(row.is_ai === true || row.is_ai === "true" || Boolean(String(row.ai_character || "").trim())) && (row.is_mine === true || row.is_mine === "true"),
+            quoted: quotedFromRow(row),
             color: "mint",
           };
         }).filter((item: Bottle) => Number.isFinite(item.id));
@@ -3688,8 +3706,9 @@ export default function DriftApp() {
     if (!result.secure_url) throw new Error("画像の保存先を取得できませんでした。画像と本文は投稿されていません。");
     return result.secure_url;
   };
-  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; if (editingBottle) { setImageUploading(true); try { await saveBottleEdit(); } finally { setImageUploading(false); } return; } setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null, allow_likes: postInteractionPrefs.likes, allow_replies: postInteractionPrefs.replies }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); try { const prefs = JSON.parse(localStorage.getItem("type-drift-bottle-interaction-prefs") || "{}"); prefs[String(id)] = { likes: postInteractionPrefs.likes, replies: postInteractionPrefs.replies }; localStorage.setItem("type-drift-bottle-interaction-prefs", JSON.stringify(prefs)); } catch {}
-      const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, allowLikes: postInteractionPrefs.likes, allowReplies: postInteractionPrefs.replies, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
+  const quoteBottle = (bottle: Bottle) => { setQuotingBottle(bottle); setPostMode("secret"); setPollOptions(["", ""]); setDraftImage(undefined); setComposerOpen(true); };
+  const publish = async () => { const cleanOptions = pollOptions.map(option => option.trim()).filter(Boolean); if (!draft.trim() || (postMode === "poll" && cleanOptions.length < 2) || imageUploading) return; if (editingBottle) { setImageUploading(true); try { await saveBottleEdit(); } finally { setImageUploading(false); } return; } setImageUploading(true); try { const imageUrl = await uploadToCloudinary(draftImage); const displayType = identity.mbti || identity.socionics || "誰か"; const payload = { body: draft.trim(), image_url: imageUrl, mbti: identity.mbti || null, socionics: identity.socionics || null, enneagram: identity.enneagram || null, other_type: identity.otherType || null, poll_options: postMode === "poll" ? cleanOptions : null, allow_likes: postInteractionPrefs.likes, allow_replies: postInteractionPrefs.replies, quoted_bottle_id: quotingBottle ? quotingBottle.id : null }; const response = await apiFetch('/api/bottles', { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`bottle save failed (${response.status})`); const serverBottle = (await response.json()).bottle; const id = Number(serverBottle?.id || Date.now()); try { const prefs = JSON.parse(localStorage.getItem("type-drift-bottle-interaction-prefs") || "{}"); prefs[String(id)] = { likes: postInteractionPrefs.likes, replies: postInteractionPrefs.replies }; localStorage.setItem("type-drift-bottle-interaction-prefs", JSON.stringify(prefs)); } catch {}
+      const nextBottle = { id, author: `匿名の${displayType.toUpperCase()}`, emoji: postMode === "question" ? "❔" : "◌", type: `${identity.socionics || "未設定"} · ${identity.enneagram || "?"}`, mbti: identity.mbti || "未設定", socionics: identity.socionics || "未設定", enneagram: identity.enneagram || "未設定", otherType: identity.otherType, text: draft.trim(), imageUrl, poll: postMode === "poll" ? { options: cleanOptions, votes: cleanOptions.map(() => 0) } : undefined, reactions: 0, replies: 0, allowLikes: postInteractionPrefs.likes, allowReplies: postInteractionPrefs.replies, quoted: quotingBottle ? { id: quotingBottle.id, text: quotingBottle.text, deleted: false, ai: quotingBottle.ai, mbti: quotingBottle.mbti, socionics: quotingBottle.socionics, enneagram: quotingBottle.enneagram, otherType: quotingBottle.otherType } : undefined, time: "たった今", mine: true, color: "mint" } as Bottle; setBottles(current => [nextBottle, ...current.filter(item => item.id !== id)]); logActivity(postMode === "question" ? "question_submitted" : "bottle_published", { hasImage: Boolean(imageUrl), hasPoll: postMode === "poll" }, { type: "bottle", id }); if (Math.random() < 0.75) window.setTimeout(() => logActivity("npc_reaction", { character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", level: 1 + Math.floor(Math.random() * 3) }, { type: "bottle", id }), 3500 + Math.floor(Math.random() * 7000)); setDraft(""); setQuotingBottle(null); setDraftImage(undefined); setPollOptions(["", ""]); setPostMode("secret"); setIdentity({ mbti: "", socionics: "", enneagram: "", otherType: "" }); setComposerOpen(false); } catch (error) { console.error("[Type Drift] bottle publish failed", error); setPlazaToast(error instanceof Error ? error.message : "ボトルの保存または画像のアップロードに失敗しました"); } finally { setImageUploading(false); } };
   const choosePrompt = (prompt: string) => { setPostMode("question"); setDraft(`${prompt}\n\n`); };
   const submitQuestion = async () => { const body = questionDraft.trim(); if (!body) return; setQuestionPrompts(items => [body, ...items.filter(item => item !== body)]); await apiFetch('/api/question-prompts', { method: "POST", headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() }, body: JSON.stringify({ body }) }).catch(() => undefined); logActivity("question_prompt_submitted", { bodyLength: body.length }); setQuestionDraft(""); setQuestionBoxOpen(false); setPlazaToast("質問を問いの引き出しへ追加しました"); };
   const readDraftImage = (file: File | undefined) => {
@@ -4254,7 +4273,7 @@ export default function DriftApp() {
         </div>
         <p className="stream-hint"><Waves size={14} /> 流れてくるボトルをタップして拾う · 泳ぐブリもタップできます</p>
         <div className="bottle-grid">
-          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} />)}
+          {visible.map(bottle => <BottleCard key={bottle.id} bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} onQuote={quoteBottle} />)}
         </div>
       </section>
     )}
@@ -5348,7 +5367,7 @@ export default function DriftApp() {
                     const userReplies = myRepliesMap[bottle.id] || [];
                     return (
                       <div key={bottle.id} className="v2-replied-card-wrapper">
-                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} />
+                        <BottleCard bottle={bottle} onReact={react} onOpen={openBottle} onEdit={editBottle} onDelete={deleteBottleFromCard} onQuote={quoteBottle} />
                         {activityTab === "replied" && userReplies.length > 0 && (
                           <div className="v2-my-replies-box">
                             <div className="v2-my-replies-head">
@@ -6819,6 +6838,7 @@ export default function DriftApp() {
             </label>
           </div>
           <input className="other-type-input" value={identity.otherType} onChange={e => setIdentity({ ...identity, otherType: e.target.value })} placeholder="その他の自認（自由入力）" />
+          {quotingBottle && <div className="quote-chip"><Quote size={14} /><p><strong>引用中：</strong>{quotingBottle.text}</p><button type="button" onClick={() => setQuotingBottle(null)} aria-label="引用を取り消す"><X size={14} /></button></div>}
           <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder={postMode === "poll" ? "アンケートの質問を書く…" : "類型のこと、最近考えていること…"} autoFocus />
           {!editingBottle && <div className="post-interaction-settings post-interaction-prefs" style={{ display: "flex", flexWrap: "wrap", gap: 12, padding: "10px 12px", marginTop: 8, border: "1px solid #eadcf5", borderRadius: 12, background: "#fffaff", fontSize: 13 }}><strong style={{ width: "100%", color: "#80638d" }}>この投稿への反応</strong><label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={postInteractionPrefs.likes} onChange={e => savePostInteractionPrefs({ ...postInteractionPrefs, likes: e.target.checked })} />いいねを許可</label><label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={postInteractionPrefs.replies} onChange={e => savePostInteractionPrefs({ ...postInteractionPrefs, replies: e.target.checked })} />返信を許可</label></div>}
           {postMode === "poll" && (

@@ -934,3 +934,12 @@
 .file-upload-box {
   margin-top: 0;
 }
+
+.quoted-bottle { margin:0 0 12px; padding:10px 12px; border:1px solid rgba(58,103,105,.16); border-left:3px solid rgba(53,125,128,.45); border-radius:10px; background:rgba(255,255,255,.5); }
+.quoted-bottle__head { display:flex; align-items:center; gap:6px; color:#5d7d7d; font-size:10px; font-weight:600; }
+.quoted-bottle__head small { color:#8ba0a0; font-family:'DM Mono',monospace; font-size:9px; font-weight:400; }
+.quoted-bottle__text { margin:6px 0 0; font-family:'Noto Serif JP',serif; font-size:12px; line-height:1.7; color:#47605f; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.quoted-bottle__deleted { color:#8ba0a0; font-size:11px; }
+.quote-chip { display:flex; align-items:flex-start; gap:8px; margin:0 0 10px; padding:10px 12px; border:1px dashed rgba(53,125,128,.4); border-radius:10px; background:rgba(239,248,241,.7); font-size:12px; color:#47605f; }
+.quote-chip p { flex:1; margin:0; line-height:1.6; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.quote-chip button { flex:none; display:grid; place-items:center; padding:2px; color:#799292; background:transparent; }

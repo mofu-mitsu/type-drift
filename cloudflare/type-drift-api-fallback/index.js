@@ -6340,7 +6340,9 @@ var index_default = {
       };
       const ensurePlazaPsychTable = async () => { await sql`CREATE TABLE IF NOT EXISTS plaza_psych_states (id INTEGER PRIMARY KEY, test_id INTEGER, title TEXT, question TEXT, answer_a TEXT, answer_b TEXT, started_by TEXT, answered JSONB NOT NULL DEFAULT '[]'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`; };
       const psychActive = (row) => Boolean(row && row.title && (Date.now() - new Date(row.created_at).getTime() <= 10 * 60 * 1000));
+      const ensureBottleQuoteColumn = async () => { await sql`ALTER TABLE bottles ADD COLUMN IF NOT EXISTS quoted_bottle_id INTEGER`; };
       if (path === "/api/bottles" && method === "GET") {
+        await ensureBottleQuoteColumn();
         const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
         const offset = (page - 1) * 20;
         const mbti = url.searchParams.get("mbti")?.toLowerCase() || null;
@@ -6348,6 +6350,14 @@ var index_default = {
         const q = url.searchParams.get("q") || null;
         const rows = await sql`
           SELECT b.*,
+            (SELECT body FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_body,
+            (SELECT mbti FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_mbti,
+            (SELECT socionics FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_socionics,
+            (SELECT enneagram FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_enneagram,
+            (SELECT other_type FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_other_type,
+            (SELECT is_ai FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_is_ai,
+            (SELECT ai_character FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_ai_character,
+            (SELECT (deleted_at IS NOT NULL) FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_deleted,
             (SELECT COUNT(*)::int FROM replies r WHERE r.bottle_id=b.id AND r.deleted_at IS NULL) AS replies_count,
             (SELECT COALESCE(SUM(rx.level),0)::int FROM reactions rx WHERE rx.bottle_id=b.id) AS reactions_sum_level,
             COALESCE((SELECT rx.level FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key=${key || null} ORDER BY rx.id DESC LIMIT 1),0)::int AS reaction_level,
@@ -6364,8 +6374,24 @@ var index_default = {
         if (!key || !clean(b2.body, 5e3)) return json({ message: "A guest key and body are required." }, 422, env, request);
         const allowLikes = ![false, "false", 0, "0", "f"].includes(b2.allow_likes ?? b2.allowLikes ?? true);
         const allowReplies = ![false, "false", 0, "0", "f"].includes(b2.allow_replies ?? b2.allowReplies ?? true);
-        const rows = await sql`INSERT INTO bottles (guest_key,body,image_url,mbti,socionics,enneagram,other_type,is_ai,ai_character,poll_options,allow_likes,allow_replies,created_at,updated_at)
-          VALUES (${key},${clean(b2.body, 5e3)},${nullable(b2.image_url)},${nullable(b2.mbti)},${nullable(b2.socionics)},${nullable(b2.enneagram)},${nullable(b2.other_type)},${Boolean(b2.is_ai)},${nullable(b2.ai_character)},${b2.poll_options ? JSON.stringify(b2.poll_options) : null}::jsonb,${allowLikes},${allowReplies},NOW(),NOW()) RETURNING *`;
+        await ensureBottleQuoteColumn();
+        let quotedId = null;
+        let quotedOwner = null;
+        if (b2.quoted_bottle_id != null) {
+          const qid = Number(b2.quoted_bottle_id);
+          if (!Number.isFinite(qid) || qid <= 0) return json({ message: "quoted_bottle_id is invalid" }, 422, env, request);
+          const target = await sql`SELECT guest_key, allow_replies, is_ai FROM bottles WHERE id=${qid} AND deleted_at IS NULL`;
+          if (!target.length) return json({ message: "quoted bottle not found" }, 422, env, request);
+          const targetAllowsReplies = ![false, "false", 0, "0", "f"].includes(target[0].allow_replies ?? true);
+          if (!targetAllowsReplies) return json({ message: "this bottle cannot be quoted" }, 422, env, request);
+          quotedId = qid;
+          quotedOwner = target[0];
+        }
+        const rows = await sql`INSERT INTO bottles (guest_key,body,image_url,mbti,socionics,enneagram,other_type,is_ai,ai_character,poll_options,allow_likes,allow_replies,quoted_bottle_id,created_at,updated_at)
+          VALUES (${key},${clean(b2.body, 5e3)},${nullable(b2.image_url)},${nullable(b2.mbti)},${nullable(b2.socionics)},${nullable(b2.enneagram)},${nullable(b2.other_type)},${Boolean(b2.is_ai)},${nullable(b2.ai_character)},${b2.poll_options ? JSON.stringify(b2.poll_options) : null}::jsonb,${allowLikes},${allowReplies},${quotedId},NOW(),NOW()) RETURNING *`;
+        if (quotedId && quotedOwner && quotedOwner.guest_key && quotedOwner.guest_key !== key && !quotedOwner.is_ai) {
+          await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${quotedOwner.guest_key},'bottle_quoted',${String(rows[0].id)},'あなたのボトルが引用されました。',NOW(),NOW())`;
+        }
         return json({ bottle: rows[0] }, 201, env, request);
       }
       if (bottleMatch && method === "PATCH" && !bottleMatch[2]) {
@@ -6788,7 +6814,7 @@ var index_default = {
         const existing = await sql`SELECT * FROM plaza_game_states WHERE id=1`;
         const current = existing[0];
         const expired = !current || current.status !== "active" || (Date.now() - new Date(current.updated_at).getTime() > 30 * 60 * 1000);
-        if (!expired && String(current.started_by || "") !== key) return json({ error: "already_active" }, 409, env, request);
+        if (!expired && String(current.started_by || "") !== key) return json({ error: "already_active", message: { body: DARLING_GAME_OPENING } }, 409, env, request);
         const target = Math.floor(Math.random() * 100) + 1;
         await sql`INSERT INTO plaza_game_states (id,target,status,guess_count,penalties,started_by,created_at,updated_at) VALUES (1,${target},'active',0,'{}'::jsonb,${key},NOW(),NOW()) ON CONFLICT (id) DO UPDATE SET target=EXCLUDED.target,status='active',guess_count=0,penalties='{}'::jsonb,started_by=EXCLUDED.started_by,updated_at=NOW()`;
         const opening = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES ('ai:darling','ダーリンちゃん',${DARLING_GAME_OPENING},NOW(),NOW()) RETURNING *`;
@@ -6812,7 +6838,7 @@ var index_default = {
         await ensurePlazaPsychTable();
         const existing = await sql`SELECT * FROM plaza_psych_states WHERE id=1`;
         const current = existing[0];
-        if (psychActive(current) && String(current.started_by || "") !== key) return json({ error: "already_active" }, 409, env, request);
+        if (psychActive(current) && String(current.started_by || "") !== key) return json({ error: "already_active", message: { body: DARLING_PSYCH_OPENING(current.title, current.question) }, psych: { status: "active", title: current.title } }, 409, env, request);
         const testId = Number.isFinite(Number(b2.test_id)) ? Math.floor(Number(b2.test_id)) : null;
         await sql`INSERT INTO plaza_psych_states (id,test_id,title,question,answer_a,answer_b,started_by,answered,created_at,updated_at) VALUES (1,${testId},${title},${question},${answerA},${answerB},${key},'[]'::jsonb,NOW(),NOW()) ON CONFLICT (id) DO UPDATE SET test_id=EXCLUDED.test_id,title=EXCLUDED.title,question=EXCLUDED.question,answer_a=EXCLUDED.answer_a,answer_b=EXCLUDED.answer_b,started_by=EXCLUDED.started_by,answered='[]'::jsonb,created_at=NOW(),updated_at=NOW()`;
         const opening = await sql`INSERT INTO plaza_messages (guest_key,nickname,body,created_at,updated_at) VALUES ('ai:darling','ダーリンちゃん',${DARLING_PSYCH_OPENING(title, question)},NOW(),NOW()) RETURNING *`;
