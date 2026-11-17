@@ -6073,12 +6073,49 @@ async function pgwWorkerTransport(info) {
   };
 }
 const pgwSqlFromConnString = pgw.makePgSql(async (info) => pgwWorkerTransport(info));
-function dbSql(url) {
-  try {
-    const host = new URL(url).hostname;
-    if (host.includes("supabase")) return pgwSqlFromConnString(url);
-  } catch { /* fall through to the Neon driver */ }
-  return ys(url);
+function pgwMakeDriver(url) {
+  const host = new URL(url).hostname;
+  return host.includes("supabase") ? pgwSqlFromConnString(url) : ys(url);
+}
+function pgwIsConnFailure(err) {
+  // Only connection-level failures may fail over. Statement-level SQL errors
+  // (bad query, constraint violations, ...) must surface as-is, otherwise a
+  // write could silently land on the other database.
+  const code = err && err.code;
+  if (!code || typeof code !== "string") return true; // network/protocol errors carry no SQLSTATE
+  return code.startsWith("08") || code === "28000" || code === "28P01" || code === "53300" || code === "57P03";
+}
+// dbSql(env): Supabase (SUPABASE_DATABASE_URL) is the primary when configured;
+// Neon (DATABASE_URL) is the automatic fallback. The working database latches
+// per sql instance (one per request) after the first successful query, so a
+// single request never mixes databases.
+function dbSql(env) {
+  const urls = [];
+  if (env.SUPABASE_DATABASE_URL) urls.push(env.SUPABASE_DATABASE_URL);
+  if (env.DATABASE_URL) urls.push(env.DATABASE_URL);
+  const drivers = [];
+  for (const u of urls) { try { drivers.push(pgwMakeDriver(u)); } catch { /* skip unparseable */ } }
+  if (drivers.length === 0) return ys(env.DATABASE_URL);
+  if (drivers.length === 1) return drivers[0];
+  let active = -1;
+  const call = async (invoke) => {
+    if (active >= 0) return invoke(drivers[active]);
+    let lastErr = null;
+    for (let i = 0; i < drivers.length; i++) {
+      try {
+        const r = await invoke(drivers[i]);
+        active = i;
+        return r;
+      } catch (e) {
+        lastErr = e;
+        if (!pgwIsConnFailure(e)) throw e;
+      }
+    }
+    throw lastErr;
+  };
+  const sql = (strings, ...values) => call((d) => d(strings, ...values));
+  sql.query = (text, values) => call((d) => d.query(text, values));
+  return sql;
 }
 // ================= end Postgres wire client =================
 
@@ -6088,7 +6125,7 @@ const AI_ACTORS = [
 ];
 async function runScheduledAiEngagement(env) {
   if (!env.DATABASE_URL) return;
-  const sql = dbSql(env.DATABASE_URL);
+  const sql = dbSql(env);
   await sql`CREATE TABLE IF NOT EXISTS ai_engagements (bottle_id BIGINT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (bottle_id, actor, action))`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_engagements_one_reply_per_bottle ON ai_engagements (bottle_id) WHERE action = 'reply'`;
   const posts = await sql`SELECT b.id, b.body, b.guest_key, b.poll_options, b.allow_replies, b.mbti, b.socionics, b.enneagram, b.other_type FROM bottles b WHERE b.deleted_at IS NULL AND COALESCE(b.is_ai, FALSE) = FALSE AND COALESCE(b.allow_replies, TRUE) = TRUE AND b.created_at > NOW() - INTERVAL '7 days' ORDER BY b.created_at DESC LIMIT 40`;
@@ -6169,7 +6206,7 @@ var index_default = {
     if (path === "/api/health") {
       if (!env.DATABASE_URL) return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
       try {
-        await dbSql(env.DATABASE_URL)`SELECT 1`;
+        await dbSql(env)`SELECT 1`;
         return json({ status: "ok", database: "connected", service: "type-drift-api-fallback" }, 200, env, request);
       } catch {
         return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
@@ -6177,7 +6214,7 @@ var index_default = {
     }
     if (!env.DATABASE_URL) return json({ error: "DATABASE_URL is not configured" }, 503, env, request);
     try {
-      const sql = dbSql(env.DATABASE_URL);
+      const sql = dbSql(env);
       const method = request.method;
       const rawKey = guest(request);
       const accountKey = clean(request.headers.get("X-User-Key"), 120);
