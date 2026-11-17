@@ -6087,6 +6087,22 @@ async function pgwWorkerTransport(info) {
   };
 }
 const pgwSqlFromConnString = pgw.makePgSql(async (info) => pgwWorkerTransport(info));
+// Plain transport for Cloudflare Hyperdrive: the runtime intercepts the
+// connection to the Hyperdrive endpoint and handles origin TLS itself, so
+// there is no SSLRequest/startTls negotiation on this socket.
+async function pgwPlainTransport(info) {
+  pgwLastDiag = { host: info.host, port: info.port, user: info.user, database: info.database, pwLen: info.password ? info.password.length : 0, plain: true };
+  const socket = connect(info.host + ":" + info.port, {});
+  const reader = socket.readable.getReader();
+  const writer = socket.writable.getWriter();
+  return {
+    write: (bytes) => writer.write(bytes),
+    read: async () => { const r = await reader.read(); return r.done ? null : r.value; },
+    close: async () => { try { await socket.close(); } catch { /* ignore */ } },
+  };
+}
+const pgwSqlPlain = pgw.makePgSql(async (info) => pgwPlainTransport(info));
+function pgwMakeHyperDriver(connString) { return pgwSqlPlain(connString); }
 function pgwMakeDriver(url) {
   const host = new URL(url).hostname;
   return host.includes("supabase") ? pgwSqlFromConnString(url) : ys(url);
@@ -6104,10 +6120,12 @@ function pgwIsConnFailure(err) {
 // per sql instance (one per request) after the first successful query, so a
 // single request never mixes databases.
 function dbSql(env) {
+  const hyperDrivers = [];
+  if (env.HYPERDRIVE && env.HYPERDRIVE.connectionString) { try { hyperDrivers.push(pgwMakeHyperDriver(env.HYPERDRIVE.connectionString)); } catch { /* ignore */ } }
   const urls = [];
   if (env.SUPABASE_DATABASE_URL) urls.push(env.SUPABASE_DATABASE_URL);
   if (env.DATABASE_URL) urls.push(env.DATABASE_URL);
-  const drivers = [];
+  const drivers = [...hyperDrivers];
   for (const u of urls) { try { drivers.push(pgwMakeDriver(u)); } catch { /* skip unparseable */ } }
   if (drivers.length === 0) return ys(env.DATABASE_URL);
   if (drivers.length === 1) return drivers[0];
@@ -6222,6 +6240,16 @@ var index_default = {
       // Supabase driver directly (no fallback) and reports the error message.
       // Remove after the switch is verified.
       const target = url.searchParams.get("target") || "supa";
+      if (target === "hyper") {
+        if (!env.HYPERDRIVE || !env.HYPERDRIVE.connectionString) return json({ status: "missing-binding", target }, 200, env, request);
+        try {
+          const d = pgwMakeHyperDriver(env.HYPERDRIVE.connectionString);
+          await d`SELECT 1`;
+          return json({ status: "ok", target, diag: pgwLastDiag }, 200, env, request);
+        } catch (e) {
+          return json({ status: "error", target, name: (e && e.name) || null, code: (e && e.code) || null, trail: (e && e.trail) || pgw.getTrail(), diag: pgwLastDiag, message: String((e && e.message) || e).slice(0, 200) }, 200, env, request);
+        }
+      }
       let connStr = env.SUPABASE_DATABASE_URL;
       if (target === "neon") connStr = env.DATABASE_URL;
       if (target === "supa-session" && connStr) { const u = new URL(connStr); u.port = "5432"; connStr = u.toString(); }
