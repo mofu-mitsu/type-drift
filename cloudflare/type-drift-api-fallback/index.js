@@ -6007,7 +6007,7 @@ var index_default = {
         if (!existed.length) {
           const authorKey = String(msg.sender_guest_key || "");
           if (authorKey && !authorKey.startsWith("ai:")) {
-            await sql`INSERT INTO notifications (guest_key,type,message,bottle_id,reply_id,created_at,updated_at) VALUES (${authorKey},'direct_message_reaction','あなたのメッセージにいいねが届きました。',${msg.bottle_id ?? null},NULL,NOW(),NOW())`;
+            await sql`INSERT INTO notifications (guest_key, type, entity_id, message, created_at, updated_at) VALUES (${authorKey}, 'direct_message_reaction', ${String(id)}, 'あなたのメッセージにいいねが届きました。', NOW(), NOW())`;
           }
         }
         return json({ reaction: { message_id: id, level, total: totals[0]?.total ?? level } }, 200, env, request);
