@@ -82,7 +82,7 @@ jobs:
             echo 'DECLARE actual_tables text[]; expected_tables text[] := ARRAY['"$expected_tables"'];'
             echo 'BEGIN'
             echo "  SELECT array_agg(table_name ORDER BY table_name) INTO actual_tables FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
-            echo '  IF actual_tables IS DISTINCT FROM expected_tables THEN RAISE EXCEPTION ''public table inventory differs from Neon snapshot''; END IF;'
+            echo "  IF actual_tables IS DISTINCT FROM expected_tables THEN RAISE EXCEPTION 'public table inventory differs from Neon snapshot'; END IF;"
             while IFS="$(printf '\t')" read -r table expected_count; do
               quoted_table="${table//\"/\"\"}"
               echo "  IF (SELECT count(*) FROM public.\"$quoted_table\") <> $expected_count THEN RAISE EXCEPTION 'row-count mismatch for $table (expected $expected_count)'; END IF;"
