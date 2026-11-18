@@ -6646,6 +6646,48 @@ var index_default = {
               threadId = pairThreadId;
               context = { bottle_snippet: pairRows[0].bottle_snippet, bottle_author: pairRows[0].bottle_author, bottle_type: pairRows[0].bottle_type, recipient_profile: pairRows[0].recipient_profile || context.recipient_profile };
             }
+          } else if (threadId.includes("-pair-")) {
+            // Pair-style thread IDs (dm-pair-A--B, bottle-N-pair-A--B) are rebuilt by
+            // the client from participant identities, so they often differ from the
+            // stored thread_id. Resolve the other participant from the pair and
+            // adopt the existing conversation with them under any stored thread_id.
+            // (The legacy dm- parsing below misread these, e.g. it treated
+            // "pair-<key>" as the recipient key.)
+            const pairPart = threadId.slice(threadId.indexOf("-pair-") + 6);
+            const parts = pairPart.split("--").filter(Boolean);
+            const mine = (p) => keySet.includes(p) || (accountKey && p === `user:${accountKey}`);
+            const other = parts.find((p) => !mine(p));
+            if (!other) return json({ message: "thread not found or forbidden" }, 404, env, request);
+            let candidates = [other];
+            if (other.startsWith("user:")) {
+              const uid = other.slice(5);
+              const candProfile = await sql`SELECT guest_key FROM profiles WHERE user_id::text = ${uid} AND guest_key IS NOT NULL`;
+              let candLink = [];
+              try { candLink = await sql`SELECT guest_key FROM profile_guest_keys WHERE user_id = ${uid}`; } catch { /* link table optional */ }
+              candidates = [...candProfile, ...candLink].map((r) => String(r.guest_key || "")).filter(Boolean);
+              if (!candidates.length) return json({ message: "thread not found or forbidden" }, 404, env, request);
+            }
+            let found = null;
+            for (const cand of candidates) {
+              for (const k of keySet) {
+                const rows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${cand} AND recipient_guest_key=${k}) OR (sender_guest_key=${k} AND recipient_guest_key=${cand})) ORDER BY created_at DESC LIMIT 1`;
+                if (rows.length) { found = rows[0]; break; }
+              }
+              if (found) break;
+            }
+            if (found) {
+              context = found;
+              const currentIsSender = keySet.includes(String(found.sender_guest_key || ""));
+              contextIsSender = currentIsSender;
+              recipientKey = currentIsSender ? found.recipient_guest_key : found.sender_guest_key;
+              senderName = currentIsSender ? found.sender_name : found.recipient_name;
+              recipientName = currentIsSender ? found.recipient_name : found.sender_name;
+              threadId = String(found.thread_id || threadId);
+              bottleId = found.bottle_id ? Number(found.bottle_id) : bottleId;
+            } else {
+              recipientKey = candidates[0];
+              if (!recipientKey || recipientKey === key) return json({ message: "thread not found or forbidden" }, 404, env, request);
+            }
           } else if (threadId.startsWith("dm-")) {
             for (const k of keySet) {
               const prefix = `dm-${k}-`;
