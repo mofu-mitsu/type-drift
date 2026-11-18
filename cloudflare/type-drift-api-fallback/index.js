@@ -6299,18 +6299,25 @@ var index_default = {
       // identity; writes keep using the canonical key above.
       let keySet = [key];
       if (accountKey) {
+        // Extra guest keys per account live in a side table: profiles.user_id is
+        // UNIQUE (one profile row per account), so guest-era keys cannot be
+        // attached by writing user_id onto their profile rows.
         try {
+          await sql`CREATE TABLE IF NOT EXISTS profile_guest_keys (user_id text NOT NULL, guest_key text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, guest_key))`;
           // Self-healing link: a signed-in request that also presents the browser's
-          // guest key proves both credentials belong to the same person. If that
-          // guest key's profile row was never linked to an account (guest-era row),
-          // link it now so the key joins the account's key set permanently.
+          // guest key proves both credentials belong to the same person, so the
+          // guest key joins the account's key set permanently.
           if (rawKey && rawKey !== key) {
-            await sql`UPDATE profiles SET user_id = ${accountKey}, updated_at = NOW() WHERE guest_key = ${rawKey} AND user_id IS NULL`;
+            await sql`INSERT INTO profile_guest_keys (user_id, guest_key) VALUES (${accountKey}, ${rawKey}) ON CONFLICT DO NOTHING`;
           }
         } catch { /* linking is best-effort; never break the request */ }
         try {
           const profileKeyRows = await sql`SELECT DISTINCT guest_key FROM profiles WHERE user_id::text = ${accountKey} AND guest_key IS NOT NULL LIMIT 12`;
           const collected = profileKeyRows.map((row) => String(row.guest_key || "")).filter(Boolean);
+          try {
+            const linkRows = await sql`SELECT guest_key FROM profile_guest_keys WHERE user_id = ${accountKey} LIMIT 24`;
+            for (const row of linkRows) collected.push(String(row.guest_key || ""));
+          } catch { /* link table is optional */ }
           if (rawKey) collected.push(rawKey);
           keySet = [...new Set([key, ...collected].filter(Boolean))];
         } catch { keySet = [key]; }
