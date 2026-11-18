@@ -6721,13 +6721,21 @@ var index_default = {
         const saved = await sql`INSERT INTO direct_messages (sender_guest_key,recipient_guest_key,thread_id,sender_name,recipient_name,body,bottle_id,bottle_snippet,bottle_author,bottle_type,sender_profile,recipient_profile,created_at,updated_at)
           VALUES (${key},${recipientKey},${threadId},${senderName},${recipientName},${text},${bottleId},${context?.bottle_snippet || null},${context?.bottle_author || null},${context?.bottle_type || null},${senderSnapshot}::jsonb,${recipientSnapshot}::jsonb,NOW(),NOW()) RETURNING *`;
         const message = saved[0];
+        // Resolve the sender's account id authoritatively: if the client did not
+        // send X-User-Key, fall back to the profiles row for the sender key so the
+        // response identity matches what GET returns (sender_user_id from the join).
+        // Without this, the client's local pair id uses the guest key while the
+        // inbox mapping uses user:<id>, and the sent message flickers into a
+        // separate thread until the next refresh.
+        let senderUserId = accountKey ? (Number(accountKey) || null) : null;
+        if (senderUserId == null) { try { const sp = await sql`SELECT user_id FROM profiles WHERE guest_key=${key} LIMIT 1`; if (sp[0]?.user_id != null) senderUserId = Number(sp[0].user_id); } catch { /* optional */ } }
         let recipientUserId = null;
         if (String(recipientKey || "").startsWith("user:")) { const n = Number(String(recipientKey).slice(5)); recipientUserId = Number.isFinite(n) ? n : null; }
         else if (recipientKey) { try { const rp = await sql`SELECT user_id FROM profiles WHERE guest_key=${recipientKey} LIMIT 1`; recipientUserId = rp[0]?.user_id ?? null; } catch { /* optional */ } }
         if (recipientKey && recipientKey !== key) {
           await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${recipientKey},'direct_message',${threadId},'個別メッセージが届きました。',NOW(),NOW())`;
         }
-        return json({ message: { id: message.id, thread_id: message.thread_id, sender_name: message.sender_name, recipient_name: message.recipient_name, body: message.body, created_at: message.created_at, read: false, is_mine: true, bottle_id: message.bottle_id, bottle_snippet: message.bottle_snippet, bottle_author: message.bottle_author, bottle_type: message.bottle_type, sender_profile: message.sender_profile || {}, recipient_profile: message.recipient_profile || {}, sender_guest_key: message.sender_guest_key, recipient_guest_key: message.recipient_guest_key, sender_user_id: accountKey ? (Number(accountKey) || null) : null, recipient_user_id: recipientUserId, sender_identity: {mbti:message.sender_profile?.mbti || "",socionics:message.sender_profile?.socionics || "",enneagram:message.sender_profile?.enneagram || "",other_type:message.sender_profile?.other_type || message.sender_profile?.otherType || ""} } }, 201, env, request);
+        return json({ message: { id: message.id, thread_id: message.thread_id, sender_name: message.sender_name, recipient_name: message.recipient_name, body: message.body, created_at: message.created_at, read: false, is_mine: true, bottle_id: message.bottle_id, bottle_snippet: message.bottle_snippet, bottle_author: message.bottle_author, bottle_type: message.bottle_type, sender_profile: message.sender_profile || {}, recipient_profile: message.recipient_profile || {}, sender_guest_key: message.sender_guest_key, recipient_guest_key: message.recipient_guest_key, sender_user_id: senderUserId, recipient_user_id: recipientUserId, sender_identity: {mbti:message.sender_profile?.mbti || "",socionics:message.sender_profile?.socionics || "",enneagram:message.sender_profile?.enneagram || "",other_type:message.sender_profile?.other_type || message.sender_profile?.otherType || ""} } }, 201, env, request);
       }
       if (path === "/api/direct-messages" && method === "GET") {
         if (!key) return json({ messages: [] }, 200, env, request);
