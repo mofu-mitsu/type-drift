@@ -6066,7 +6066,7 @@ function makePgSql(openTransport) {
         sessionPromise = (async () => {
           const transport = await openTransport(info);
           return connectPg(transport, info);
-        })().catch((e) => { sessionPromise = null; if (e && typeof e === "object") e.isConnFailure = true; throw e; });
+        })().catch((e) => { sessionPromise = null; throw e; });
       }
       return sessionPromise;
     };
@@ -6150,7 +6150,6 @@ function pgwMakeDriver(url) {
   return host.includes("supabase") ? pgwSqlFromConnString(url) : ys(url);
 }
 function pgwIsConnFailure(err) {
-  if (err && err.isConnFailure) return true; // failed while establishing the connection, before any statement ran
   // Only connection-level failures may fail over. Statement-level SQL errors
   // (bad query, constraint violations, ...) must surface as-is, otherwise a
   // write could silently land on the other database.
@@ -6278,6 +6277,27 @@ var index_default = {
     if (request.method === "OPTIONS") return json({}, 204, env, request);
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
+    if (path === "/api/health/db-diag") {
+      const attempt = async (make) => {
+        const t0 = Date.now();
+        try {
+          const d = make();
+          await Promise.race([
+            d`SELECT 1`,
+            new Promise((_, rej) => setTimeout(() => rej(new Error("timeout_8s")), 8000)),
+          ]);
+          return { ok: true, ms: Date.now() - t0 };
+        } catch (e) {
+          return { ok: false, ms: Date.now() - t0, code: (e && e.code) || null, message: String((e && e.message) || e).slice(0, 300) };
+        }
+      };
+      const [hyperdrive, supabaseUrl, neonUrl] = await Promise.all([
+        (env.HYPERDRIVE && env.HYPERDRIVE.connectionString) ? attempt(() => pgwMakeHyperDriver(env.HYPERDRIVE.connectionString)) : Promise.resolve({ ok: false, message: "binding missing" }),
+        env.SUPABASE_DATABASE_URL ? attempt(() => pgwMakeDriver(env.SUPABASE_DATABASE_URL)) : Promise.resolve({ ok: false, message: "secret missing" }),
+        env.DATABASE_URL ? attempt(() => pgwMakeDriver(env.DATABASE_URL)) : Promise.resolve({ ok: false, message: "secret missing" }),
+      ]);
+      return json({ diag: { hyperdrive, supabase_url: supabaseUrl, neon_url: neonUrl } }, 200, env, request);
+    }
     if (path === "/api/health") {
       if (!env.DATABASE_URL) return json({ status: "degraded", database: "unavailable", service: "type-drift-api-fallback" }, 503, env, request);
       try {
@@ -6389,9 +6409,9 @@ var index_default = {
             (SELECT (deleted_at IS NOT NULL) FROM bottles WHERE id=b.quoted_bottle_id) AS quoted_deleted,
             (SELECT COUNT(*)::int FROM replies r WHERE r.bottle_id=b.id AND r.deleted_at IS NULL) AS replies_count,
             (SELECT COALESCE(SUM(rx.level),0)::int FROM reactions rx WHERE rx.bottle_id=b.id) AS reactions_sum_level,
-            COALESCE((SELECT rx.level FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key = ANY(${keySet}) ORDER BY rx.id DESC LIMIT 1),0)::int AS reaction_level,
+            COALESCE((SELECT rx.level FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key=${key || null} ORDER BY rx.id DESC LIMIT 1),0)::int AS reaction_level,
             (SELECT COALESCE(array_agg(CASE rx.guest_key WHEN 'ai:darling' THEN '🥺 ダーリンちゃん' WHEN 'ai:lsi-worm' THEN '🐛 LSI芋虫' END), ARRAY[]::text[]) FROM reactions rx WHERE rx.bottle_id=b.id AND rx.guest_key IN ('ai:darling','ai:lsi-worm') AND rx.level > 0) AS ai_likers,
-            (b.guest_key = ANY(${keySet})) AS is_mine
+            (b.guest_key = ${key || null}) AS is_mine
           FROM bottles b WHERE b.deleted_at IS NULL AND (${mbti}::text IS NULL OR LOWER(b.mbti)=${mbti})
             AND (${soc}::text IS NULL OR LOWER(b.socionics)=${soc}) AND (${q}::text IS NULL OR b.body ILIKE '%'||${q}||'%')
           ORDER BY b.created_at DESC LIMIT 20 OFFSET ${offset}`;
@@ -6463,13 +6483,13 @@ var index_default = {
           allow_likes=CASE WHEN ${hasLikePref} THEN ${allowLikes} ELSE allow_likes END,
           allow_replies=CASE WHEN ${hasReplyPref} THEN ${allowReplies} ELSE allow_replies END,
           updated_at=NOW()
-          WHERE id=${Number(bottleMatch[1])} AND guest_key = ANY(${keySet}) AND deleted_at IS NULL
+          WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL
           RETURNING id,body,allow_likes,allow_replies,updated_at`;
         return updated.length ? json({ bottle: updated[0] }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
       }
       if (bottleMatch && method === "DELETE" && !bottleMatch[2]) {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
-        const deleted = await sql`UPDATE bottles SET deleted_at=NOW(),updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key = ANY(${keySet}) AND deleted_at IS NULL RETURNING id`;
+        const deleted = await sql`UPDATE bottles SET deleted_at=NOW(),updated_at=NOW() WHERE id=${Number(bottleMatch[1])} AND guest_key=${key} AND deleted_at IS NULL RETURNING id`;
         return deleted.length ? json({ ok: true }, 200, env, request) : json({ error: "not_found_or_forbidden" }, 404, env, request);
       }
       if (bottleMatch && method === "POST" && bottleMatch[2] === "reactions") {
@@ -6839,7 +6859,7 @@ var index_default = {
         return json({ reaction: { message_id: id, level, total: totals[0]?.total ?? level } }, 200, env, request);
       }
       if (bottleMatch && method === "GET" && bottleMatch[2] === "replies") {
-        const rows = key ? await sql`SELECT r.* FROM replies r JOIN bottles b ON b.id=r.bottle_id WHERE r.bottle_id=${Number(bottleMatch[1])} AND b.guest_key = ANY(${keySet}) AND r.deleted_at IS NULL ORDER BY r.created_at DESC` : [];
+        const rows = key ? await sql`SELECT r.* FROM replies r JOIN bottles b ON b.id=r.bottle_id WHERE r.bottle_id=${Number(bottleMatch[1])} AND b.guest_key=${key} AND r.deleted_at IS NULL ORDER BY r.created_at DESC` : [];
         return json({ replies: rows }, 200, env, request);
       }
       if (replyReactionMatch && method === "POST") {
@@ -6864,7 +6884,7 @@ var index_default = {
       if (bottleMatch && bottleMatch[2] === "votes" && method === "GET") {
         await sql`CREATE TABLE IF NOT EXISTS bottle_poll_votes (id BIGSERIAL PRIMARY KEY, bottle_id BIGINT NOT NULL REFERENCES bottles(id) ON DELETE CASCADE, guest_key TEXT NOT NULL, option_index INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (bottle_id, guest_key))`;
         const counts = await sql`SELECT option_index, COUNT(*)::int AS votes FROM bottle_poll_votes WHERE bottle_id=${Number(bottleMatch[1])} GROUP BY option_index ORDER BY option_index`;
-        const mine = key ? await sql`SELECT option_index FROM bottle_poll_votes WHERE bottle_id=${Number(bottleMatch[1])} AND guest_key = ANY(${keySet}) LIMIT 1` : [];
+        const mine = key ? await sql`SELECT option_index FROM bottle_poll_votes WHERE bottle_id=${Number(bottleMatch[1])} AND guest_key=${key} LIMIT 1` : [];
         return json({ counts, myVote: mine.length ? Number(mine[0].option_index) : null }, 200, env, request);
       }
       if (bottleMatch && method === "POST" && bottleMatch[2] === "votes") {
