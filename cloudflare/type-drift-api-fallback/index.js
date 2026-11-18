@@ -6066,7 +6066,7 @@ function makePgSql(openTransport) {
         sessionPromise = (async () => {
           const transport = await openTransport(info);
           return connectPg(transport, info);
-        })().catch((e) => { sessionPromise = null; throw e; });
+        })().catch((e) => { sessionPromise = null; if (e && typeof e === "object") e.isConnFailure = true; throw e; });
       }
       return sessionPromise;
     };
@@ -6150,6 +6150,7 @@ function pgwMakeDriver(url) {
   return host.includes("supabase") ? pgwSqlFromConnString(url) : ys(url);
 }
 function pgwIsConnFailure(err) {
+  if (err && err.isConnFailure) return true; // failed while establishing the connection, before any statement ran
   // Only connection-level failures may fail over. Statement-level SQL errors
   // (bad query, constraint violations, ...) must surface as-is, otherwise a
   // write could silently land on the other database.
