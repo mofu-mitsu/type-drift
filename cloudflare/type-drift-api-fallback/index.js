@@ -6300,6 +6300,15 @@ var index_default = {
       let keySet = [key];
       if (accountKey) {
         try {
+          // Self-healing link: a signed-in request that also presents the browser's
+          // guest key proves both credentials belong to the same person. If that
+          // guest key's profile row was never linked to an account (guest-era row),
+          // link it now so the key joins the account's key set permanently.
+          if (rawKey && rawKey !== key) {
+            await sql`UPDATE profiles SET user_id = ${accountKey}, updated_at = NOW() WHERE guest_key = ${rawKey} AND user_id IS NULL`;
+          }
+        } catch { /* linking is best-effort; never break the request */ }
+        try {
           const profileKeyRows = await sql`SELECT DISTINCT guest_key FROM profiles WHERE user_id::text = ${accountKey} AND guest_key IS NOT NULL LIMIT 12`;
           const collected = profileKeyRows.map((row) => String(row.guest_key || "")).filter(Boolean);
           if (rawKey) collected.push(rawKey);
