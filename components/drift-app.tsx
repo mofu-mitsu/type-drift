@@ -2944,10 +2944,14 @@ export default function DriftApp() {
           setPlazaToast("メッセージを保存できませんでした");
           return false;
         }
+        const mySavedIdent = saved.sender_user_id != null ? `user:${Number(saved.sender_user_id)}` : String(saved.sender_guest_key || getGuestKey());
+        const otherSavedIdent = saved.recipient_user_id != null ? `user:${Number(saved.recipient_user_id)}` : String(saved.recipient_guest_key || "");
+        const savedPairId = mySavedIdent && otherSavedIdent ? [mySavedIdent, otherSavedIdent].sort().join("--") : "";
+        const savedBottleId = saved.bottle_id ? Number(saved.bottle_id) : target.bottleInfo?.id;
         const persistedMessage: DirectMessage = {
           id: `server-dm-${saved.id}`,
           serverId: Number(saved.id),
-          threadId: String(saved.thread_id || target.id),
+          threadId: savedPairId ? (savedBottleId ? `bottle-${savedBottleId}-pair-${savedPairId}` : `dm-pair-${savedPairId}`) : String(saved.thread_id || target.id),
           senderGuestKey: String(saved.sender_guest_key || getGuestKey()),
           recipientGuestKey: String(saved.recipient_guest_key || ""),
           senderUserId: saved.sender_user_id == null ? null : Number(saved.sender_user_id),
@@ -3004,8 +3008,9 @@ export default function DriftApp() {
     const isWormTarget = target.id === "worm" || target.name.includes("芋虫") || target.emoji === "🐛" || /LSI芋虫/.test(target.type || "") || /LSI芋虫/.test(target.bottleInfo?.author || "") || /LSI芋虫/.test(target.bottleInfo?.type || "");
     const npcKeyForThread = isDarlingTarget ? "ai:darling" : isWormTarget ? "ai:lsi-worm" : "";
     // NPC会話はボトルIDでは分けず、常に同じ参加者ペアのスレッドへ入れる。
+    const myPairIdent = (() => { try { const ak = window.localStorage.getItem("type-drift-user-key"); return ak ? `user:${ak}` : getGuestKey(); } catch { return getGuestKey(); } })();
     const localNpcThreadId = npcKeyForThread
-      ? `dm-pair-${[npcKeyForThread, getGuestKey()].sort().join("--")}`
+      ? `dm-pair-${[npcKeyForThread, myPairIdent].sort().join("--")}`
       : "";
     let npcSavedMessage: any = null;
     if (npcKeyForThread) {
@@ -3041,7 +3046,7 @@ export default function DriftApp() {
     const newMsg: DirectMessage = {
       id: npcSavedMessage?.id != null ? `server-dm-${npcSavedMessage.id}` : `dm-${Date.now()}`,
       serverId: npcSavedMessage?.id != null ? Number(npcSavedMessage.id) : undefined,
-      threadId: String(npcSavedMessage?.thread_id || localNpcThreadId || (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id)),
+      threadId: String((!target.bottleInfo && localNpcThreadId) || npcSavedMessage?.thread_id || localNpcThreadId || (target.bottleInfo ? `bottle-${target.bottleInfo.id}` : target.id)),
       sender: myDisplayName,
       recipient: target.name,
       targetEmoji: npcKeyForThread === "ai:darling" ? "🥺" : npcKeyForThread === "ai:lsi-worm" ? "🐛" : target.emoji,
