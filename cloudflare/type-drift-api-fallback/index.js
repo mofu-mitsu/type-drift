@@ -6399,6 +6399,13 @@ var index_default = {
           quotedId = qid;
           quotedOwner = target[0];
         }
+        if (Boolean(b2.is_ai)) {
+          // Sea rule (owner request): AI bottles never drift in twice in a row.
+          // If the newest bottle in the sea is already AI, skip this drift quietly;
+          // the ambient client does not check the save result.
+          const latest = await sql`SELECT is_ai FROM bottles WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 1`;
+          if (latest.length && latest[0].is_ai) return json({ skipped: "ai_bottle_cooldown" }, 200, env, request);
+        }
         const rows = await sql`INSERT INTO bottles (guest_key,body,image_url,mbti,socionics,enneagram,other_type,is_ai,ai_character,poll_options,allow_likes,allow_replies,quoted_bottle_id,created_at,updated_at)
           VALUES (${key},${clean(b2.body, 5e3)},${nullable(b2.image_url)},${nullable(b2.mbti)},${nullable(b2.socionics)},${nullable(b2.enneagram)},${nullable(b2.other_type)},${Boolean(b2.is_ai)},${nullable(b2.ai_character)},${b2.poll_options ? JSON.stringify(b2.poll_options) : null}::jsonb,${allowLikes},${allowReplies},${quotedId},NOW(),NOW()) RETURNING *`;
         if (quotedId && quotedOwner && quotedOwner.guest_key && quotedOwner.guest_key !== key && !quotedOwner.is_ai) {

@@ -1921,6 +1921,11 @@ export default function DriftApp() {
       if (Math.random() > 0.18) return;
       sessionStorage.setItem("type-drift-ai-bottle-window", new Date().toISOString().slice(0, 13));
       try {
+        // 直前がAIボトルなら漂着させない（サーバー側でも同じ判定をしている）。
+        const latestResponse = await apiFetch('/api/bottles?page=1', { headers: { "X-Guest-Key": getGuestKey() } }).catch(() => null);
+        const latestData = latestResponse?.ok ? await latestResponse.json().catch(() => null) : null;
+        const latestBottle = latestData?.bottles?.data?.[0];
+        if (latestBottle?.is_ai) return;
         const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "bottle", body: "類型の海に漂着する、短い秘密メモを一つ書いてください。相談ではなく、観測や違和感の一文にしてください。", character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", history: [] }) });
         const data = await response.json().catch(() => null);
         const reply = Array.isArray(data?.replies) ? data.replies[0] : null;
