@@ -6294,6 +6294,18 @@ var index_default = {
       const accountKey = clean(request.headers.get("X-User-Key"), 120);
       const accountProfile = accountKey ? await sql`SELECT guest_key FROM profiles WHERE user_id::text = ${accountKey} LIMIT 1` : [];
       const key = String(accountProfile[0]?.guest_key || rawKey);
+      // An account can own several guest keys across eras (guest use, key rotation,
+      // profile re-creation). Reads and permission checks treat all of them as one
+      // identity; writes keep using the canonical key above.
+      let keySet = [key];
+      if (accountKey) {
+        try {
+          const profileKeyRows = await sql`SELECT DISTINCT guest_key FROM profiles WHERE user_id::text = ${accountKey} AND guest_key IS NOT NULL LIMIT 12`;
+          const collected = profileKeyRows.map((row) => String(row.guest_key || "")).filter(Boolean);
+          if (rawKey) collected.push(rawKey);
+          keySet = [...new Set([key, ...collected].filter(Boolean))];
+        } catch { keySet = [key]; }
+      }
       const bottleMatch = path.match(/^\/api\/bottles\/(\d+)(?:\/(reactions|replies|votes))?$/);
       const replyReactionMatch = path.match(/^\/api\/replies\/(\d+)\/reactions$/);
       const notificationMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
@@ -6522,16 +6534,25 @@ var index_default = {
           const passedThread = String(b.thread_id || "");
           threadId = bottleId ? ((passedThread.startsWith("bottle-" + bottleId + "-pair-") || passedThread.startsWith("bottle-" + bottleId + "-npc-pair-")) ? clean(passedThread, 240) : "bottle-" + bottleId) : clean(passedThread, 240);
           if (!threadId) return json({ message: "thread_id is required" }, 422, env, request);
-          const lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 1`;
+          let lastRows = [];
+          for (const k of keySet) {
+            lastRows = await sql`SELECT * FROM direct_messages WHERE thread_id=${threadId} AND (sender_guest_key=${k} OR recipient_guest_key=${k}) ORDER BY created_at DESC LIMIT 1`;
+            if (lastRows.length) break;
+          }
           context = lastRows[0] || null;
           if (!context && bottleId) {
             // The client rebuilds thread IDs from participant identities (guest keys or
             // signed-in user IDs), which may not string-match the stored thread_id.
             // Resolve the conversation by bottle + participation instead of failing.
             const wantNpc = String(b.thread_id || "").includes("npc-pair");
-            const anyRows = await sql`SELECT * FROM direct_messages WHERE bottle_id=${bottleId} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) ORDER BY created_at DESC LIMIT 20`;
+            const anyRowMap = new Map();
+            for (const k of keySet) {
+              const partRows = await sql`SELECT * FROM direct_messages WHERE bottle_id=${bottleId} AND (sender_guest_key=${k} OR recipient_guest_key=${k}) ORDER BY created_at DESC LIMIT 20`;
+              for (const row of partRows) if (!anyRowMap.has(row.id)) anyRowMap.set(row.id, row);
+            }
+            const anyRows = [...anyRowMap.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
             const picked = anyRows.find((row) => {
-              const other = row.sender_guest_key === key ? row.recipient_guest_key : row.sender_guest_key;
+              const other = keySet.includes(String(row.sender_guest_key || "")) ? row.recipient_guest_key : row.sender_guest_key;
               return wantNpc ? String(other || "").startsWith("ai:") : !String(other || "").startsWith("ai:");
             }) || anyRows[0];
             if (picked) { context = picked; threadId = String(picked.thread_id || threadId); }
@@ -6540,12 +6561,16 @@ var index_default = {
             const npcHit = String(b.thread_id || "").match(/ai:(darling|lsi-worm)/);
             if (npcHit) {
               const npcK = "ai:" + npcHit[1];
-              const npcRows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${npcK} AND recipient_guest_key=${key}) OR (sender_guest_key=${key} AND recipient_guest_key=${npcK})) ORDER BY created_at DESC LIMIT 1`;
+              let npcRows = [];
+              for (const k of keySet) {
+                npcRows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${npcK} AND recipient_guest_key=${k}) OR (sender_guest_key=${k} AND recipient_guest_key=${npcK})) ORDER BY created_at DESC LIMIT 1`;
+                if (npcRows.length) break;
+              }
               if (npcRows[0]) { context = npcRows[0]; threadId = String(npcRows[0].thread_id || threadId); bottleId = bottleId || (npcRows[0].bottle_id ? Number(npcRows[0].bottle_id) : null); }
             }
           }
           if (context) {
-            const currentIsSender = context.sender_guest_key === key;
+            const currentIsSender = keySet.includes(String(context.sender_guest_key || ""));
             contextIsSender = currentIsSender;
             recipientKey = currentIsSender ? context.recipient_guest_key : context.sender_guest_key;
             senderName = currentIsSender ? context.sender_name : context.recipient_name;
@@ -6580,10 +6605,12 @@ var index_default = {
               context = { bottle_snippet: pairRows[0].bottle_snippet, bottle_author: pairRows[0].bottle_author, bottle_type: pairRows[0].bottle_type, recipient_profile: pairRows[0].recipient_profile || context.recipient_profile };
             }
           } else if (threadId.startsWith("dm-")) {
-            const prefix = `dm-${key}-`;
-            const suffix = `-${key}`;
-            if (threadId.startsWith(prefix)) recipientKey = threadId.slice(prefix.length);
-            else if (threadId.endsWith(suffix)) recipientKey = threadId.slice(3, -suffix.length);
+            for (const k of keySet) {
+              const prefix = `dm-${k}-`;
+              const suffix = `-${k}`;
+              if (threadId.startsWith(prefix)) { recipientKey = threadId.slice(prefix.length); break; }
+              if (threadId.endsWith(suffix)) { recipientKey = threadId.slice(3, -suffix.length); break; }
+            }
             if (!recipientKey || recipientKey === key) return json({ message: "thread not found or forbidden" }, 404, env, request);
           } else {
             return json({ message: "thread not found or forbidden" }, 404, env, request);
@@ -6656,7 +6683,15 @@ var index_default = {
             VALUES (${npcKey},${key},${threadId},${npcName},${clean((recipientProfileRows[0] || {}).nickname,24) || "あなた"},${reply.body},${bottleId},${String(reply.bottle_body || "").slice(0,2500)},${npcName},${bottleType},${senderProfile}::jsonb,${recipientProfile}::jsonb,${reply.reply_created_at},NOW())`;
         }
         await sql`CREATE TABLE IF NOT EXISTS direct_message_reactions (id BIGSERIAL PRIMARY KEY, message_id BIGINT NOT NULL REFERENCES direct_messages(id) ON DELETE CASCADE, guest_key TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (message_id, guest_key))`;
-        const rows = await sql`SELECT dm.*, (SELECT COALESCE(SUM(dmr.level),0)::int FROM direct_message_reactions dmr WHERE dmr.message_id=dm.id) AS reaction_total, COALESCE((SELECT dmr.level FROM direct_message_reactions dmr WHERE dmr.message_id=dm.id AND dmr.guest_key=${key}),0)::int AS my_reaction_level, (SELECT r.guest_key FROM replies r WHERE r.bottle_id = dm.bottle_id AND r.body = dm.body AND r.guest_key IN ('ai:darling','ai:lsi-worm') ORDER BY r.created_at DESC LIMIT 1) AS matched_npc_key, p.nickname AS sender_nickname, p.mbti AS sender_mbti, p.socionics AS sender_socionics, p.enneagram AS sender_enneagram, p.other_type AS sender_other_type, p.bio AS sender_bio, p.links AS sender_links, p.profile_image_url AS sender_image, rp.nickname AS recipient_nickname, rp.mbti AS recipient_mbti, rp.socionics AS recipient_socionics, rp.enneagram AS recipient_enneagram, rp.other_type AS recipient_other_type, rp.bio AS recipient_bio, rp.links AS recipient_links, rp.profile_image_url AS recipient_image FROM direct_messages dm LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key) LEFT JOIN profiles rp ON (rp.guest_key = dm.recipient_guest_key OR ('user:' || rp.user_id::text) = dm.recipient_guest_key) WHERE dm.sender_guest_key=${key} OR dm.recipient_guest_key=${key} ORDER BY dm.created_at DESC LIMIT 200`;
+        const rowById = new Map();
+        for (const k of keySet) {
+          const part = await sql`SELECT dm.*, (SELECT COALESCE(SUM(dmr.level),0)::int FROM direct_message_reactions dmr WHERE dmr.message_id=dm.id) AS reaction_total, COALESCE((SELECT dmr.level FROM direct_message_reactions dmr WHERE dmr.message_id=dm.id AND dmr.guest_key=${k}),0)::int AS my_reaction_level, (SELECT r.guest_key FROM replies r WHERE r.bottle_id = dm.bottle_id AND r.body = dm.body AND r.guest_key IN ('ai:darling','ai:lsi-worm') ORDER BY r.created_at DESC LIMIT 1) AS matched_npc_key, p.nickname AS sender_nickname, p.mbti AS sender_mbti, p.socionics AS sender_socionics, p.enneagram AS sender_enneagram, p.other_type AS sender_other_type, p.bio AS sender_bio, p.links AS sender_links, p.profile_image_url AS sender_image, rp.nickname AS recipient_nickname, rp.mbti AS recipient_mbti, rp.socionics AS recipient_socionics, rp.enneagram AS recipient_enneagram, rp.other_type AS recipient_other_type, rp.bio AS recipient_bio, rp.links AS recipient_links, rp.profile_image_url AS recipient_image FROM direct_messages dm LEFT JOIN profiles p ON (p.guest_key = dm.sender_guest_key OR ('user:' || p.user_id::text) = dm.sender_guest_key) LEFT JOIN profiles rp ON (rp.guest_key = dm.recipient_guest_key OR ('user:' || rp.user_id::text) = dm.recipient_guest_key) WHERE dm.sender_guest_key=${k} OR dm.recipient_guest_key=${k} ORDER BY dm.created_at DESC LIMIT 200`;
+          for (const row of part) {
+            const prev = rowById.get(row.id);
+            if (!prev || Number(row.my_reaction_level || 0) > Number(prev.my_reaction_level || 0)) rowById.set(row.id, row);
+          }
+        }
+        const rows = [...rowById.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 200);
         return json({ messages: rows.reverse().map((row) => {
           const senderProfile = row.sender_profile || {nickname:row.sender_nickname || row.sender_name || "",mbti:row.sender_mbti || "",socionics:row.sender_socionics || "",enneagram:row.sender_enneagram || "",other_type:row.sender_other_type || "",bio:row.sender_bio || "",links:row.sender_links || [],profile_image_url:row.sender_image || ""};
           const recipientProfile = row.recipient_profile || {nickname:row.recipient_nickname || row.recipient_name || "",mbti:row.recipient_mbti || "",socionics:row.recipient_socionics || "",enneagram:row.recipient_enneagram || "",other_type:row.recipient_other_type || "",bio:row.recipient_bio || "",links:row.recipient_links || [],profile_image_url:row.recipient_image || ""};
@@ -6665,12 +6700,12 @@ var index_default = {
            const canonicalThreadId = isNpcMessage && participants.length === 2
              ? (row.bottle_id ? `bottle-${row.bottle_id}-npc-pair-${participants.join("--")}` : "dm-pair-" + participants.join("--"))
              : row.thread_id;
-           return {id:row.id,thread_id:canonicalThreadId,matched_npc_key:row.matched_npc_key || null,sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:row.sender_guest_key === key,read:Boolean(row.read_at),reaction_total:Number(row.reaction_total || 0),my_reaction_level:Number(row.my_reaction_level || 0)};
+           return {id:row.id,thread_id:canonicalThreadId,matched_npc_key:row.matched_npc_key || null,sender_guest_key:row.sender_guest_key || "",recipient_guest_key:row.recipient_guest_key || "",sender_name:row.sender_name,recipient_name:row.recipient_name,body:row.body,bottle_id:row.bottle_id,bottle_snippet:row.bottle_snippet,bottle_author:row.bottle_author,bottle_type:row.bottle_type,created_at:row.created_at,sender_profile:senderProfile,recipient_profile:recipientProfile,sender_identity:{mbti:senderProfile.mbti || "",socionics:senderProfile.socionics || "",enneagram:senderProfile.enneagram || "",other_type:senderProfile.other_type || senderProfile.otherType || ""},is_mine:keySet.includes(String(row.sender_guest_key || "")),read:Boolean(row.read_at),reaction_total:Number(row.reaction_total || 0),my_reaction_level:Number(row.my_reaction_level || 0)};
         }) }, 200, env, request);
       }
       if (directMessageReadMatch && method === "POST") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
-        await sql`UPDATE direct_messages SET read_at=NOW(),updated_at=NOW() WHERE id=${Number(directMessageReadMatch[1])} AND recipient_guest_key=${key} AND read_at IS NULL`;
+        for (const k of keySet) await sql`UPDATE direct_messages SET read_at=NOW(),updated_at=NOW() WHERE id=${Number(directMessageReadMatch[1])} AND recipient_guest_key=${k} AND read_at IS NULL`;
         return json({ ok: true }, 200, env, request);
       }
       if (directMessageReactionMatch && method === "POST") {
@@ -6680,12 +6715,16 @@ var index_default = {
         const msgRows = await sql`SELECT id, sender_guest_key, recipient_guest_key, bottle_id, thread_id FROM direct_messages WHERE id=${id} LIMIT 1`;
         const msg = msgRows[0];
         if (!msg) return json({ message: "Message not found." }, 404, env, request);
-        if (String(msg.sender_guest_key) === key) return json({ message: "自分のメッセージにはリアクションできません。" }, 422, env, request);
-        if (String(msg.recipient_guest_key) !== key) {
-          // Account holders can appear under a canonical profile key that differs from
-          // the key stored on older rows; accept any participant of the same thread.
-          const partRows = await sql`SELECT 1 FROM direct_messages WHERE thread_id=${msg.thread_id} AND (sender_guest_key=${key} OR recipient_guest_key=${key}) LIMIT 1`;
-          if (!partRows.length) return json({ message: "このスレッドの参加者だけがリアクションできます。" }, 403, env, request);
+        if (keySet.includes(String(msg.sender_guest_key || ""))) return json({ message: "自分のメッセージにはリアクションできません。" }, 422, env, request);
+        if (!keySet.includes(String(msg.recipient_guest_key || ""))) {
+          // Account holders can appear under any of their account's guest keys;
+          // accept the stored recipient key or any participant of the same thread.
+          let allowed = false;
+          for (const k of keySet) {
+            const partRows = await sql`SELECT 1 FROM direct_messages WHERE thread_id=${msg.thread_id} AND (sender_guest_key=${k} OR recipient_guest_key=${k}) LIMIT 1`;
+            if (partRows.length) { allowed = true; break; }
+          }
+          if (!allowed) return json({ message: "このスレッドの参加者だけがリアクションできます。" }, 403, env, request);
         }
         const existed = await sql`SELECT 1 FROM direct_message_reactions WHERE message_id=${id} AND guest_key=${key} LIMIT 1`;
         const rows = await sql`WITH updated AS (UPDATE direct_message_reactions SET level=level+1,updated_at=NOW() WHERE message_id=${id} AND guest_key=${key} RETURNING level)
@@ -6744,21 +6783,31 @@ var index_default = {
       }
       if (path === "/api/notifications/unread" && method === "GET") {
         if (!key) return json({ count: 0, counts: {}, notifications: [] }, 200, env, request);
-        const rows = await sql`SELECT * FROM notifications WHERE guest_key=${key} AND user_id IS NULL AND read_at IS NULL ORDER BY created_at DESC LIMIT 50`;
-        const counts = await sql`SELECT type,COUNT(*)::int AS total FROM notifications WHERE guest_key=${key} AND user_id IS NULL AND read_at IS NULL GROUP BY type`;
-        return json({ count: counts.reduce((n, row) => n + Number(row.total), 0), counts: Object.fromEntries(counts.map((row) => [row.type, Number(row.total)])), notifications: rows }, 200, env, request);
+        const notifById = new Map();
+        for (const k of keySet) {
+          const part = await sql`SELECT * FROM notifications WHERE guest_key=${k} AND user_id IS NULL AND read_at IS NULL ORDER BY created_at DESC LIMIT 50`;
+          for (const row of part) if (!notifById.has(row.id)) notifById.set(row.id, row);
+        }
+        const rows = [...notifById.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
+        const counts = {};
+        for (const row of rows) counts[row.type] = (counts[row.type] || 0) + 1;
+        return json({ count: rows.length, counts, notifications: rows }, 200, env, request);
       }
       if (notificationMatch && method === "POST") {
         if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
-        await sql`UPDATE notifications SET read_at=NOW(),updated_at=NOW() WHERE id=${Number(notificationMatch[1])} AND guest_key=${key} AND user_id IS NULL`;
+        for (const k of keySet) await sql`UPDATE notifications SET read_at=NOW(),updated_at=NOW() WHERE id=${Number(notificationMatch[1])} AND guest_key=${k} AND user_id IS NULL`;
         return json({ ok: true }, 200, env, request);
       }
       if (path === "/api/notifications/read-all" && method === "POST") {
         if (!key) return json({ ok: false, message: "missing_guest_key" }, 422, env, request);
         const b2 = await bodyOf(request);
         const types = Array.isArray(b2.types) ? b2.types.map((t) => clean(t, 60)).filter(Boolean) : [];
-        const updated = types.length ? await sql`UPDATE notifications SET read_at=NOW(),updated_at=NOW() WHERE guest_key=${key} AND user_id IS NULL AND read_at IS NULL AND type=ANY(${types}) RETURNING id` : await sql`UPDATE notifications SET read_at=NOW(),updated_at=NOW() WHERE guest_key=${key} AND user_id IS NULL AND read_at IS NULL RETURNING id`;
-        return json({ ok: true, updated: updated.length }, 200, env, request);
+        let updatedTotal = 0;
+        for (const k of keySet) {
+          const partUpdated = types.length ? await sql`UPDATE notifications SET read_at=NOW(),updated_at=NOW() WHERE guest_key=${k} AND user_id IS NULL AND read_at IS NULL AND type=ANY(${types}) RETURNING id` : await sql`UPDATE notifications SET read_at=NOW(),updated_at=NOW() WHERE guest_key=${k} AND user_id IS NULL AND read_at IS NULL RETURNING id`;
+          updatedTotal += partUpdated.length;
+        }
+        return json({ ok: true, updated: updatedTotal }, 200, env, request);
       }
       if (path === "/api/consultations" && method === "GET") {
         const rows = await sql`SELECT * FROM consultation_entries WHERE entry_type='thread' ORDER BY created_at DESC LIMIT 100`;
