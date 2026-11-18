@@ -1926,7 +1926,17 @@ export default function DriftApp() {
         const latestData = latestResponse?.ok ? await latestResponse.json().catch(() => null) : null;
         const latestBottle = latestData?.bottles?.data?.[0];
         if (latestBottle?.is_ai) return;
-        const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "bottle", body: "類型の海に漂着する、短い秘密メモを一つ書いてください。相談ではなく、観測や違和感の一文にしてください。", character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", history: [] }) });
+        // 同じ主題・書き出しのAIボトルが続かないよう、主題ヒントをランダムに与え、
+        // 直近のAIボトルの書き出しを「避ける例」として生成プロンプトに含める。
+        const driftThemes = ["音やリズム", "匂いや味", "天気や季節の感触", "場所や景色の記憶", "数字や順序", "色や光", "夢や眠り", "習慣や癖", "他人の仕草", "言葉や名前", "時間の流れ", "身体の感覚"];
+        const driftTheme = driftThemes[Math.floor(Math.random() * driftThemes.length)];
+        const recentAiOpenings = (Array.isArray(latestData?.bottles?.data) ? latestData.bottles.data : [])
+          .filter((item: { is_ai?: unknown }) => Boolean(item?.is_ai))
+          .slice(0, 5)
+          .map((item: { body?: unknown }) => String(item?.body || "").slice(0, 24))
+          .filter(Boolean);
+        const avoidText = recentAiOpenings.length ? `最近のボトル（${recentAiOpenings.map((text: string) => `「${text}…」`).join("、")}）と主題・書き出し・言い回しが重ならないようにしてください。定番の書き出しの使い回しも避けてください。` : "";
+        const response = await fetch('/api/ai/plaza', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "bottle", body: `類型の海に漂着する、短い秘密メモを一つ書いてください。相談ではなく、観測や違和感の一文にしてください。主題のヒントは「${driftTheme}」。${avoidText}`, character: Math.random() < 0.5 ? "ダーリンちゃん" : "LSI芋虫", history: [] }) });
         const data = await response.json().catch(() => null);
         const reply = Array.isArray(data?.replies) ? data.replies[0] : null;
         if (!response.ok || data?.source !== "groq" || !reply?.body) {
