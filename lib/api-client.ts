@@ -1,5 +1,8 @@
 const PRIMARY_API = process.env.NEXT_PUBLIC_API_URL || "https://type-drift-api.onrender.com";
 const FALLBACK_API = process.env.NEXT_PUBLIC_FALLBACK_API_URL || "https://type-drift-api-fallback.mitsuki-momoka.workers.dev";
+/** Same-origin Node fallback: this Next.js app's own /api routes (Vercel), which
+ * talk to Supabase directly. Used when the Worker path fails with a 5xx. */
+const SELF_API = "";
 
 /** These endpoints are implemented by the Neon-backed Worker; prefer it directly to avoid noisy Render 429/CORS preflights. */
 function isWorkerRoute(path: string, init?: RequestInit) {
@@ -25,10 +28,11 @@ function isWorkerRoute(path: string, init?: RequestInit) {
   return false;
 }
 
-/** Worker-backed routes go to Cloudflare first; remaining routes keep Render as primary with fallback. */
+/** Worker-backed routes go to Cloudflare first, then fail over to the same-origin
+ * Node routes on Vercel; remaining routes keep Render as primary with the Worker as fallback. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const configured = [PRIMARY_API, FALLBACK_API].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
-  const targets = isWorkerRoute(path, init) ? [...configured].reverse() : configured;
+  const targets = isWorkerRoute(path, init) ? [FALLBACK_API, SELF_API] : configured;
   let lastError: unknown;
   let lastResponse: Response | undefined;
 
@@ -47,7 +51,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
       lastResponse = response;
     } catch (error) {
       const next = targets[targets.indexOf(base) + 1];
-      if (next) console.warn(`[Type Drift API] ${base} failed; retrying with ${next}`, error);
+      if (next !== undefined) console.warn(`[Type Drift API] ${base} failed; retrying with ${next || "self"}`, error);
       else console.error(`[Type Drift API] ${base} and all fallback APIs failed`, error);
       lastError = error;
     }
