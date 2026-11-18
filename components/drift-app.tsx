@@ -176,6 +176,7 @@ type FeedbackItem = {
   read?: boolean;
   needsReply?: boolean;
   userKey?: string;
+  reaction?: string;
   replies?: FeedbackReply[];
 };
 
@@ -381,7 +382,7 @@ function FeedbackBox({ onFeedbackSubmit, userNickname, userType }: { onFeedbackS
         await apiFetch('/api/feedback', {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Guest-Key": guestKey },
-          body: JSON.stringify({ body: body.trim(), category, needsReply }),
+          body: JSON.stringify({ body: body.trim(), category, needsReply, client_id: feedbackItem.id }),
         });
       } catch {
         // fallback
@@ -2186,6 +2187,22 @@ export default function DriftApp() {
         const parsed = JSON.parse(savedInquiries);
         if (Array.isArray(parsed)) setUserInquiries(parsed.map((item: FeedbackItem) => ({ ...item, needsReply: item.needsReply === true || String(item.needsReply).toLowerCase() === "true" || ["返信希望", "希望する", "はい", "yes", "1"].includes(String(item.needsReply || "").trim().toLowerCase()) })));
       }
+      // 運営リアクションをサーバーから取り込んで問い合わせ履歴へ反映
+      void (async () => {
+        try {
+          const res = await apiFetch('/api/feedback/mine', { headers: { "X-Guest-Key": getGuestKey() } });
+          if (!res.ok) return;
+          const data = await res.json().catch(() => null);
+          const rows: Array<{ client_id?: string; reaction?: string }> = Array.isArray(data?.feedback) ? data.feedback : [];
+          if (!rows.length) return;
+          const byId = new Map(rows.filter(r => r.client_id).map(r => [String(r.client_id), r.reaction || undefined]));
+          setUserInquiries(prev => {
+            const next = prev.map(inq => byId.has(inq.id) ? { ...inq, reaction: byId.get(inq.id) } : inq);
+            try { localStorage.setItem("type-drift-my-inquiries", JSON.stringify(next)); } catch {}
+            return next;
+          });
+        } catch {}
+      })();
       // 管理者トレイの復元
       const savedFeedbacks = localStorage.getItem("type-drift-admin-feedbacks");
       if (savedFeedbacks) {
@@ -2320,8 +2337,14 @@ export default function DriftApp() {
       const data = await response.json();
       if (data && Array.isArray(data.feedbacks)) {
         // 運営以外の送信者から来た返信は、ユーザーの追加コメントとして扱う。
+        let savedReactionById = new Map<string, string>();
+        try {
+          const savedList = JSON.parse(localStorage.getItem("type-drift-admin-feedbacks") || "[]");
+          if (Array.isArray(savedList)) savedReactionById = new Map(savedList.filter((x: FeedbackItem) => x?.id && x?.reaction).map((x: FeedbackItem) => [String(x.id), String(x.reaction)]));
+        } catch {}
         const normalized = data.feedbacks.map((fb: FeedbackItem) => ({
           ...fb,
+          reaction: fb.reaction || savedReactionById.get(String(fb.id)),
           needsReply: fb.needsReply === true || String(fb.needsReply).toLowerCase() === "true" || ["返信希望", "希望する", "はい", "yes", "1"].includes(String(fb.needsReply || "").trim().toLowerCase()),
           replies: (fb.replies || []).map(reply => ({
             ...reply,
@@ -2432,6 +2455,22 @@ export default function DriftApp() {
   };
 
   // 開発者側から意見箱へ返信する処理
+  // お問い合わせへのリアクション（返信不要のものへの「見たよ」の合図）。運営→ユーザーはWorker経由で通知も送る。
+  const handleFeedbackReaction = async (feedbackId: string, emoji: string) => {
+    const updated = adminFeedbacks.map(fb => fb.id === feedbackId ? { ...fb, reaction: emoji || undefined } : fb);
+    setAdminFeedbacks(updated);
+    try { localStorage.setItem("type-drift-admin-feedbacks", JSON.stringify(updated)); } catch {}
+    try {
+      const res = await apiFetch('/api/feedback/reaction', {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Guest-Key": getGuestKey() },
+        body: JSON.stringify({ client_id: feedbackId, emoji }),
+      });
+      if (!res.ok) console.warn("[Type Drift] feedback reaction sync failed", res.status);
+    } catch (error) { console.warn("[Type Drift] feedback reaction sync failed", error); }
+    setPlazaToast(emoji ? `${emoji} リアクションを送りました` : "リアクションを取り消しました");
+  };
+
   const handleSendAdminReply = (feedbackId: string) => {
     const text = adminReplyTexts[feedbackId]?.trim();
     if (!text) return;
@@ -5972,6 +6011,9 @@ export default function DriftApp() {
                     <span>{inq.date}</span>
                   </div>
                   <p className="inquiry-body">{inq.body}</p>
+                  {inq.reaction && (
+                    <p style={{ margin: "4px 0 8px", fontSize: "12px", color: "#0f766e" }}>運営からリアクションが届きました {inq.reaction}</p>
+                  )}
 
                   {/* 運営から届いた返信スレッド */}
                   <div className="inquiry-replies-thread">
@@ -6175,6 +6217,24 @@ export default function DriftApp() {
                         </div>
                       </div>
                       <p className="admin-inbox-body">{fb.body}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "6px 0 2px" }}>
+                        <span style={{ fontSize: "11px", color: "#64748b" }}>リアクション</span>
+                        {["❤", "🙏", "👍", "🐛"].map(emoji => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            aria-pressed={fb.reaction === emoji}
+                            title={fb.reaction === emoji ? "取り消す" : `${emoji} を送る`}
+                            onClick={() => void handleFeedbackReaction(fb.id, fb.reaction === emoji ? "" : emoji)}
+                            style={{
+                              border: fb.reaction === emoji ? "1.5px solid #0f766e" : "1px solid #e2e8f0",
+                              background: fb.reaction === emoji ? "#f0fdfa" : "#fff",
+                              borderRadius: "999px", padding: "2px 9px", fontSize: "13px", cursor: "pointer",
+                            }}
+                          >{emoji}</button>
+                        ))}
+                        {fb.reaction && <span style={{ fontSize: "11px", color: "#0f766e" }}>{fb.reaction} を送信済み</span>}
+                      </div>
 
                       {/* 管理者側：返信履歴と返信入力 */}
                       <div className="admin-feedback-reply-section">

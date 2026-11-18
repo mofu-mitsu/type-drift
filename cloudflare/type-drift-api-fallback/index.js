@@ -6896,8 +6896,41 @@ var index_default = {
         const b2 = await bodyOf(request);
         const text = clean(b2.body, 5e3);
         if (!text) return json({ message: "body is required" }, 422, env, request);
-        const rows = await sql`INSERT INTO feedback (guest_key,category,body,contact_email,status,created_at,updated_at) VALUES (${key},${nullable(b2.category)},${text},${nullable(b2.contact_email)},'new',NOW(),NOW()) RETURNING id,status`;
+        await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS client_id text`;
+        await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS reaction text`;
+        const clientId = clean(b2.client_id ?? b2.id, 80) || null;
+        const rows = await sql`INSERT INTO feedback (guest_key,category,body,contact_email,status,client_id,created_at,updated_at) VALUES (${key},${nullable(b2.category)},${text},${nullable(b2.contact_email)},'new',${clientId},NOW(),NOW()) RETURNING id,status`;
         return json({ feedback: rows[0] }, 201, env, request);
+      }
+      if (path === "/api/feedback/reaction" && method === "POST") {
+        // Admin reaction to an inquiry (mainly for "no reply needed" feedback).
+        // The admin UI is account-gated in the client; require a signed-in key here.
+        if (!accountKey) return json({ error: "admin_sign_in_required" }, 401, env, request);
+        const b2 = await bodyOf(request);
+        const clientId = clean(b2.client_id, 80);
+        const emoji = clean(b2.emoji, 8);
+        const allowed = ["", "❤", "🙏", "👍", "🐛"];
+        if (!clientId || !allowed.includes(emoji)) return json({ message: "client_id and a valid emoji are required" }, 422, env, request);
+        await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS client_id text`;
+        await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS reaction text`;
+        const target = await sql`SELECT id, guest_key FROM feedback WHERE client_id = ${clientId} ORDER BY id DESC LIMIT 1`;
+        if (!target.length) return json({ error: "feedback_not_found" }, 404, env, request);
+        await sql`UPDATE feedback SET reaction = ${emoji || null}, updated_at = NOW() WHERE id = ${target[0].id}`;
+        if (emoji && target[0].guest_key) {
+          await sql`INSERT INTO notifications (guest_key,type,entity_id,message,created_at,updated_at) VALUES (${target[0].guest_key},'feedback_reaction',${clientId},${"お問い合わせに運営からリアクションが届きました " + emoji},NOW(),NOW())`;
+        }
+        return json({ ok: true, reaction: emoji || null }, 200, env, request);
+      }
+      if (path === "/api/feedback/mine" && method === "GET") {
+        if (!key) return json({ error: "missing_guest_key" }, 422, env, request);
+        await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS client_id text`;
+        await sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS reaction text`;
+        const mine = [];
+        for (const k of keySet) {
+          const rows = await sql`SELECT client_id, reaction, category, created_at FROM feedback WHERE guest_key = ${k} AND client_id IS NOT NULL ORDER BY id DESC LIMIT 50`;
+          mine.push(...rows);
+        }
+        return json({ feedback: mine }, 200, env, request);
       }
       if (path === "/api/presence/join" && method === "POST") {
         const b2 = await bodyOf(request);
