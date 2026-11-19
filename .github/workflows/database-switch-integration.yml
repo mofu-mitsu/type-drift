@@ -1,0 +1,64 @@
+name: Isolated database switch integration
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/Support/Database/WriterLeaseManager.php"
+      - "backend/tests/Feature/WriterDatabaseSwitchTest.php"
+      - ".github/workflows/database-switch-integration.yml"
+  push:
+    branches:
+      - main
+      - feat/database-failover-replay
+    paths:
+      - "backend/app/Support/Database/WriterLeaseManager.php"
+      - "backend/tests/Feature/WriterDatabaseSwitchTest.php"
+      - ".github/workflows/database-switch-integration.yml"
+
+jobs:
+  database-switch:
+    runs-on: ubuntu-latest
+    services:
+      neon-test:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      supabase-test:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          extensions: pdo_sqlite, pdo_pgsql
+      - run: composer install --no-interaction --prefer-dist
+      - name: Verify Neon-to-Supabase writer routing against disposable PostgreSQL instances
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          DB_URL_NEON: postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+          DB_URL_SUPABASE: postgresql://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable
+        run: php artisan test --filter=WriterDatabaseSwitchTest

@@ -1,0 +1,11 @@
+name = "type-drift-writer-control"
+main = "src/index.ts"
+compatibility_date = "2026-11-16"
+
+[[durable_objects.bindings]]
+name = "WRITER_COORDINATOR"
+class_name = "WriterCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WriterCoordinator"]

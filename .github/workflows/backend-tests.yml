@@ -1,0 +1,43 @@
+name: Backend tests
+
+permissions:
+  contents: write
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-tests.yml"
+  push:
+    branches:
+      - main
+      - feat/database-failover-replay
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-tests.yml"
+
+jobs:
+  laravel-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          extensions: pdo_sqlite, pdo_pgsql
+      - uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - run: composer update laravel/reverb --with-all-dependencies --no-interaction --prefer-dist
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        if: github.event_name == 'push'
+        with:
+          commit_message: "chore: update Composer lock for Laravel Reverb"
+          file_pattern: backend/composer.lock
+      - run: APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan test
