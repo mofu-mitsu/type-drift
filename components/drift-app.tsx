@@ -2874,6 +2874,35 @@ export default function DriftApp() {
     if (dmBlockedThreads[target.id]) { setPlazaToast("ブロック中の相手にはメッセージを送れません"); return false; }
     const body = text.trim();
     if (!body) return false;
+    // 初期表示の見本スレッド（bottle-ocean-1）は実在の相手がいないためサーバーへは
+    // 送らず、端末内だけで会話を続けられるようにする。従来は宛先を解決できず
+    // サーバーが404を返し、送信ボタンが無反応に見えていた。
+    if (target.id === "bottle-ocean-1") {
+      const demoMsg: DirectMessage = {
+        id: `dm-${Date.now()}`,
+        threadId: "bottle-ocean-1",
+        sender: nickname || "匿名のあなた",
+        recipient: target.name,
+        targetEmoji: target.emoji,
+        targetType: target.type,
+        body,
+        createdAt: Date.now(),
+        read: false,
+        isMine: true,
+        bottleId: target.bottleInfo?.id,
+        bottleSnippet: target.bottleInfo?.text,
+        bottleAuthor: target.bottleInfo?.author,
+        bottleType: target.bottleInfo?.type,
+      };
+      setDirectMessages(prev => {
+        const updated = [...prev, demoMsg];
+        try { localStorage.setItem(getDirectMessageStorageKey(), JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+      logActivity("direct_message_sent", { target: target.name, bodyLength: body.length }, { type: "direct_message", id: target.id });
+      setPlazaToast(`💌 ${target.name}へメッセージを送信しました`);
+      return "bottle-ocean-1";
+    }
     const isProfileRevealed = revealedIdentityThreads.includes(target.id);
     const isBottleConversation = target.id.startsWith("bottle-") && Boolean(target.bottleInfo);
     const myDisplayName = isBottleConversation && !isProfileRevealed ? "匿名のあなた" : (nickname || "匿名のあなた");
