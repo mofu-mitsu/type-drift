@@ -1,0 +1,72 @@
+# Database failover implementation notes
+
+## Safety boundary
+
+This branch is groundwork only. It does not switch Laravel's live database connection and no migration has been applied to a database. Do not enable automatic failover or run these migrations in production.
+
+## Late-commit-safe replay groundwork
+
+PostgreSQL sequence values are allocated before transaction commit. Advancing a durable cursor to the largest observed journal ID can permanently skip an event from a transaction that commits later with a smaller ID.
+
+Migration `2026_11_16_000003_add_processed_at_to_type_drift_change_journal.php` adds a nullable source-side acknowledgement and a partial index for pending events. The replay service selects pending events rather than treating event IDs as a commit-order watermark. It writes a destination receipt and row mutation in one destination transaction; after that commits, it marks the source event acknowledged. A crash between those commits is safe to retry because the destination receipt is idempotent.
+
+The service reads the current source row by primary key rather than replaying the historical event snapshot. A delayed older event therefore cannot overwrite a newer committed row state. If the current source row no longer exists, replay deletes it from the destination.
+
+This is a bounded replay primitive, not a production-ready sync system. It still needs:
+- schema compatibility checks on both sides and an explicit table/column allowlist;
+- foreign-key-conflict retry scheduling and sequence reconciliation;
+- concurrency fencing so only one replay worker owns a source/destination pair;
+- retention/compaction after both sides are verified;
+- isolated integration tests and checksums before any cutover.
+
+## Independent writer control and lease fencing
+
+A control record stored only in Neon or Supabase cannot arbitrate writes when that database is unavailable. The Cloudflare Durable Object under `cloudflare/database-control/` stores the writer authority independently, with a monotonically increasing epoch and transactional state changes.
+
+The Worker now supports active write leases:
+- `acquire` succeeds only while the control state is stable and the supplied writer/epoch match.
+- `prepare` enters transition state only when no leases are active; while transitioning, new leases are rejected.
+- `commit` checks the transition ID and epoch and refuses to switch while any lease remains.
+- `release` removes a lease only after the guarded write path has fully completed.
+
+Leases intentionally have no automatic TTL. A stale lease can block failover, but silently expiring one risks allowing a still-running old-writer transaction to commit after cutover. For an application exception, Laravel's middleware releases the lease in a `finally` path and this is covered by a unit test. For a hard process crash, recovery remains manual: verify the process and its DB transaction are no longer running, inspect the active lease, then release that specific lease with the authenticated control API. Never release a lease merely because it looks old. A stopped-process/connection recovery drill is still required.
+
+This protocol is only effective when all writes acquire before starting their DB transaction and release only after commit/rollback. Laravel middleware and every queue/scheduled/background writer must be integrated and tested. The Worker is not deployed and not connected to production. Its initial Neon/epoch 1 state is a code default, not verified production state. Do not enable automatic failover yet.
+
+## Existing journal limitations
+
+The journal trigger runs in the same transaction as application writes, so rolled-back writes do not leave committed journal rows. Each event stores table, operation, primary key, a row snapshot for diagnostics, transaction ID, and local ID. Event IDs are not a global commit order.
+
+## Low-usage constraint
+
+Do not enable Neon logical replication as the first solution: a live subscriber can prevent scale-to-zero. Do not schedule the existing one-way full-dump workflow as recurring sync; it is not incremental and refuses a non-empty target. Replay batches should be bounded and invoked deliberately while staging.
+
+## Status
+
+- [x] Failure classification/state transition policy.
+- [x] Pending-event marker groundwork to avoid sequence IDs as commit-order watermarks.
+- [x] Destination receipt + row mutation in one transaction.
+- [x] Independent writer-control API with write-lease and transition exclusion prototype.
+- [x] Laravel API middleware and reusable queued-job lease middleware groundwork (feature flag off by default).
+- [ ] Attach reusable lease middleware to every future database-writing queued job and audit scheduler/other services.
+- [x] Isolated writer routing tested against two disposable PostgreSQL instances; control-plane responses are mocked in this DB-routing test.
+- [x] Laravel request-exception path verifies lease release in `finally`; Worker tests verify transition exclusion and controlled release of an abandoned lease.
+- [ ] Execute the newly added manual live-staging workflow (`live-writer-crash-recovery.yml`); the harness is committed but not yet run because staging secrets/Worker must be provisioned.
+- [x] Automated Laravel and Worker test suites executed successfully in GitHub Actions (including lease acquisition, fail-closed behavior, exception cleanup, transition exclusion, and epoch increment).
+- [ ] Recovery process for orphaned leases, validated with stopped process/DB connections.
+- [ ] Foreign-key retry queue, schema validation, sequence reconciliation, and checksums.
+- [ ] Isolated integration tests for auth, posts, replies, DMs, notifications, deletes, and interrupted replay.
+- [ ] Enable only after staging validation.
+
+
+## Live staging validation (manual only)
+
+Workflow `.github/workflows/live-writer-crash-recovery.yml` is deliberately `workflow_dispatch` only. It is not run by normal pushes and it must never be pointed at production. Configure these GitHub Actions repository secrets with a separately deployed staging Worker and two isolated PostgreSQL test databases:
+
+- `STAGING_WRITER_CONTROL_URL`: deployed HTTPS staging Worker URL.
+- `STAGING_WRITER_CONTROL_TOKEN`: that staging Worker’s bearer token.
+- `STAGING_DB_URL_NEON` and `STAGING_DB_URL_SUPABASE`: isolated, disposable PostgreSQL URLs. The test creates/uses a real connection and inspects `pg_stat_activity`; use credentials with permission to see the relevant backend.
+  
+The workflow first runs Laravel against the real Worker and selected PostgreSQL writer without HTTP mocks. It then starts a Laravel PHP child that acquires a lease and holds a PostgreSQL transaction, force-kills the child, confirms the lease remains and blocks `prepare`, verifies the child’s PostgreSQL backend has disappeared, and only then releases the orphan lease. It does not commit a writer transition or modify application tables. A mandatory typed confirmation is required at dispatch.
+
+Before dispatch, deploy the Worker under a distinct staging name/namespace with a staging-only token and verify both DB URLs point to disposable test databases. Do not use the production Durable Object namespace or production DB URLs. This workflow has not been executed until the required secrets are configured and the manual run succeeds.

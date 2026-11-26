@@ -1,0 +1,16 @@
+{
+  "name": "type-drift-writer-control",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261116.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.152.0",
+    "vitest": "^3.2.4"
+  }
+}
