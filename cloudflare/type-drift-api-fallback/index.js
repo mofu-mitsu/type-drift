@@ -6583,7 +6583,7 @@ var index_default = {
             if (lastRows.length) break;
           }
           context = lastRows[0] || null;
-          if (!context && bottleId) {
+          if (!context && bottleId && !passedThread.includes("-pair-")) {
             // The client rebuilds thread IDs from participant identities (guest keys or
             // signed-in user IDs), which may not string-match the stored thread_id.
             // Resolve the conversation by bottle + participation instead of failing.
@@ -6619,7 +6619,7 @@ var index_default = {
             senderName = currentIsSender ? context.sender_name : context.recipient_name;
             recipientName = currentIsSender ? context.recipient_name : context.sender_name;
             bottleId = context.bottle_id ? Number(context.bottle_id) : bottleId;
-          } else if (bottleId) {
+          } else if (bottleId && !threadId.includes("-pair-")) {
             const ownerRows = await sql`SELECT guest_key,body,mbti,socionics,enneagram,other_type,is_ai FROM bottles WHERE id=${bottleId} AND deleted_at IS NULL LIMIT 1`;
             const owner = ownerRows[0];
             if (!owner?.guest_key) return json({ message: "bottle owner not found" }, 404, env, request);
@@ -6671,7 +6671,7 @@ var index_default = {
             let found = null;
             for (const cand of candidates) {
               for (const k of keySet) {
-                const rows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${cand} AND recipient_guest_key=${k}) OR (sender_guest_key=${k} AND recipient_guest_key=${cand})) ORDER BY created_at DESC LIMIT 1`;
+                const rows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${cand} AND recipient_guest_key=${k}) OR (sender_guest_key=${k} AND recipient_guest_key=${cand})) AND (${bottleId}::bigint IS NULL OR bottle_id=${bottleId}) ORDER BY created_at DESC LIMIT 1`;
                 if (rows.length) { found = rows[0]; break; }
               }
               if (found) break;
