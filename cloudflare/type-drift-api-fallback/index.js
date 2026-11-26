@@ -6671,7 +6671,7 @@ var index_default = {
             let found = null;
             for (const cand of candidates) {
               for (const k of keySet) {
-                const rows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${cand} AND recipient_guest_key=${k}) OR (sender_guest_key=${k} AND recipient_guest_key=${cand})) ORDER BY created_at DESC LIMIT 1`;
+                const rows = await sql`SELECT * FROM direct_messages WHERE ((sender_guest_key=${cand} AND recipient_guest_key=${k}) OR (sender_guest_key=${k} AND recipient_guest_key=${cand})) AND (${bottleId}::bigint IS NULL OR bottle_id=${bottleId}) ORDER BY created_at DESC LIMIT 1`;
                 if (rows.length) { found = rows[0]; break; }
               }
               if (found) break;
