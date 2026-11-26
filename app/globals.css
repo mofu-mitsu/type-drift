@@ -389,7 +389,8 @@
     margin: 0 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 28px 18px 22px;
+    /* In-app browsers (e.g. X) draw their own toolbar over the page bottom and cover the "流す" button. Keep generous bottom scroll room so the composer foot can be scrolled clear of that overlay. */
+    padding: 28px 18px calc(150px + env(safe-area-inset-bottom));
   }
   .modal-backdrop:has(.dm-send-modal) {
     display: block;
